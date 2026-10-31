@@ -211,6 +211,21 @@ export function isPlaceholder(value: string): boolean {
   return PLACEHOLDER.test(value) || /^[a-z]+(?:[_-][a-z]+)*$/.test(value) || /^[A-Z_]+$/.test(value);
 }
 
+/**
+ * Documentation and test samples: `AKIAIOSFODNN7EXAMPLE`, `AKIAABCDEFGHIJKLMNOP`, `sk_live_xxxxxxxx`. A value is a
+ * sample when it says so or contains a long run of consecutive or repeated characters.
+ */
+export function isSyntheticSample(value: string): boolean {
+  if (/EXAMPLE|SAMPLE|DUMMY|FAKE|PLACEHOLDER|REDACTED|XXXXXX|000000|123456/i.test(value)) return true;
+  let run = 1;
+  for (let i = 1; i < value.length; i++) {
+    const d = value.charCodeAt(i) - value.charCodeAt(i - 1);
+    run = d === 1 || d === 0 ? run + 1 : 1;
+    if (run >= 6) return true;
+  }
+  return false;
+}
+
 export function shannonEntropy(s: string): number {
   if (!s) return 0;
   const counts = new Map<string, number>();

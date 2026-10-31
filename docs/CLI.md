@@ -39,6 +39,7 @@ Runs every rule category. With --allow-exec it also runs the project's type chec
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -73,6 +74,7 @@ Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, COR
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -107,6 +109,7 @@ N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handl
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -141,6 +144,7 @@ Timeouts, error handling, idempotency, race conditions, migrations, retries, gra
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -175,6 +179,7 @@ Debug leftovers, complexity, disabled type checking; with --allow-exec the type 
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -209,6 +214,7 @@ Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail 
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 
 Examples:
 
@@ -243,6 +249,7 @@ Runs all analyses plus build, tests, type check and lint (with --allow-exec), de
 | `--no-git` | Do not use git to list files (walk the tree instead). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
+| `--compact` | With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents). |
 | `--strict` | Also fail (exit 1) when critical gates are unverified. |
 
 Examples:

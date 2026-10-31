@@ -8,7 +8,10 @@
       "!.relivaro",
       "!tests/.tmp",
       "!fixtures",
-      "!bench/results"
+      "!bench/results",
+      "!docs/CLI.md",
+      "!docs/RULES.md",
+      "!plugin/skills/relivaro/references"
     ]
   },
   "formatter": {

@@ -97,6 +97,16 @@ var init_errors = __esm({
 function isPlaceholder(value) {
   return PLACEHOLDER.test(value) || /^[a-z]+(?:[_-][a-z]+)*$/.test(value) || /^[A-Z_]+$/.test(value);
 }
+function isSyntheticSample(value) {
+  if (/EXAMPLE|SAMPLE|DUMMY|FAKE|PLACEHOLDER|REDACTED|XXXXXX|000000|123456/i.test(value)) return true;
+  let run2 = 1;
+  for (let i2 = 1; i2 < value.length; i2++) {
+    const d = value.charCodeAt(i2) - value.charCodeAt(i2 - 1);
+    run2 = d === 1 || d === 0 ? run2 + 1 : 1;
+    if (run2 >= 6) return true;
+  }
+  return false;
+}
 function shannonEntropy(s) {
   if (!s) return 0;
   const counts = /* @__PURE__ */ new Map();
@@ -11888,6 +11898,9 @@ var init_files2 = __esm({
               const value = p.group === 0 ? m[0] : m[p.group];
               if (!value) continue;
               if (p.minEntropy && shannonEntropy(value) < p.minEntropy) continue;
+              if (p.id !== "private-key" && isSyntheticSample(value)) continue;
+              if (p.id === "private-key" && !/^[A-Za-z0-9+/=]{40,}\s*$/.test(ctx.lines[i2 + 1] ?? "") && !/^[A-Za-z0-9+/=]{40,}\s*$/.test(ctx.lines[i2 + 2] ?? ""))
+                continue;
               if (p.id === "db-url-password" && (isPlaceholder(value) || /^\$\{|^%|^<|password|secret|pass$|root$|postgres$|^user$|^admin$|^test/i.test(value)))
                 continue;
               if (p.id === "jwt" && ctx.file.isTest) continue;
@@ -15474,6 +15487,8 @@ function collectEnvVars(files, documented) {
       if (!text) continue;
       p.re.lastIndex = 0;
       for (const m of text.matchAll(p.re)) {
+        const lineStart = text.lastIndexOf("\n", m.index ?? 0) + 1;
+        if (/^\s*(?:\/\/|#|\*|\/\*)/.test(text.slice(lineStart, m.index))) continue;
         const groups = m.slice(1);
         const name2 = groups.find((g) => g && /^[A-Z_][A-Z0-9_]*$/.test(g));
         if (!name2 || AMBIENT_ENV.test(name2)) continue;
@@ -15552,7 +15567,7 @@ var init_discover = __esm({
     ENV_PATTERNS = [
       // JS/TS: process.env.X, process.env['X'], import.meta.env.X; optional when followed by ?? or ||.
       {
-        re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
+        re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)(?![A-Za-z0-9_])|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
         ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/
       },
       // PHP: env('X'), env('X', default), getenv('X')
@@ -15570,7 +15585,7 @@ var init_discover = __esm({
       },
       { re: /\bString\.fromEnvironment\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?/g, ext: /\.dart$/ }
     ];
-    AMBIENT_ENV = /^(?:NODE_ENV|CI|HOME|PATH|PWD|USER|SHELL|TERM|TZ|LANG|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
+    AMBIENT_ENV = /^(?:NODE_ENV|CI|HOME|PATH|Path|PWD|USER|USERNAME|USERPROFILE|SYSTEMROOT|SystemRoot|APPDATA|LOCALAPPDATA|COMSPEC|PATHEXT|WINDIR|TEMP|TMP|PROGRAMFILES|SHELL|TERM|TZ|LANG|LC_ALL|NO_COLOR|FORCE_COLOR|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
   }
 });
 
@@ -22145,6 +22160,10 @@ async function runAudit(opts) {
   const coverageReports = readCoverage(files, profile);
   const findings = builder.findings.sort(compareFindings);
   const gaps = categories.includes("testing") || categories.includes("quality") ? testGaps(files, findings, analysis2.complexity, coverageReports) : [];
+  if (analysis2.ruleErrors.length)
+    limitations.push(
+      `${analysis2.ruleErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`
+    );
   if (analysis2.parseErrors.length)
     limitations.push(
       `${analysis2.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`
@@ -23948,12 +23967,60 @@ var ANALYSIS_OPTS = [
     value: "<n>",
     description: "Findings printed to the terminal.",
     default: 15
+  },
+  {
+    name: "compact",
+    type: "boolean",
+    description: "With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents)."
   }
 ];
 function rootArg(p) {
   const r = resolve3(p.positionals[0] ?? ".");
   if (!existsSync11(r)) throw new RelivaroError("NOT_FOUND", `Path does not exist: ${r}`);
   return r;
+}
+function compactRun(run2, maxFindings = 150) {
+  const open2 = run2.findings.filter((f) => f.status === "open");
+  return {
+    runId: run2.runId,
+    command: run2.command,
+    project: {
+      name: run2.profile.name,
+      units: run2.profile.units.map((u) => `${u.path}: ${u.frameworks.join("/") || u.kind}`),
+      languages: run2.profile.languages.slice(0, 6).map((l) => `${l.name} (${l.files})`),
+      technologies: [...new Set(run2.profile.technologies.map((t2) => t2.name))]
+    },
+    summary: run2.summary,
+    findings: open2.slice(0, maxFindings).map((f) => ({
+      id: f.id,
+      rule: f.ruleId,
+      severity: f.severity,
+      confidence: f.confidence,
+      where: f.location ? `${f.location.file}${f.location.line ? `:${f.location.line}` : ""}` : void 0,
+      message: f.message,
+      fixer: f.fixer,
+      snippet: f.evidence.snippet?.split("\n").slice(0, 3).join("\n"),
+      output: f.evidence.output?.split("\n").slice(-8).join("\n")
+    })),
+    omittedFindings: Math.max(0, open2.length - maxFindings),
+    checks: run2.checks.map((c) => ({
+      kind: c.kind,
+      unit: c.unit,
+      status: c.status,
+      tests: c.tests,
+      reason: c.reason
+    })),
+    testGaps: run2.testGaps.slice(0, 10),
+    release: run2.release && {
+      status: run2.release.status,
+      score: run2.release.score,
+      blockers: run2.release.blockers,
+      warnings: run2.release.warnings,
+      unverified: run2.release.unverified
+    },
+    limitations: run2.limitations,
+    reports: `.relivaro/runs/${run2.runId}/ (rule details: relivaro rules show <rule>)`
+  };
 }
 function writeReports(ws, run2, formats, outDir) {
   const files = {};
@@ -24008,7 +24075,7 @@ async function analysisCommand(p, out2, cfg) {
     Array.isArray(formats) ? formats : String(formats).split(","),
     p.opts.out
   );
-  if (out2.json) out2.print(JSON.stringify(run2, null, 2));
+  if (out2.json) out2.print(JSON.stringify(p.opts.compact ? compactRun(run2) : run2, null, 2));
   else printRunSummary(out2, run2, files, Number(p.opts["max-findings"] ?? 15));
   const failOn = p.opts["fail-on"] ?? config.failOn;
   if (cfg.release && run2.release) {

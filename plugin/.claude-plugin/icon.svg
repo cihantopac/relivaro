@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Relivaro">
+  <rect width="64" height="64" rx="14" fill="#1f3a8a"/>
+  <path d="M32 10 50 17v14c0 11.5-7.7 19.6-18 23-10.3-3.4-18-11.5-18-23V17Z" fill="none" stroke="#e8eefc" stroke-width="4" stroke-linejoin="round"/>
+  <path d="m23 32.5 6.5 6.5L42 26" fill="none" stroke="#7dd3a8" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -97,12 +97,63 @@ const ANALYSIS_OPTS: OptSpec[] = [
     description: 'Findings printed to the terminal.',
     default: 15,
   },
+  {
+    name: 'compact',
+    type: 'boolean',
+    description:
+      'With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents).',
+  },
 ];
 
 function rootArg(p: Parsed): string {
   const r = resolve(p.positionals[0] ?? '.');
   if (!existsSync(r)) throw new RelivaroError('NOT_FOUND', `Path does not exist: ${r}`);
   return r;
+}
+
+/** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
+export function compactRun(run: RunRecord, maxFindings = 150) {
+  const open = run.findings.filter((f) => f.status === 'open');
+  return {
+    runId: run.runId,
+    command: run.command,
+    project: {
+      name: run.profile.name,
+      units: run.profile.units.map((u) => `${u.path}: ${u.frameworks.join('/') || u.kind}`),
+      languages: run.profile.languages.slice(0, 6).map((l) => `${l.name} (${l.files})`),
+      technologies: [...new Set(run.profile.technologies.map((t) => t.name))],
+    },
+    summary: run.summary,
+    findings: open.slice(0, maxFindings).map((f) => ({
+      id: f.id,
+      rule: f.ruleId,
+      severity: f.severity,
+      confidence: f.confidence,
+      where: f.location ? `${f.location.file}${f.location.line ? `:${f.location.line}` : ''}` : undefined,
+      message: f.message,
+      fixer: f.fixer,
+      snippet: f.evidence.snippet?.split('\n').slice(0, 3).join('\n'),
+      output: f.evidence.output?.split('\n').slice(-8).join('\n'),
+    })),
+    omittedFindings: Math.max(0, open.length - maxFindings),
+    checks: run.checks.map((c) => ({
+      kind: c.kind,
+      unit: c.unit,
+      status: c.status,
+      tests: c.tests,
+      reason: c.reason,
+    })),
+    testGaps: run.testGaps.slice(0, 10),
+    release: run.release && {
+      status: run.release.status,
+      score: run.release.score,
+      blockers: run.release.blockers,
+      warnings: run.release.warnings,
+      unverified: run.release.unverified,
+    },
+    limitations: run.limitations,
+    reports: `.relivaro/runs/${run.runId}/ (rule details: relivaro rules show <rule>)`,
+  };
 }
 
 function writeReports(
@@ -170,7 +221,7 @@ async function analysisCommand(
         Array.isArray(formats) ? formats : String(formats).split(','),
         p.opts.out as string | undefined,
       );
-  if (out.json) out.print(JSON.stringify(run, null, 2));
+  if (out.json) out.print(JSON.stringify(p.opts.compact ? compactRun(run) : run, null, 2));
   else printRunSummary(out, run, files, Number(p.opts['max-findings'] ?? 15));
   const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? config.failOn;
   if (cfg.release && run.release) {

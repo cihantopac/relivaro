@@ -566,7 +566,7 @@ function unitKind(kinds: TechKind[], ms: ManifestInfo[]): Unit['kind'] {
 const ENV_PATTERNS: { re: RegExp; ext: RegExp }[] = [
   // JS/TS: process.env.X, process.env['X'], import.meta.env.X; optional when followed by ?? or ||.
   {
-    re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
+    re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)(?![A-Za-z0-9_])|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
     ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/,
   },
   // PHP: env('X'), env('X', default), getenv('X')
@@ -586,7 +586,7 @@ const ENV_PATTERNS: { re: RegExp; ext: RegExp }[] = [
 ];
 
 const AMBIENT_ENV =
-  /^(?:NODE_ENV|CI|HOME|PATH|PWD|USER|SHELL|TERM|TZ|LANG|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
+  /^(?:NODE_ENV|CI|HOME|PATH|Path|PWD|USER|USERNAME|USERPROFILE|SYSTEMROOT|SystemRoot|APPDATA|LOCALAPPDATA|COMSPEC|PATHEXT|WINDIR|TEMP|TMP|PROGRAMFILES|SHELL|TERM|TZ|LANG|LC_ALL|NO_COLOR|FORCE_COLOR|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
 
 function collectEnvVars(files: FileSet, documented: Set<string>): EnvVarInfo[] {
   const vars = new Map<string, EnvVarInfo>();
@@ -605,6 +605,9 @@ function collectEnvVars(files: FileSet, documented: Set<string>): EnvVarInfo[] {
       if (!text) continue;
       p.re.lastIndex = 0;
       for (const m of text.matchAll(p.re)) {
+        // Mentions in comments and docblocks are not reads.
+        const lineStart = text.lastIndexOf('\n', m.index ?? 0) + 1;
+        if (/^\s*(?:\/\/|#|\*|\/\*)/.test(text.slice(lineStart, m.index))) continue;
         const groups = m.slice(1);
         const name = groups.find((g) => g && /^[A-Z_][A-Z0-9_]*$/.test(g));
         if (!name || AMBIENT_ENV.test(name)) continue;

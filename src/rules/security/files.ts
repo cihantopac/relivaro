@@ -11,6 +11,7 @@ import {
 import {
   GENERIC_SECRET_ASSIGNMENT,
   isPlaceholder,
+  isSyntheticSample,
   maskSecret,
   SECRET_PATTERNS,
   shannonEntropy,
@@ -55,6 +56,14 @@ const hardcodedSecret: FileRule = {
           const value = p.group === 0 ? m[0] : m[p.group];
           if (!value) continue;
           if (p.minEntropy && shannonEntropy(value) < p.minEntropy) continue;
+          if (p.id !== 'private-key' && isSyntheticSample(value)) continue;
+          // A PEM header alone (docs, tests, parsers) is not a key: require base64 key material to follow.
+          if (
+            p.id === 'private-key' &&
+            !/^[A-Za-z0-9+/=]{40,}\s*$/.test(ctx.lines[i + 1] ?? '') &&
+            !/^[A-Za-z0-9+/=]{40,}\s*$/.test(ctx.lines[i + 2] ?? '')
+          )
+            continue;
           if (
             p.id === 'db-url-password' &&
             (isPlaceholder(value) ||

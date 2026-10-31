@@ -1,0 +1,569 @@
+{
+  "relivaro": "1.0.0",
+  "measuredAt": "2026-10-31T19:52:56.603Z",
+  "environment": {
+    "node": "v22.23.2",
+    "platform": "darwin",
+    "arch": "arm64",
+    "cpus": 10,
+    "cpuModel": "Apple M4",
+    "memoryGb": 16
+  },
+  "detection": {
+    "fixtures": {
+      "clean-service": {
+        "tp": 0,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 112
+      },
+      "laravel-app": {
+        "tp": 40,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 95
+      },
+      "misc-rules": {
+        "tp": 14,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 72
+      },
+      "next-app": {
+        "tp": 12,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 95
+      },
+      "node-api": {
+        "tp": 54,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 102
+      },
+      "python-app": {
+        "tp": 30,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 80
+      },
+      "regressions": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 98
+      }
+    },
+    "byRule": {
+      "sec/hardcoded-secret": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/unbounded-query": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/sql-injection": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/mass-assignment": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/load-all-to-count": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/query-in-loop": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/unsafe-deserialization": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "qual/debug-statement": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/path-traversal": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/open-redirect": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/command-injection": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/ssrf": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/race-condition-read-modify-write": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/weak-password-hash": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/insecure-random": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/csrf-disabled": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/queue-job-without-retry-policy": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/http-call-without-timeout": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/tls-verification-disabled": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/payment-without-idempotency-key": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/debug-mode-enabled": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/cors-misconfiguration": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/insecure-cookie": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/foreign-key-without-index": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/destructive-migration": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/migration-without-rollback": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/xss": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/template-unescaped-output": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/lockfile-out-of-sync": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/end-of-life-runtime": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/env-file-not-ignored": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/no-error-monitoring": {
+        "tp": 5,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/production-env-debug": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/weak-cipher": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/process-exit-in-request-path": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/xxe": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/destructive-sql-migration": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/multiple-lockfiles": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/missing-lockfile": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/env-file-committed": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/no-graceful-shutdown": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "test/focused-test": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "test/skipped-tests": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "qual/high-complexity": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/regex-catastrophic-backtracking": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "qual/build-ignores-errors": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/secret-exposed-to-client": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "qual/type-checking-disabled": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "perf/sync-io-in-request-handler": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/code-injection": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/hardcoded-signing-secret": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/jwt-insecure": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/sensitive-data-in-logs": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/nosql-injection": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/regex-injection": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/timing-unsafe-comparison": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/async-foreach": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/world-writable-permissions": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/swallowed-exception": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/deprecated-buffer-constructor": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/dependency-install-scripts": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/non-registry-dependency": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/no-health-check": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/docker-unpinned-base-image": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/docker-runs-as-root": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/docker-remote-script-execution": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/docker-secret-in-image": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/docker-context-leak": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/compose-insecure-service": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/gha-pwn-request": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/gha-unpinned-action": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/gha-script-injection": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/gha-excessive-permissions": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/gha-no-timeout": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/template-injection": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "rel/bare-except": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sc/unpinned-dependency": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      }
+    },
+    "total": {
+      "tp": 155,
+      "fp": 0,
+      "fn": 0,
+      "precision": 1,
+      "recall": 1,
+      "rulesCovered": 77
+    }
+  },
+  "performance": {
+    "synthetic": {
+      "files": 3060,
+      "linesOfCode": 48600,
+      "parsedFiles": 3000,
+      "rulesRun": 77,
+      "medianMs": 3145,
+      "minMs": 3048,
+      "maxMs": 3196,
+      "filesPerSecond": 973,
+      "linesPerSecond": 15452,
+      "peakRssMb": 0,
+      "openFindings": 180
+    },
+    "repositories": [
+      {
+        "id": "repo-1",
+        "stack": "Flutter, Riverpod, go_router, Filament, Laravel",
+        "files": 4873,
+        "linesOfCode": 241383,
+        "parsedFiles": 563,
+        "ms": 7495,
+        "peakRssMb": 0,
+        "open": 100,
+        "bySeverity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 26,
+          "low": 64,
+          "info": 10
+        }
+      },
+      {
+        "id": "repo-2",
+        "stack": "Next.js, React",
+        "files": 114,
+        "linesOfCode": 5892,
+        "parsedFiles": 62,
+        "ms": 448,
+        "peakRssMb": 0,
+        "open": 7,
+        "bySeverity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 2,
+          "low": 5,
+          "info": 0
+        }
+      },
+      {
+        "id": "repo-3",
+        "stack": "Astro, Flutter, go_router, Laravel, Livewire, Filament",
+        "files": 421,
+        "linesOfCode": 18525,
+        "parsedFiles": 128,
+        "ms": 1749,
+        "peakRssMb": 0,
+        "open": 34,
+        "bySeverity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 7,
+          "low": 27,
+          "info": 0
+        }
+      },
+      {
+        "id": "repo-4",
+        "stack": "Next.js, React, Electron, Django, Flutter, Tokio",
+        "files": 1065,
+        "linesOfCode": 23628,
+        "parsedFiles": 125,
+        "ms": 2465,
+        "peakRssMb": 0,
+        "open": 38,
+        "bySeverity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 11,
+          "low": 27,
+          "info": 0
+        }
+      },
+      {
+        "id": "repo-5",
+        "stack": "Astro, Laravel, Next.js, React",
+        "files": 380,
+        "linesOfCode": 13246,
+        "parsedFiles": 105,
+        "ms": 1745,
+        "peakRssMb": 0,
+        "open": 31,
+        "bySeverity": {
+          "critical": 0,
+          "high": 0,
+          "medium": 7,
+          "low": 24,
+          "info": 0
+        }
+      }
+    ]
+  }
+}

@@ -270,6 +270,10 @@ export async function runAudit(
       ? testGaps(files, findings, analysis.complexity, coverageReports)
       : [];
 
+  if (analysis.ruleErrors.length)
+    limitations.push(
+      `${analysis.ruleErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`,
+    );
   if (analysis.parseErrors.length)
     limitations.push(
       `${analysis.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`,
