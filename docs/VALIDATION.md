@@ -80,3 +80,17 @@ in tests treated as secrets.
 RELIVARO_BENCH_REPOS=/path/to/repo-a,/path/to/repo-b node scripts/bench.mjs
 relivaro audit /path/to/repo --workspace /tmp/relivaro-ws
 ```
+
+## Execution checks on real projects
+
+`relivaro test` / `relivaro release` with `--allow-exec --online` were run on **isolated clones** (dependency folders
+symlinked, separate `--workspace`) of two TypeScript repositories:
+
+| Repo | Detected checks | Result parsed by Relivaro |
+| --- | --- | --- |
+| repo-5 | build, tests (Vitest), type check | 317 passed, 1 skipped; build and type check passed; OSV: no advisories; release *ready with warnings* (EOL Node 20 minimum, a `workflow_dispatch` input expanded in a `run:` script) |
+| repo-4 | tests (Vitest) | 194 passed |
+
+This run found two more issues, both fixed with regression tests: benchmark scenario sub-projects were planned for
+execution (e.g. `cargo test`), and fixture web apps inside a CLI repository made it look like a deployable service.
+The monorepo's (repo-1) test suite needs a local PostgreSQL test database and was not executed to avoid side effects.

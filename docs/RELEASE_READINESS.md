@@ -1,15 +1,15 @@
 # Release readiness — Relivaro 1.0.0
 
-Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261031-200717-c8b438`, 2026-10-31, darwin/arm64, Node v22.23.2).
+Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261031-201303-9128b2`, 2026-10-31, darwin/arm64, Node v22.23.2).
 
 ## Result: **READY** — score 91/100
 
 | Gate | Status | Evidence |
 | --- | --- | --- |
 | Build succeeds | ✅ passed | .: `npm run build --silent` passed in 0.3s |
-| Automated tests pass | ✅ passed | .: `npm test --silent` passed in 8.2s (124 passed) |
+| Automated tests pass | ✅ passed | .: `npm test --silent` passed in 8.2s (125 passed) |
 | Type checking passes | ✅ passed | .: `npm run typecheck --silent` passed in 0.3s |
-| Lint passes | ✅ passed | .: `npm run lint --silent` passed in 0.1s |
+| Lint passes | ✅ passed | .: `npm run lint --silent` passed in 0.4s |
 | No exposed secrets | ✅ passed | No secrets detected in analysed files. |
 | No unresolved high-risk security findings | ✅ passed | No security findings at medium or above with medium/high confidence. |
 | No known-vulnerable dependencies | ✅ passed | 131 resolved packages checked against OSV.dev; no advisories. |
@@ -33,7 +33,7 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 
 | Criterion | Evidence |
 | --- | --- |
-| Advertised features work | 124 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
+| Advertised features work | 125 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
 | Detection accuracy | Fixture corpus: 155 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
 | Real-world validation | 5 local repositories, all significant findings verified, 19 false-positive patterns fixed and captured as regressions ([VALIDATION.md](VALIDATION.md)) |
 | Safe fix / verify / rollback | Integration tests: static verification, isolated command verification rejecting a regression without touching the tree, stale-plan and rollback-conflict refusal, exact restore |
