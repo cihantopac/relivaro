@@ -55,10 +55,30 @@ projects inside a container or VM when executing their commands.
 ## Fixes
 
 - `fix plan` only writes to `.relivaro/`. `fix apply` requires `--yes`, refuses if any target file changed since
-  planning, verifies first (static re-analysis; optional test command in an isolated temporary copy), backs up every
-  file, and writes atomically.
+  planning, verifies first (static re-analysis; optional test command in an isolated temporary copy), re-checks the
+  targets right before writing, backs up every file, and writes each file atomically.
+- Multi-file applies are transactional: the apply record is written first (state `applying`). If any write fails, the
+  files already written are restored from the backups and the record is marked `failed`. If the process is killed
+  mid-apply, `fix history` shows the apply as interrupted and `fix rollback` restores whatever was written (files still
+  in their original state are left alone).
 - `fix rollback` restores backups only if the files still have the content written by the fix (hash check); otherwise
-  it refuses unless `--force`.
+  it refuses unless `--force`. With `--force`, the current content of every conflicting file is first saved under
+  `.relivaro/fixes/<apply id>/conflicts/`, so later edits are never lost. All backups are validated before any file is
+  touched.
+- Findings the static re-analysis cannot observe (for example project-level rules satisfied by a `.gitignore` change)
+  are reported as `unverifiable`, never as resolved.
+
+### Isolated verification copy
+
+`fix apply --verify "<cmd>"` copies the project (the files Relivaro lists, symlinks dereferenced into regular files)
+into a temporary directory and runs the command there, before and after the change. Known limits:
+
+- Dependency folders (`node_modules`, `vendor`, `.venv`, `venv`) are **symlinked**, not copied, to avoid a reinstall.
+  A command that writes into them (tool caches, generated clients) modifies the original dependency folder.
+- The command is project code running as your user, with no filesystem or network sandbox: it can write anywhere your
+  user can, including absolute paths in the original project. Relivaro compares size and modification time of every
+  project file before and after and reports any file the command changed outside the copy; it cannot prevent it.
+- Use a container or VM for untrusted projects.
 
 ## Network
 
@@ -66,7 +86,11 @@ projects inside a container or VM when executing their commands.
   and GET of advisory details. No source code, file paths or project names are sent. Responses are cached for 24 h in
   the workspace.
 - `load`: the target host is resolved first; non-loopback/non-private addresses are refused unless `--allow-remote`.
-  Concurrency, duration and request count are capped regardless of flags.
+  The same check runs again inside the HTTP client's DNS lookup for every new connection, so a name that resolves to
+  a private address during the pre-check cannot be re-pointed at a public one during the test (DNS rebinding).
+  Private means loopback, RFC 1918, link-local, shared address space (100.64.0.0/10), benchmarking (198.18.0.0/15),
+  "this network" (0.0.0.0/8), unique-local and link-local IPv6, and IPv4-mapped/NAT64 forms of those addresses.
+  Redirects are never followed. Concurrency, duration and request count are capped regardless of flags.
 
 ## Reports and prompt injection
 

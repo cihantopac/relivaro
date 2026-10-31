@@ -686,7 +686,7 @@ const fixCmd: Command = {
           `Verification: ${v.verdict}${v.command ? ` — \`${v.command.command}\` exit ${v.command.after.exitCode}${v.command.isolated ? ' (isolated copy)' : ''}${v.command.before ? `, before fix exit ${v.command.before.exitCode}` : ''}` : ''}`,
         );
         out.print(
-          `  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}`,
+          `  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}${v.static.unverifiable?.length ? `, not re-checkable statically: ${v.static.unverifiable.length}` : ''}`,
         );
         for (const n of v.notes) out.print(paint(on, 'gray', `  ${n}`));
         out.print(`Roll back with: relivaro fix rollback ${rec.applyId}`);
@@ -696,7 +696,13 @@ const fixCmd: Command = {
     if (sub === 'rollback') {
       const rec = rollback(ws, arg ?? 'latest', !!p.opts.force);
       if (out.json) out.print(JSON.stringify(rec, null, 2));
-      else out.print(`Rolled back ${rec.applyId}: restored ${rec.files.length} file(s).`);
+      else {
+        out.print(`Rolled back ${rec.applyId}: restored ${rec.files.length} file(s).`);
+        if (rec.preserved?.length)
+          out.print(
+            `Your later edits to ${rec.preserved.join(', ')} were saved in ${ws.path('fixes', rec.applyId, 'conflicts')}.`,
+          );
+      }
       return EXIT.OK;
     }
     if (sub === 'history') {
@@ -706,7 +712,7 @@ const fixCmd: Command = {
       else
         for (const r of h)
           out.print(
-            `${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.rolledBackAt ? paint(on, 'yellow', `, rolled back ${r.rolledBackAt}`) : ''}`,
+            `${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.state === 'applying' ? paint(on, 'red', ', interrupted (run `relivaro fix rollback` to restore)') : r.state === 'failed' ? paint(on, 'yellow', ', write failed and was undone') : ''}${r.rolledBackAt && r.state !== 'failed' ? paint(on, 'yellow', `, rolled back ${r.rolledBackAt}`) : ''}`,
           );
       return EXIT.OK;
     }
@@ -1032,7 +1038,17 @@ const rulesCmd: Command = {
     options: [categoryOpt],
   },
   async run(p, out) {
-    const [sub, id] = p.positionals;
+    let [sub, id] = p.positionals;
+    // `relivaro rules <id>` is accepted as a shorthand for `rules show <id>`.
+    if (sub && sub !== 'list' && sub !== 'show') {
+      if (!findRule(sub))
+        throw new RelivaroError(
+          'USAGE',
+          `Unknown rules subcommand or rule "${sub}".`,
+          'Use `relivaro rules list` or `relivaro rules show <rule-id>`.',
+        );
+      [sub, id] = ['show', sub];
+    }
     if (sub === 'show') {
       const r = id ? findRule(id) : undefined;
       if (!r) throw new RelivaroError('NOT_FOUND', `Unknown rule "${id ?? ''}".`);

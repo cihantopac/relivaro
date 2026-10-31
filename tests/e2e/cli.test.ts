@@ -47,6 +47,23 @@ describe('relivaro CLI', () => {
     expect(cli(['audit', '--help']).stdout).toContain('--fail-on');
   });
 
+  it('re-renders the latest run with the default formats and shows a rule by id', () => {
+    const ws = mkdtempSync(join(tmpdir(), 'relivaro-ws-'));
+    try {
+      expect(cli(['audit', fx.dir, '--workspace', ws, '--format', 'json']).code).not.toBe(2);
+      const r = cli(['report', '--path', fx.dir, '--workspace', ws]);
+      expect(r.code).toBe(0);
+      expect(r.stdout).toMatch(/report\.md/);
+      expect(r.stdout).toMatch(/report\.html/);
+      const rule = cli(['rules', 'sec/hardcoded-secret']);
+      expect(rule.code).toBe(0);
+      expect(rule.stdout).toMatch(/^sec\/hardcoded-secret — /);
+      expect(cli(['rules', 'no-such-rule']).code).toBe(2);
+    } finally {
+      rmSync(ws, { recursive: true, force: true });
+    }
+  });
+
   it('uses exit code 2 for usage errors, with JSON errors on stderr in --json mode', () => {
     const r = cli(['audit', '--bogus']);
     expect(r.code).toBe(2);

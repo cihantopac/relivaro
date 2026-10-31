@@ -1,6 +1,9 @@
+import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { lookup } from 'node:dns/promises';
 import { existsSync, readdirSync } from 'node:fs';
-import { isIP } from 'node:net';
+import { Agent as HttpAgent, request as httpRequest } from 'node:http';
+import { Agent as HttpsAgent, request as httpsRequest } from 'node:https';
+import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { cpus } from 'node:os';
 import { RelivaroError } from '../core/errors.js';
 import type { Workspace } from '../core/workspace.js';
@@ -105,26 +108,53 @@ export async function benchCommand(opts: {
   };
 }
 
-const PRIVATE_V4 = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(?:1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^0\.0\.0\.0$/,
-];
+/** Loopback, private, link-local, shared (CGNAT), benchmarking and "this network" ranges. */
+const PRIVATE = new BlockList();
+for (const [net, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+] as const)
+  PRIVATE.addSubnet(net, prefix, 'ipv4');
+for (const [net, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['fc00::', 7],
+  ['fe80::', 10],
+] as const)
+  PRIVATE.addSubnet(net, prefix, 'ipv6');
+
+/** The IPv4 address embedded in an IPv4-mapped (::ffff:a.b.c.d / ::ffff:7f00:1) or NAT64 (64:ff9b::/96) address. */
+function embeddedV4(ip: string): string | undefined {
+  const m = /^(?:::ffff:(?:0:)?|64:ff9b::)(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i.exec(
+    ip,
+  );
+  if (!m) return undefined;
+  if (m[1]) return m[1];
+  const hi = Number.parseInt(m[2]!, 16);
+  const lo = Number.parseInt(m[3]!, 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+}
 
 export function isPrivateAddress(ip: string): boolean {
-  if (isIP(ip) === 4) return PRIVATE_V4.some((r) => r.test(ip));
-  const v = ip.toLowerCase();
-  return (
-    v === '::1' ||
-    v.startsWith('fc') ||
-    v.startsWith('fd') ||
-    v.startsWith('fe80') ||
-    v.startsWith('::ffff:127.') ||
-    v.startsWith('::ffff:10.') ||
-    v.startsWith('::ffff:192.168.')
+  const v = ip.replace(/^\[|\]$/g, '').replace(/%.*$/, '');
+  const family = isIP(v);
+  if (family === 4) return PRIVATE.check(v, 'ipv4');
+  if (family !== 6) return false;
+  const v4 = embeddedV4(v);
+  return v4 ? PRIVATE.check(v4, 'ipv4') : PRIVATE.check(v, 'ipv6');
+}
+
+function refuse(host: string, address: string): RelivaroError {
+  return new RelivaroError(
+    'TARGET_NOT_ALLOWED',
+    `${host} resolves to a public address (${address}). Load tests are limited to local and private-network targets.`,
+    'Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply).',
   );
 }
 
@@ -135,18 +165,64 @@ export async function assertLoadTarget(url: URL, allowRemote: boolean): Promise<
   const host = url.hostname.replace(/^\[|\]$/g, '');
   const addrs = isIP(host)
     ? [host]
-    : host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.test')
-      ? ['127.0.0.1']
-      : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
+    : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addrs.length) throw new RelivaroError('NETWORK_FAILED', `Cannot resolve ${host}.`);
-  const publicAddrs = addrs.filter((a) => !isPrivateAddress(a));
-  if (publicAddrs.length && !allowRemote)
-    throw new RelivaroError(
-      'TARGET_NOT_ALLOWED',
-      `${host} resolves to a public address (${publicAddrs[0]}). Load tests are limited to local and private-network targets.`,
-      'Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply).',
-    );
+  const publicAddr = addrs.find((a) => !isPrivateAddress(a));
+  if (publicAddr && !allowRemote) throw refuse(host, publicAddr);
   return addrs;
+}
+
+/**
+ * A DNS lookup that re-applies the target policy to the addresses each connection actually uses, so a name that
+ * resolved to a private address during the pre-check cannot be re-pointed at a public one mid-test (DNS rebinding).
+ */
+export function guardedLookup(allowRemote: boolean): LookupFunction {
+  return (hostname, options, callback) => {
+    dnsLookup(hostname, { ...options, all: true }, (err, addresses) => {
+      if (err) return callback(err, '', 4);
+      const list = addresses as LookupAddress[];
+      const bad = allowRemote ? undefined : list.find((a) => !isPrivateAddress(a.address));
+      if (bad) return callback(refuse(hostname, bad.address) as unknown as NodeJS.ErrnoException, '', 4);
+      if (options.all) return (callback as unknown as (e: null, a: LookupAddress[]) => void)(null, list);
+      callback(null, list[0]!.address, list[0]!.family);
+    });
+  };
+}
+
+/** Minimal HTTP client for the load test: keep-alive, no redirects, guarded DNS on every connection. */
+function guardedFetch(allowRemote: boolean, concurrency: number): { fetch: typeof fetch; close: () => void } {
+  const lookupFn = guardedLookup(allowRemote);
+  const agents = {
+    'http:': new HttpAgent({ keepAlive: true, maxSockets: concurrency, lookup: lookupFn }),
+    'https:': new HttpsAgent({ keepAlive: true, maxSockets: concurrency, lookup: lookupFn }),
+  };
+  const close = () => {
+    agents['http:'].destroy();
+    agents['https:'].destroy();
+  };
+  const run = ((input: URL, init: RequestInit) =>
+    new Promise<Response>((resolve, reject) => {
+      const send = input.protocol === 'https:' ? httpsRequest : httpRequest;
+      const req = send(
+        input,
+        {
+          method: init.method,
+          headers: init.headers as Record<string, string>,
+          agent: agents[input.protocol as 'http:' | 'https:'],
+          signal: init.signal ?? undefined,
+        },
+        (res) => {
+          res.resume();
+          res.on('end', () =>
+            resolve({ status: res.statusCode ?? 0, arrayBuffer: async () => new ArrayBuffer(0) } as Response),
+          );
+          res.on('error', reject);
+        },
+      );
+      req.on('error', reject);
+      req.end(init.body as string | undefined);
+    })) as unknown as typeof fetch;
+  return { fetch: run, close };
 }
 
 export const LOAD_LIMITS = { maxConcurrency: 64, maxDurationSec: 120, maxRequests: 200_000 };
@@ -180,7 +256,8 @@ export async function loadTest(opts: {
     durationSec = LOAD_LIMITS.maxDurationSec;
   }
   const maxRequests = Math.min(opts.maxRequests ?? LOAD_LIMITS.maxRequests, LOAD_LIMITS.maxRequests);
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const client = opts.fetchImpl ? undefined : guardedFetch(opts.allowRemote, concurrency);
+  const fetchImpl = opts.fetchImpl ?? client!.fetch;
   const latencies: number[] = [];
   const codes: Record<string, number> = {};
   let errors = 0;
@@ -188,8 +265,9 @@ export async function loadTest(opts: {
   const deadline = performance.now() + durationSec * 1000;
   const started = performance.now();
   let lastReport = 0;
+  let refused: RelivaroError | undefined;
   const worker = async () => {
-    while (performance.now() < deadline && sent < maxRequests) {
+    while (!refused && performance.now() < deadline && sent < maxRequests) {
       sent++;
       const t0 = performance.now();
       try {
@@ -206,8 +284,14 @@ export async function loadTest(opts: {
         if (res.status >= 500) errors++;
         latencies.push(performance.now() - t0);
       } catch (e) {
+        if (e instanceof RelivaroError && e.code === 'TARGET_NOT_ALLOWED') {
+          refused = e;
+          break;
+        }
         errors++;
-        const key = (e as Error).name === 'TimeoutError' ? 'timeout' : 'network-error';
+        const err = e as Error & { cause?: Error };
+        const key =
+          err.name === 'TimeoutError' || err.cause?.name === 'TimeoutError' ? 'timeout' : 'network-error';
         codes[key] = (codes[key] ?? 0) + 1;
       }
       const now = performance.now();
@@ -217,7 +301,12 @@ export async function loadTest(opts: {
       }
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, worker));
+  try {
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  } finally {
+    client?.close();
+  }
+  if (refused) throw refused;
   const elapsed = (performance.now() - started) / 1000;
   if (sent >= maxRequests) limitedBy.push(`stopped at ${maxRequests} requests`);
   return {

@@ -20107,7 +20107,10 @@ function parseArgs(argv, spec) {
   const byShort = new Map(all.filter((o) => o.short).map((o) => [o.short, o]));
   const opts = {};
   const positionals = [];
-  for (const o of all) if (o.default !== void 0) opts[o.name] = o.default;
+  for (const o of all)
+    if (o.default !== void 0)
+      opts[o.name] = o.type === "list" && typeof o.default === "string" ? o.default.split(",") : o.default;
+  const given = /* @__PURE__ */ new Set();
   for (let i2 = 0; i2 < argv.length; i2++) {
     const a = argv[i2];
     if (a === "--") {
@@ -20156,7 +20159,8 @@ function parseArgs(argv, spec) {
         throw new RelivaroError("USAGE", `--${spec2.name} expects a number, got "${value}".`);
       opts[spec2.name] = n;
     } else if (spec2.type === "list") {
-      const prev = Array.isArray(opts[spec2.name]) && opts[spec2.name] !== spec2.default ? opts[spec2.name] : [];
+      const prev = given.has(spec2.name) ? opts[spec2.name] : [];
+      given.add(spec2.name);
       const items = value.split(",").map((x) => x.trim()).filter(Boolean);
       if (spec2.choices) {
         for (const it of items)
@@ -21716,6 +21720,7 @@ function assessRelease(run2, config, bench = []) {
     status: docIssues.length ? "warn" : "pass",
     detail: docIssues.length ? docIssues.join(", ") : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ", LICENSE" : ""}${d.changelog ? ", CHANGELOG" : ""}${d.security ? ", SECURITY policy" : ""}.`
   });
+  for (const g of gates) g.basis = gateBasis(run2, g, bench);
   const blockers = gates.filter((g) => g.status === "block");
   const warnings = gates.filter((g) => g.status === "warn");
   const unverified = gates.filter((g) => g.status === "unverified");
@@ -21729,7 +21734,9 @@ function assessRelease(run2, config, bench = []) {
   const critUnverified = gates.some(
     (g) => (g.id === "build" || g.id === "tests") && g.status === "unverified"
   );
-  const status = blockers.length ? "not-ready" : critUnverified ? "needs-verification" : warnings.length ? "ready-with-warnings" : "ready";
+  const status = blockers.length ? "not-ready" : critUnverified ? "needs-verification" : warnings.length || unverified.length ? "ready-with-warnings" : "ready";
+  const tally = { pass: 0, warn: 0, block: 0, unverified: 0, "n/a": 0 };
+  for (const g of gates) tally[g.status]++;
   return {
     status,
     score,
@@ -21739,8 +21746,29 @@ function assessRelease(run2, config, bench = []) {
     warnings: warnings.map((g) => `${g.title}: ${g.detail}`),
     unverified: unverified.map((g) => `${g.title}: ${g.detail}`),
     passed: passed.map((g) => g.title),
+    tally,
     disclaimer: "This assessment is based on automated checks and their stated limitations. Passing it does not prove the software is free of vulnerabilities or defects."
   };
+}
+function gateBasis(run2, g, bench) {
+  if (g.status === "unverified" && g.id !== "tests") return "not-run";
+  const kind = { build: "build", tests: "test", typecheck: "typecheck", lint: "lint" }[g.id];
+  if (kind)
+    return run2.checks.some((c) => c.kind === kind && c.status !== "skipped") ? "executed" : g.status === "unverified" ? "not-run" : "static";
+  if (g.id === "dependencies") return g.status === "n/a" ? "static" : "advisory-db";
+  if (g.id === "performance") return bench.length ? "measured" : "not-run";
+  if (g.id === "coverage") return "measured";
+  return "static";
+}
+function releaseTally(r) {
+  const t2 = r.tally ?? {
+    pass: r.passed.length,
+    warn: r.warnings.length,
+    block: r.blockers.length,
+    unverified: r.unverified.length,
+    "n/a": 0
+  };
+  return `${t2.pass} passed \xB7 ${t2.warn} warning${t2.warn === 1 ? "" : "s"} \xB7 ${t2.unverified} unverified \xB7 ${t2.block} blocker${t2.block === 1 ? "" : "s"}`;
 }
 function summarizeRules(fs2) {
   const counts = /* @__PURE__ */ new Map();
@@ -22830,22 +22858,18 @@ function currentHash(root, path) {
 }
 function isolatedCopy(files) {
   const dest = mkdtempSync(join8(tmpdir(), "relivaro-verify-"));
-  const listed = files.gitRepo ? files.files.map((f) => f.path) : files.files.map((f) => f.path);
-  for (const p of listed) {
-    const src = join8(files.root, p);
+  for (const { path: p } of files.files) {
     const dst = join8(dest, p);
     mkdirSync2(dirname3(dst), { recursive: true });
     try {
-      cpSync(src, dst, { dereference: false, preserveTimestamps: true });
+      cpSync(join8(files.root, p), dst, { dereference: true, preserveTimestamps: true });
     } catch {
     }
   }
-  for (const extra of [".env.testing", "phpunit.xml", "phpunit.xml.dist", ".npmrc"]) {
+  for (const extra of ["phpunit.xml", "phpunit.xml.dist", ".npmrc"]) {
     const src = join8(files.root, extra);
-    if (existsSync9(src) && !existsSync9(join8(dest, extra))) {
-      if (extra.startsWith(".env")) continue;
-      cpSync(src, join8(dest, extra));
-    }
+    if (existsSync9(src) && !existsSync9(join8(dest, extra)))
+      cpSync(src, join8(dest, extra), { dereference: true });
   }
   for (const dep of ["node_modules", "vendor", ".venv", "venv"]) {
     const src = join8(files.root, dep);
@@ -22857,6 +22881,22 @@ function isolatedCopy(files) {
     }
   }
   return dest;
+}
+function treeSnapshot(files) {
+  const snap = /* @__PURE__ */ new Map();
+  for (const { path } of files.files) {
+    try {
+      const st = statSync5(join8(files.root, path));
+      snap.set(path, `${st.size}:${st.mtimeMs}`);
+    } catch {
+      snap.set(path, "missing");
+    }
+  }
+  return snap;
+}
+function changedSince(files, before) {
+  const now = treeSnapshot(files);
+  return [...before].filter(([p, v]) => now.get(p) !== v).map(([p]) => p);
 }
 async function applyPlan(ws, plan, opts) {
   const root = plan.root;
@@ -22916,6 +22956,15 @@ async function applyPlan(ws, plan, opts) {
       { record: rec2 }
     );
   }
+  for (const [path, c] of desired) {
+    const cur = currentHash(root, path);
+    if (c.existed ? cur !== sha256(c.before) : cur !== null)
+      throw new RelivaroError(
+        "FIX_CONFLICT",
+        `${path} changed while the fix was being verified; nothing was written.`,
+        "Create a new plan with `relivaro fix plan`."
+      );
+  }
   const applyId = ws.newRunId("apply-");
   const files = [];
   for (const [path, c] of desired) {
@@ -22935,16 +22984,49 @@ async function applyPlan(ws, plan, opts) {
     root,
     items,
     files,
-    verification
+    verification,
+    state: "applying"
   };
   ws.writeJson(["fixes", applyId, "apply.json"], rec);
-  for (const [path, c] of desired) {
-    const abs = safeResolve(root, path);
-    atomicWrite(abs, c.after);
-    const m = files.find((f) => f.path === path)?.mode;
-    if (m !== void 0) chmodSync(abs, m & 4095);
+  const written = [];
+  try {
+    for (const f of files) {
+      const abs = safeResolve(root, f.path);
+      atomicWrite(abs, desired.get(f.path).after);
+      written.push(f);
+      if (f.mode !== void 0) chmodSync(abs, f.mode & 4095);
+    }
+  } catch (e) {
+    const failedPath = files[written.length]?.path ?? files[files.length - 1].path;
+    const unrestored = restore(ws, rec, written.reverse());
+    rec.state = "failed";
+    rec.rolledBackAt = (/* @__PURE__ */ new Date()).toISOString();
+    rec.verification.notes.push(`Writing ${failedPath} failed: ${e.message}`);
+    ws.writeJson(["fixes", applyId, "apply.json"], rec);
+    throw new RelivaroError(
+      "FIX_FAILED",
+      `Writing ${failedPath} failed (${e.message}). ${unrestored.length ? `Could not restore ${unrestored.join(", ")}; the originals are in ${ws.path("fixes", applyId, "backup")}.` : "Every file already written was restored; your working tree is unchanged."}`
+    );
   }
+  rec.state = "applied";
+  ws.writeJson(["fixes", applyId, "apply.json"], rec);
   return rec;
+}
+function restore(ws, rec, files) {
+  const failed = [];
+  for (const f of files) {
+    try {
+      const abs = safeResolve(rec.root, f.path);
+      if (!f.existed) rmSync(abs, { force: true });
+      else {
+        atomicWrite(abs, readFileSync7(ws.path("fixes", rec.applyId, "backup", ...f.path.split("/"))));
+        if (f.mode !== void 0) chmodSync(abs, f.mode & 4095);
+      }
+    } catch {
+      failed.push(f.path);
+    }
+  }
+  return failed;
 }
 function record(ws, plan, items, desired, verification, applied) {
   const applyId = ws.newRunId(applied ? "apply-" : "rejected-");
@@ -23017,13 +23099,14 @@ async function verify(root, items, desired, opts) {
   const resolved = [];
   const unresolved = [];
   const introduced = [];
+  const unverifiable = [];
   for (const k of /* @__PURE__ */ new Set([...bc.keys(), ...ac.keys(), ...targeted.keys()])) {
     const before2 = bc.get(k) ?? 0;
     const afterN = ac.get(k) ?? 0;
     const group = targeted.get(k) ?? [];
     if (group.length && before2 === 0) {
       for (const i2 of group) {
-        resolved.push(i2.findingId);
+        unverifiable.push(i2.findingId);
         notes.push(
           `${i2.findingId} (${i2.ruleId}) is not re-checkable statically; confirm with \`relivaro audit\` after applying.`
         );
@@ -23038,7 +23121,11 @@ async function verify(root, items, desired, opts) {
         introduced.push({ ruleId: f.ruleId, file: f.location?.file, message: f.message });
     }
   }
-  const v = { static: { resolved, unresolved, introduced }, verdict: "static-only", notes };
+  const v = {
+    static: { resolved, unresolved, introduced, unverifiable },
+    verdict: "static-only",
+    notes
+  };
   if (unresolved.length) notes.push(`${unresolved.length} finding(s) still detected after the change.`);
   if (introduced.length)
     notes.push(
@@ -23052,12 +23139,14 @@ async function verify(root, items, desired, opts) {
       opts.onProgress?.("creating isolated copy for verification");
       const filesAll = new FileSet(root, { exclude: config.exclude });
       const dir = isolatedCopy(filesAll);
+      const snapshot = treeSnapshot(filesAll);
       try {
         opts.onProgress?.(`baseline: ${opts.verifyCommand}`);
         const b = await runCommand(argv, { cwd: dir, timeoutMs, allowExec: true });
         for (const [p, c] of desired) {
           const dst = join8(dir, p);
           mkdirSync2(dirname3(dst), { recursive: true });
+          rmSync(dst, { force: true });
           writeFileSync2(dst, c.after);
         }
         opts.onProgress?.(`after fix: ${opts.verifyCommand}`);
@@ -23086,6 +23175,11 @@ ${a.stderr}`, 30)
             "The verification command passed before the fix and fails after it: the fix introduces a regression."
           );
         }
+        const touched = changedSince(filesAll, snapshot);
+        if (touched.length)
+          notes.push(
+            `The verification command modified ${touched.length} file(s) in the original project, outside the isolated copy: ${touched.slice(0, 5).join(", ")}${touched.length > 5 ? ", \u2026" : ""}. Review them before continuing.`
+          );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -23147,26 +23241,41 @@ function rollback(ws, id, force) {
       "ROLLBACK_CONFLICT",
       `${rec.applyId} was already rolled back at ${rec.rolledBackAt}.`
     );
-  const conflicts = rec.files.filter((f) => currentHash(rec.root, f.path) !== f.afterHash);
+  const pending = rec.files.filter((f) => {
+    const cur = currentHash(rec.root, f.path);
+    return f.existed ? cur !== f.beforeHash : cur !== null;
+  });
+  const conflicts = pending.filter((f) => currentHash(rec.root, f.path) !== f.afterHash);
   if (conflicts.length && !force)
     throw new RelivaroError(
       "ROLLBACK_CONFLICT",
       `Files changed after the fix was applied: ${conflicts.map((c) => c.path).join(", ")}. Rolling back would overwrite those changes.`,
-      "Inspect the files, or re-run with --force to restore the backups anyway."
+      "Inspect the files, or re-run with --force to restore the backups anyway (your edits are saved under .relivaro/fixes/<apply id>/conflicts/)."
     );
-  for (const f of rec.files) {
-    const abs = safeResolve(rec.root, f.path);
-    if (!f.existed) {
-      rmSync(abs, { force: true });
-      continue;
-    }
-    const backup = readFileSync7(ws.path("fixes", rec.applyId, "backup", ...f.path.split("/")), "utf8");
-    if (sha256(backup) !== f.beforeHash)
-      throw new RelivaroError("ROLLBACK_CONFLICT", `Backup for ${f.path} is corrupt; not restoring.`);
-    atomicWrite(abs, backup);
-    if (f.mode !== void 0) chmodSync(abs, f.mode & 4095);
+  for (const f of pending) {
+    if (!f.existed) continue;
+    const file = ws.path("fixes", rec.applyId, "backup", ...f.path.split("/"));
+    if (!existsSync9(file) || sha256(readFileSync7(file)) !== f.beforeHash)
+      throw new RelivaroError(
+        "ROLLBACK_CONFLICT",
+        `Backup for ${f.path} is missing or corrupt; nothing restored.`
+      );
   }
+  const preserved = [];
+  for (const f of conflicts) {
+    const abs = safeResolve(rec.root, f.path);
+    if (!existsSync9(abs)) continue;
+    ws.writeText(["fixes", rec.applyId, "conflicts", ...f.path.split("/")], readFileSync7(abs, "utf8"));
+    preserved.push(f.path);
+  }
+  const unrestored = restore(ws, rec, pending);
+  if (unrestored.length)
+    throw new RelivaroError(
+      "ROLLBACK_CONFLICT",
+      `Could not restore ${unrestored.join(", ")}; the originals are in ${ws.path("fixes", rec.applyId, "backup")}.`
+    );
   rec.rolledBackAt = (/* @__PURE__ */ new Date()).toISOString();
+  if (preserved.length) rec.preserved = preserved;
   ws.writeJson(["fixes", rec.applyId, "apply.json"], rec);
   return rec;
 }
@@ -23181,9 +23290,12 @@ init_files();
 
 // src/perf/bench.ts
 init_errors();
+import { lookup as dnsLookup } from "node:dns";
 import { lookup as lookup2 } from "node:dns/promises";
 import { existsSync as existsSync10, readdirSync as readdirSync4 } from "node:fs";
-import { isIP } from "node:net";
+import { Agent as HttpAgent, request as httpRequest } from "node:http";
+import { Agent as HttpsAgent, request as httpsRequest } from "node:https";
+import { BlockList, isIP } from "node:net";
 import { cpus } from "node:os";
 
 // src/perf/stats.ts
@@ -23278,33 +23390,105 @@ async function benchCommand(opts) {
     environment: envInfo()
   };
 }
-var PRIVATE_V4 = [
-  /^127\./,
-  /^10\./,
-  /^192\.168\./,
-  /^172\.(?:1[6-9]|2\d|3[01])\./,
-  /^169\.254\./,
-  /^0\.0\.0\.0$/
-];
+var PRIVATE = new BlockList();
+for (const [net, prefix] of [
+  ["0.0.0.0", 8],
+  ["10.0.0.0", 8],
+  ["100.64.0.0", 10],
+  ["127.0.0.0", 8],
+  ["169.254.0.0", 16],
+  ["172.16.0.0", 12],
+  ["192.168.0.0", 16],
+  ["198.18.0.0", 15]
+])
+  PRIVATE.addSubnet(net, prefix, "ipv4");
+for (const [net, prefix] of [
+  ["::", 128],
+  ["::1", 128],
+  ["fc00::", 7],
+  ["fe80::", 10]
+])
+  PRIVATE.addSubnet(net, prefix, "ipv6");
+function embeddedV4(ip) {
+  const m = /^(?:::ffff:(?:0:)?|64:ff9b::)(?:(\d+\.\d+\.\d+\.\d+)|([0-9a-f]{1,4}):([0-9a-f]{1,4}))$/i.exec(
+    ip
+  );
+  if (!m) return void 0;
+  if (m[1]) return m[1];
+  const hi = Number.parseInt(m[2], 16);
+  const lo = Number.parseInt(m[3], 16);
+  return `${hi >> 8}.${hi & 255}.${lo >> 8}.${lo & 255}`;
+}
 function isPrivateAddress(ip) {
-  if (isIP(ip) === 4) return PRIVATE_V4.some((r) => r.test(ip));
-  const v = ip.toLowerCase();
-  return v === "::1" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80") || v.startsWith("::ffff:127.") || v.startsWith("::ffff:10.") || v.startsWith("::ffff:192.168.");
+  const v = ip.replace(/^\[|\]$/g, "").replace(/%.*$/, "");
+  const family = isIP(v);
+  if (family === 4) return PRIVATE.check(v, "ipv4");
+  if (family !== 6) return false;
+  const v4 = embeddedV4(v);
+  return v4 ? PRIVATE.check(v4, "ipv4") : PRIVATE.check(v, "ipv6");
+}
+function refuse(host, address) {
+  return new RelivaroError(
+    "TARGET_NOT_ALLOWED",
+    `${host} resolves to a public address (${address}). Load tests are limited to local and private-network targets.`,
+    "Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply)."
+  );
 }
 async function assertLoadTarget(url, allowRemote) {
   if (!/^https?:$/.test(url.protocol))
     throw new RelivaroError("USAGE", "Only http:// and https:// targets are supported.");
   const host = url.hostname.replace(/^\[|\]$/g, "");
-  const addrs = isIP(host) ? [host] : host === "localhost" || host.endsWith(".localhost") || host.endsWith(".test") ? ["127.0.0.1"] : (await lookup2(host, { all: true }).catch(() => [])).map((a) => a.address);
+  const addrs = isIP(host) ? [host] : (await lookup2(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addrs.length) throw new RelivaroError("NETWORK_FAILED", `Cannot resolve ${host}.`);
-  const publicAddrs = addrs.filter((a) => !isPrivateAddress(a));
-  if (publicAddrs.length && !allowRemote)
-    throw new RelivaroError(
-      "TARGET_NOT_ALLOWED",
-      `${host} resolves to a public address (${publicAddrs[0]}). Load tests are limited to local and private-network targets.`,
-      "Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply)."
-    );
+  const publicAddr = addrs.find((a) => !isPrivateAddress(a));
+  if (publicAddr && !allowRemote) throw refuse(host, publicAddr);
   return addrs;
+}
+function guardedLookup(allowRemote) {
+  return (hostname, options, callback) => {
+    dnsLookup(hostname, { ...options, all: true }, (err2, addresses) => {
+      if (err2) return callback(err2, "", 4);
+      const list = addresses;
+      const bad = allowRemote ? void 0 : list.find((a) => !isPrivateAddress(a.address));
+      if (bad) return callback(refuse(hostname, bad.address), "", 4);
+      if (options.all) return callback(null, list);
+      callback(null, list[0].address, list[0].family);
+    });
+  };
+}
+function guardedFetch(allowRemote, concurrency) {
+  const lookupFn = guardedLookup(allowRemote);
+  const agents = {
+    "http:": new HttpAgent({ keepAlive: true, maxSockets: concurrency, lookup: lookupFn }),
+    "https:": new HttpsAgent({ keepAlive: true, maxSockets: concurrency, lookup: lookupFn })
+  };
+  const close = () => {
+    agents["http:"].destroy();
+    agents["https:"].destroy();
+  };
+  const run2 = ((input, init3) => new Promise((resolve4, reject) => {
+    const send = input.protocol === "https:" ? httpsRequest : httpRequest;
+    const req = send(
+      input,
+      {
+        method: init3.method,
+        headers: init3.headers,
+        agent: agents[input.protocol],
+        signal: init3.signal ?? void 0
+      },
+      (res) => {
+        res.resume();
+        res.on(
+          "end",
+          () => resolve4({ status: res.statusCode ?? 0, arrayBuffer: async () => new ArrayBuffer(0) })
+        );
+        res.on("error", reject);
+      }
+    );
+    req.on("error", reject);
+    req.end(init3.body);
+  }));
+  return { fetch: run2, close };
 }
 var LOAD_LIMITS = { maxConcurrency: 64, maxDurationSec: 120, maxRequests: 2e5 };
 async function loadTest(opts) {
@@ -23323,7 +23507,8 @@ async function loadTest(opts) {
     durationSec = LOAD_LIMITS.maxDurationSec;
   }
   const maxRequests = Math.min(opts.maxRequests ?? LOAD_LIMITS.maxRequests, LOAD_LIMITS.maxRequests);
-  const fetchImpl = opts.fetchImpl ?? fetch;
+  const client = opts.fetchImpl ? void 0 : guardedFetch(opts.allowRemote, concurrency);
+  const fetchImpl = opts.fetchImpl ?? client.fetch;
   const latencies = [];
   const codes = {};
   let errors = 0;
@@ -23331,8 +23516,9 @@ async function loadTest(opts) {
   const deadline = performance.now() + durationSec * 1e3;
   const started = performance.now();
   let lastReport = 0;
+  let refused;
   const worker = async () => {
-    while (performance.now() < deadline && sent < maxRequests) {
+    while (!refused && performance.now() < deadline && sent < maxRequests) {
       sent++;
       const t0 = performance.now();
       try {
@@ -23349,8 +23535,13 @@ async function loadTest(opts) {
         if (res.status >= 500) errors++;
         latencies.push(performance.now() - t0);
       } catch (e) {
+        if (e instanceof RelivaroError && e.code === "TARGET_NOT_ALLOWED") {
+          refused = e;
+          break;
+        }
         errors++;
-        const key = e.name === "TimeoutError" ? "timeout" : "network-error";
+        const err2 = e;
+        const key = err2.name === "TimeoutError" || err2.cause?.name === "TimeoutError" ? "timeout" : "network-error";
         codes[key] = (codes[key] ?? 0) + 1;
       }
       const now = performance.now();
@@ -23360,7 +23551,12 @@ async function loadTest(opts) {
       }
     }
   };
-  await Promise.all(Array.from({ length: concurrency }, worker));
+  try {
+    await Promise.all(Array.from({ length: concurrency }, worker));
+  } finally {
+    client?.close();
+  }
+  if (refused) throw refused;
   const elapsed = (performance.now() - started) / 1e3;
   if (sent >= maxRequests) limitedBy.push(`stopped at ${maxRequests} requests`);
   return {
@@ -23587,9 +23783,12 @@ function toMarkdown(run2, opts = {}) {
       `## Release readiness: **${r.status.toUpperCase().replace(/-/g, " ")}** (score ${r.score}/100${r.scoreCapped ? ", capped by blockers" : ""})`
     );
     L.push("");
-    L.push("| Gate | Status | Detail |");
-    L.push("| --- | --- | --- |");
-    for (const g of r.gates) L.push(`| ${esc(g.title)} | ${ICON[g.status]} ${g.status} | ${esc(g.detail)} |`);
+    L.push(releaseTally(r));
+    L.push("");
+    L.push("| Gate | Status | Basis | Detail |");
+    L.push("| --- | --- | --- | --- |");
+    for (const g of r.gates)
+      L.push(`| ${esc(g.title)} | ${ICON[g.status]} ${g.status} | ${g.basis ?? "\u2014"} | ${esc(g.detail)} |`);
     L.push("");
     L.push(`> ${r.disclaimer}`);
     L.push("");
@@ -23890,6 +24089,7 @@ function printRunSummary(out2, run2, files, maxFindings = 15) {
     out2.print(
       `Release readiness: ${paint(on, "bold", st)}  score ${r.score}/100${r.scoreCapped ? " (capped by blockers)" : ""}`
     );
+    out2.print(paint(on, "gray", `  ${releaseTally(r)}`));
     const icon = {
       block: paint(on, "red", "\u2716 blocker   "),
       warn: paint(on, "yellow", "! warning   "),
@@ -23899,7 +24099,7 @@ function printRunSummary(out2, run2, files, maxFindings = 15) {
     };
     for (const g of r.gates)
       out2.print(
-        `  ${icon[g.status]} ${g.title}${g.status !== "pass" && g.status !== "n/a" ? paint(on, "gray", ` \u2014 ${g.detail.slice(0, 160)}`) : ""}`
+        `  ${icon[g.status]} ${g.title}${g.status === "pass" && g.basis === "static" ? paint(on, "gray", " (static analysis)") : ""}${g.status !== "pass" && g.status !== "n/a" ? paint(on, "gray", ` \u2014 ${g.detail.slice(0, 160)}`) : ""}`
       );
     out2.print("");
   }
@@ -24526,7 +24726,7 @@ var fixCmd = {
           `Verification: ${v.verdict}${v.command ? ` \u2014 \`${v.command.command}\` exit ${v.command.after.exitCode}${v.command.isolated ? " (isolated copy)" : ""}${v.command.before ? `, before fix exit ${v.command.before.exitCode}` : ""}` : ""}`
         );
         out2.print(
-          `  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}`
+          `  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}${v.static.unverifiable?.length ? `, not re-checkable statically: ${v.static.unverifiable.length}` : ""}`
         );
         for (const n of v.notes) out2.print(paint(on, "gray", `  ${n}`));
         out2.print(`Roll back with: relivaro fix rollback ${rec.applyId}`);
@@ -24536,7 +24736,13 @@ var fixCmd = {
     if (sub === "rollback") {
       const rec = rollback(ws, arg ?? "latest", !!p.opts.force);
       if (out2.json) out2.print(JSON.stringify(rec, null, 2));
-      else out2.print(`Rolled back ${rec.applyId}: restored ${rec.files.length} file(s).`);
+      else {
+        out2.print(`Rolled back ${rec.applyId}: restored ${rec.files.length} file(s).`);
+        if (rec.preserved?.length)
+          out2.print(
+            `Your later edits to ${rec.preserved.join(", ")} were saved in ${ws.path("fixes", rec.applyId, "conflicts")}.`
+          );
+      }
       return EXIT.OK;
     }
     if (sub === "history") {
@@ -24546,7 +24752,7 @@ var fixCmd = {
       else
         for (const r of h)
           out2.print(
-            `${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.rolledBackAt ? paint(on, "yellow", `, rolled back ${r.rolledBackAt}`) : ""}`
+            `${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.state === "applying" ? paint(on, "red", ", interrupted (run `relivaro fix rollback` to restore)") : r.state === "failed" ? paint(on, "yellow", ", write failed and was undone") : ""}${r.rolledBackAt && r.state !== "failed" ? paint(on, "yellow", `, rolled back ${r.rolledBackAt}`) : ""}`
           );
       return EXIT.OK;
     }
@@ -24836,7 +25042,16 @@ var rulesCmd = {
     options: [categoryOpt]
   },
   async run(p, out2) {
-    const [sub, id] = p.positionals;
+    let [sub, id] = p.positionals;
+    if (sub && sub !== "list" && sub !== "show") {
+      if (!findRule(sub))
+        throw new RelivaroError(
+          "USAGE",
+          `Unknown rules subcommand or rule "${sub}".`,
+          "Use `relivaro rules list` or `relivaro rules show <rule-id>`."
+        );
+      [sub, id] = ["show", sub];
+    }
     if (sub === "show") {
       const r = id ? findRule(id) : void 0;
       if (!r) throw new RelivaroError("NOT_FOUND", `Unknown rule "${id ?? ""}".`);

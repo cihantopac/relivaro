@@ -1,5 +1,6 @@
 import type { RunRecord } from '../audit.js';
 import { type Finding, SEVERITIES, type Severity } from '../core/types.js';
+import { releaseTally } from '../release/readiness.js';
 
 export interface Out {
   json: boolean;
@@ -107,6 +108,7 @@ export function printRunSummary(
     out.print(
       `Release readiness: ${paint(on, 'bold', st)}  score ${r.score}/100${r.scoreCapped ? ' (capped by blockers)' : ''}`,
     );
+    out.print(paint(on, 'gray', `  ${releaseTally(r)}`));
     const icon: Record<string, string> = {
       block: paint(on, 'red', '✖ blocker   '),
       warn: paint(on, 'yellow', '! warning   '),
@@ -116,7 +118,7 @@ export function printRunSummary(
     };
     for (const g of r.gates)
       out.print(
-        `  ${icon[g.status]} ${g.title}${g.status !== 'pass' && g.status !== 'n/a' ? paint(on, 'gray', ` — ${g.detail.slice(0, 160)}`) : ''}`,
+        `  ${icon[g.status]} ${g.title}${g.status === 'pass' && g.basis === 'static' ? paint(on, 'gray', ' (static analysis)') : ''}${g.status !== 'pass' && g.status !== 'n/a' ? paint(on, 'gray', ` — ${g.detail.slice(0, 160)}`) : ''}`,
       );
     out.print('');
   }

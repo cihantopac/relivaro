@@ -7,7 +7,7 @@ import { cvss3Score, fixedVersions, severityOf } from '../../src/deps/osv.js';
 import { unifiedDiff } from '../../src/fix/diff.js';
 import { isPrivateAddress } from '../../src/perf/bench.js';
 import { compareStats, stats } from '../../src/perf/stats.js';
-import { assessRelease } from '../../src/release/readiness.js';
+import { assessRelease, releaseTally } from '../../src/release/readiness.js';
 import { compareRuns } from '../../src/report/compare.js';
 
 function finding(p: Partial<Finding>): Finding {
@@ -133,11 +133,30 @@ function run(p: Partial<RunRecord> = {}): RunRecord {
 
 describe('release readiness', () => {
   it('is ready when every gate passes', () => {
-    const r = assessRelease(run(), { ...defaultConfig(), performance: { budgets: {} } });
+    const r = assessRelease(
+      run(),
+      { ...defaultConfig(), performance: { budgets: { api: { p95Ms: 100 } } } },
+      [{ name: 'api', kind: 'http', stats: { meanMs: 20, p95Ms: 40 }, measuredAt: '' }],
+    );
     expect(r.blockers).toEqual([]);
     expect(r.warnings).toEqual([]);
+    expect(r.unverified).toEqual([]);
     expect(r.status).toBe('ready');
     expect(r.score).toBeGreaterThan(90);
+    expect(r.gates.find((g) => g.id === 'tests')!.basis).toBe('executed');
+    expect(r.gates.find((g) => g.id === 'performance')!.basis).toBe('measured');
+    expect(r.gates.find((g) => g.id === 'security')!.basis).toBe('static');
+  });
+  it('never reports ready while a gate is unverified', () => {
+    const r = assessRelease(run(), { ...defaultConfig(), performance: { budgets: {} } });
+    expect(r.warnings).toEqual([]);
+    expect(r.gates.find((g) => g.id === 'performance')).toMatchObject({
+      status: 'unverified',
+      basis: 'not-run',
+    });
+    expect(r.status).toBe('ready-with-warnings');
+    expect(r.tally.unverified).toBe(1);
+    expect(releaseTally(r)).toMatch(/1 unverified/);
   });
   it('caps the score while a blocker exists, however good everything else is', () => {
     const r = assessRelease(run({ findings: [finding({})] }), defaultConfig());

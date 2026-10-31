@@ -5,12 +5,16 @@ import { isTestPath } from '../fs/files.js';
 
 export type GateStatus = 'pass' | 'warn' | 'block' | 'unverified' | 'n/a';
 
+/** What a gate's status rests on, so a static "pass" is never mistaken for an executed or measured one. */
+export type GateBasis = 'executed' | 'measured' | 'advisory-db' | 'static' | 'not-run';
+
 export interface Gate {
   id: string;
   title: string;
   status: GateStatus;
   detail: string;
   findings?: string[];
+  basis?: GateBasis;
 }
 
 export interface BenchSnapshot {
@@ -30,6 +34,7 @@ export interface ReleaseAssessment {
   warnings: string[];
   unverified: string[];
   passed: string[];
+  tally: Record<GateStatus, number>;
   disclaimer: string;
 }
 
@@ -475,6 +480,7 @@ export function assessRelease(
       : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ', LICENSE' : ''}${d.changelog ? ', CHANGELOG' : ''}${d.security ? ', SECURITY policy' : ''}.`,
   });
 
+  for (const g of gates) g.basis = gateBasis(run, g, bench);
   const blockers = gates.filter((g) => g.status === 'block');
   const warnings = gates.filter((g) => g.status === 'warn');
   const unverified = gates.filter((g) => g.status === 'unverified');
@@ -494,9 +500,11 @@ export function assessRelease(
     ? 'not-ready'
     : critUnverified
       ? 'needs-verification'
-      : warnings.length
+      : warnings.length || unverified.length
         ? 'ready-with-warnings'
         : 'ready';
+  const tally = { pass: 0, warn: 0, block: 0, unverified: 0, 'n/a': 0 } as Record<GateStatus, number>;
+  for (const g of gates) tally[g.status]++;
   return {
     status,
     score,
@@ -506,9 +514,39 @@ export function assessRelease(
     warnings: warnings.map((g) => `${g.title}: ${g.detail}`),
     unverified: unverified.map((g) => `${g.title}: ${g.detail}`),
     passed: passed.map((g) => g.title),
+    tally,
     disclaimer:
       'This assessment is based on automated checks and their stated limitations. Passing it does not prove the software is free of vulnerabilities or defects.',
   };
+}
+
+function gateBasis(run: RunRecord, g: Gate, bench: BenchSnapshot[]): GateBasis {
+  if (g.status === 'unverified' && g.id !== 'tests') return 'not-run';
+  const kind = ({ build: 'build', tests: 'test', typecheck: 'typecheck', lint: 'lint' } as const)[
+    g.id as 'build'
+  ];
+  if (kind)
+    return run.checks.some((c) => c.kind === kind && c.status !== 'skipped')
+      ? 'executed'
+      : g.status === 'unverified'
+        ? 'not-run'
+        : 'static';
+  if (g.id === 'dependencies') return g.status === 'n/a' ? 'static' : 'advisory-db';
+  if (g.id === 'performance') return bench.length ? 'measured' : 'not-run';
+  if (g.id === 'coverage') return 'measured';
+  return 'static';
+}
+
+/** One-line gate count, e.g. "9 passed · 2 warnings · 3 unverified · 0 blockers". */
+export function releaseTally(r: ReleaseAssessment): string {
+  const t = r.tally ?? {
+    pass: r.passed.length,
+    warn: r.warnings.length,
+    block: r.blockers.length,
+    unverified: r.unverified.length,
+    'n/a': 0,
+  };
+  return `${t.pass} passed · ${t.warn} warning${t.warn === 1 ? '' : 's'} · ${t.unverified} unverified · ${t.block} blocker${t.block === 1 ? '' : 's'}`;
 }
 
 function summarizeRules(fs: Finding[]): string {

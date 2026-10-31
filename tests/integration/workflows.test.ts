@@ -1,9 +1,10 @@
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { runAudit } from '../../src/audit.js';
 import { planChecks, runChecks } from '../../src/checks/exec.js';
 import { defaultConfig } from '../../src/core/config.js';
+import type { Finding } from '../../src/core/types.js';
 import { Workspace } from '../../src/core/workspace.js';
 import { queryOsv } from '../../src/deps/osv.js';
 import { applyPlan, createPlan, history, loadPlan, rollback } from '../../src/fix/workflow.js';
@@ -111,6 +112,197 @@ describe('fix workflow', () => {
       });
       expect(rec.verification.verdict).toBe('verified');
       expect(rec.verification.command?.isolated).toBe(true);
+    } finally {
+      fx.cleanup();
+    }
+  });
+});
+
+describe('fix workflow: failure recovery', () => {
+  const posixNonRoot = process.platform !== 'win32' && process.getuid?.() !== 0;
+
+  it.runIf(posixNonRoot)('restores files already written when a later write fails', async () => {
+    const fx = materialize('python-app');
+    const shop = join(fx.dir, 'shop');
+    try {
+      const ws = new Workspace(fx.dir);
+      const { run } = await runAudit({ root: fx.dir, command: 'fix plan', noWrite: true });
+      const plan = await createPlan(
+        fx.dir,
+        run.findings.filter((f) => f.fixer),
+        ws,
+      );
+      expect(plan.files.map((f) => f.path)).toEqual(['app.py', 'shop/views.py']);
+      const original = readFileSync(join(fx.dir, 'app.py'), 'utf8');
+      chmodSync(shop, 0o555); // app.py is written first, shop/views.py cannot be replaced
+      await expect(applyPlan(ws, plan, { yes: true, allowExec: false, isolate: true })).rejects.toThrow(
+        /working tree is unchanged/,
+      );
+      expect(readFileSync(join(fx.dir, 'app.py'), 'utf8')).toBe(original);
+      const rec = history(ws).at(-1)!;
+      expect(rec.state).toBe('failed');
+      expect(rec.rolledBackAt).toBeTruthy();
+    } finally {
+      chmodSync(shop, 0o755);
+      fx.cleanup();
+    }
+  });
+
+  it('rolls back an interrupted apply and keeps later edits on a forced rollback', async () => {
+    const fx = materialize('python-app');
+    try {
+      const ws = new Workspace(fx.dir);
+      const { run } = await runAudit({ root: fx.dir, command: 'fix plan', noWrite: true });
+      const plan = await createPlan(
+        fx.dir,
+        run.findings.filter((f) => f.fixer),
+        ws,
+      );
+      const app = join(fx.dir, 'app.py');
+      const views = join(fx.dir, 'shop/views.py');
+      const [appBefore, viewsBefore] = [readFileSync(app, 'utf8'), readFileSync(views, 'utf8')];
+      const rec = await applyPlan(ws, plan, { yes: true, allowExec: false, isolate: true });
+      // Simulate a crash after the first write: the second file was never written and the record says `applying`.
+      writeFileSync(views, viewsBefore);
+      ws.writeJson(['fixes', rec.applyId, 'apply.json'], { ...rec, state: 'applying' });
+      rollback(ws, rec.applyId, false);
+      expect(readFileSync(app, 'utf8')).toBe(appBefore);
+      expect(readFileSync(views, 'utf8')).toBe(viewsBefore);
+
+      const rec2 = await applyPlan(
+        ws,
+        await createPlan(
+          fx.dir,
+          run.findings.filter((f) => f.fixer),
+          ws,
+        ),
+        {
+          yes: true,
+          allowExec: false,
+          isolate: true,
+        },
+      );
+      const edited = `${readFileSync(app, 'utf8')}\n# my own edit\n`;
+      writeFileSync(app, edited);
+      const rolled = rollback(ws, rec2.applyId, true);
+      expect(readFileSync(app, 'utf8')).toBe(appBefore);
+      expect(rolled.preserved).toEqual(['app.py']);
+      expect(readFileSync(ws.path('fixes', rec2.applyId, 'conflicts', 'app.py'), 'utf8')).toBe(edited);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('refuses to roll back with a corrupt backup without touching any file', async () => {
+    const fx = materialize('python-app');
+    try {
+      const ws = new Workspace(fx.dir);
+      const { run } = await runAudit({ root: fx.dir, command: 'fix plan', noWrite: true });
+      const plan = await createPlan(
+        fx.dir,
+        run.findings.filter((f) => f.fixer),
+        ws,
+      );
+      const rec = await applyPlan(ws, plan, { yes: true, allowExec: false, isolate: true });
+      const patched = readFileSync(join(fx.dir, 'app.py'), 'utf8');
+      writeFileSync(ws.path('fixes', rec.applyId, 'backup', 'shop', 'views.py'), 'corrupted');
+      expect(() => rollback(ws, rec.applyId, false)).toThrow(/missing or corrupt; nothing restored/);
+      expect(readFileSync(join(fx.dir, 'app.py'), 'utf8')).toBe(patched);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('does not count findings it cannot re-check statically as resolved', async () => {
+    const fx = materialize('python-app');
+    try {
+      const ws = new Workspace(fx.dir);
+      const finding = {
+        id: 'RLV-ENV1',
+        fingerprint: 'env-fp',
+        ruleId: 'sec/env-file-committed',
+        fixer: 'gitignore-env',
+        title: 'Environment file committed',
+        message: '.env is not ignored',
+        severity: 'high',
+        category: 'security',
+        confidence: 'high',
+        status: 'open',
+        location: { file: '.env' },
+      } as unknown as Finding;
+      const plan = await createPlan(fx.dir, [finding], ws);
+      expect(plan.files.map((f) => f.path)).toEqual(['.gitignore']);
+      const rec = await applyPlan(ws, plan, { yes: true, allowExec: false, isolate: true });
+      expect(rec.verification.static.resolved).toEqual([]);
+      expect(rec.verification.static.unverifiable).toEqual(['RLV-ENV1']);
+      expect(rec.verification.verdict).toBe('static-only');
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it.runIf(process.platform !== 'win32')(
+    'never writes through a symlink in the isolated copy back into the project',
+    async () => {
+      const fx = materialize('python-app');
+      try {
+        const ws = new Workspace(fx.dir);
+        // app.py becomes an absolute symlink to a file inside the project.
+        const real = join(fx.dir, 'src_real_app.py');
+        writeFileSync(real, readFileSync(join(fx.dir, 'app.py')));
+        const original = readFileSync(real, 'utf8');
+        const { rmSync } = await import('node:fs');
+        rmSync(join(fx.dir, 'app.py'));
+        symlinkSync(real, join(fx.dir, 'app.py'));
+        writeFileSync(join(fx.dir, 'check.mjs'), 'process.exit(1);\n');
+        const { run } = await runAudit({ root: fx.dir, command: 'fix plan', noWrite: true });
+        const plan = await createPlan(
+          fx.dir,
+          run.findings.filter((f) => f.fixer === 'py-yaml-safe-load' && f.location?.file === 'app.py'),
+          ws,
+        );
+        expect(plan.files.length).toBe(1);
+        await expect(
+          applyPlan(ws, plan, {
+            yes: true,
+            allowExec: true,
+            isolate: true,
+            verifyCommand: `${JSON.stringify(process.execPath)} check.mjs`,
+          }),
+        ).rejects.toThrow(/already failed before the fix/);
+        expect(readFileSync(real, 'utf8')).toBe(original);
+        expect(existsSync(join(fx.dir, 'app.py'))).toBe(true);
+      } finally {
+        fx.cleanup();
+      }
+    },
+  );
+
+  it('reports when a verification command modifies the original project', async () => {
+    const fx = materialize('python-app');
+    try {
+      const ws = new Workspace(fx.dir);
+      const outside = join(fx.dir, 'notes.txt');
+      writeFileSync(outside, 'original\n');
+      writeFileSync(
+        join(fx.dir, 'check.mjs'),
+        `import { appendFileSync } from 'node:fs';\nappendFileSync(${JSON.stringify(outside)}, 'x');\n`,
+      );
+      const { run } = await runAudit({ root: fx.dir, command: 'fix plan', noWrite: true });
+      const plan = await createPlan(
+        fx.dir,
+        run.findings.filter((f) => f.fixer === 'py-yaml-safe-load'),
+        ws,
+      );
+      const rec = await applyPlan(ws, plan, {
+        yes: true,
+        allowExec: true,
+        isolate: true,
+        verifyCommand: `${JSON.stringify(process.execPath)} check.mjs`,
+      });
+      expect(rec.verification.notes.join(' ')).toMatch(
+        /modified 1 file\(s\) in the original project.*notes\.txt/,
+      );
     } finally {
       fx.cleanup();
     }

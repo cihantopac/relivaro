@@ -67,7 +67,15 @@ export interface ApplyRecord {
   items: PlanItem[];
   files: { path: string; beforeHash: string; afterHash: string; existed: boolean; mode?: number }[];
   verification: Verification;
+  /**
+   * `applying` while files are being written; a record left in this state means the process was interrupted and
+   * `fix rollback` restores whatever was written. `failed` means a write failed and the written files were restored.
+   * Records from 1.0 have no state and are treated as `applied`.
+   */
+  state?: 'applying' | 'applied' | 'failed';
   rolledBackAt?: string;
+  /** Files whose post-apply edits were saved under `fixes/<applyId>/conflicts/` before a forced rollback. */
+  preserved?: string[];
 }
 
 export interface Verification {
@@ -75,6 +83,8 @@ export interface Verification {
     resolved: string[];
     unresolved: string[];
     introduced: { ruleId: string; file?: string; message: string }[];
+    /** Targeted findings the static re-analysis of the changed files cannot observe (e.g. project-level rules). */
+    unverifiable?: string[];
   };
   command?: {
     command: string;
@@ -224,27 +234,28 @@ function currentHash(root: string, path: string): string | null {
   }
 }
 
-/** Copies the project into a temporary directory for isolated verification; dependency folders are symlinked. */
+/**
+ * Copies the project into a temporary directory for isolated verification. Files are copied as regular files
+ * (symlinks are dereferenced) so writes in the copy never reach the original through a link. Dependency folders are
+ * symlinked to avoid a full install: a command that writes into them (caches, postinstall output) still modifies the
+ * original dependency folder — see docs/SECURITY_MODEL.md.
+ */
 export function isolatedCopy(files: FileSet): string {
   const dest = mkdtempSync(join(tmpdir(), 'relivaro-verify-'));
-  const listed = files.gitRepo ? files.files.map((f) => f.path) : files.files.map((f) => f.path);
-  for (const p of listed) {
-    const src = join(files.root, p);
+  for (const { path: p } of files.files) {
     const dst = join(dest, p);
     mkdirSync(dirname(dst), { recursive: true });
     try {
-      cpSync(src, dst, { dereference: false, preserveTimestamps: true });
+      cpSync(join(files.root, p), dst, { dereference: true, preserveTimestamps: true });
     } catch {
       /* unreadable file: skipped */
     }
   }
-  // Configuration files excluded from analysis but needed by test runners.
-  for (const extra of ['.env.testing', 'phpunit.xml', 'phpunit.xml.dist', '.npmrc']) {
+  // Configuration files excluded from analysis but needed by test runners (never `.env*`).
+  for (const extra of ['phpunit.xml', 'phpunit.xml.dist', '.npmrc']) {
     const src = join(files.root, extra);
-    if (existsSync(src) && !existsSync(join(dest, extra))) {
-      if (extra.startsWith('.env')) continue;
-      cpSync(src, join(dest, extra));
-    }
+    if (existsSync(src) && !existsSync(join(dest, extra)))
+      cpSync(src, join(dest, extra), { dereference: true });
   }
   for (const dep of ['node_modules', 'vendor', '.venv', 'venv']) {
     const src = join(files.root, dep);
@@ -257,6 +268,25 @@ export function isolatedCopy(files: FileSet): string {
     }
   }
   return dest;
+}
+
+/** Size and mtime of every project file: a cheap fingerprint to detect a verification run touching the original. */
+function treeSnapshot(files: FileSet): Map<string, string> {
+  const snap = new Map<string, string>();
+  for (const { path } of files.files) {
+    try {
+      const st = statSync(join(files.root, path));
+      snap.set(path, `${st.size}:${st.mtimeMs}`);
+    } catch {
+      snap.set(path, 'missing');
+    }
+  }
+  return snap;
+}
+
+function changedSince(files: FileSet, before: Map<string, string>): string[] {
+  const now = treeSnapshot(files);
+  return [...before].filter(([p, v]) => now.get(p) !== v).map(([p]) => p);
 }
 
 export interface ApplyOptions {
@@ -332,7 +362,18 @@ export async function applyPlan(ws: Workspace, plan: FixPlan, opts: ApplyOptions
     );
   }
 
-  // Apply with backups.
+  // Verification can take minutes: re-check that nobody edited the targets in the meantime before writing.
+  for (const [path, c] of desired) {
+    const cur = currentHash(root, path);
+    if (c.existed ? cur !== sha256(c.before) : cur !== null)
+      throw new RelivaroError(
+        'FIX_CONFLICT',
+        `${path} changed while the fix was being verified; nothing was written.`,
+        'Create a new plan with `relivaro fix plan`.',
+      );
+  }
+
+  // Apply with backups; the record is written first (state `applying`) so an interrupted run can be rolled back.
   const applyId = ws.newRunId('apply-');
   const files: ApplyRecord['files'] = [];
   for (const [path, c] of desired) {
@@ -353,15 +394,54 @@ export async function applyPlan(ws: Workspace, plan: FixPlan, opts: ApplyOptions
     items,
     files,
     verification,
+    state: 'applying',
   };
   ws.writeJson(['fixes', applyId, 'apply.json'], rec);
-  for (const [path, c] of desired) {
-    const abs = safeResolve(root, path);
-    atomicWrite(abs, c.after);
-    const m = files.find((f) => f.path === path)?.mode;
-    if (m !== undefined) chmodSync(abs, m & 0o7777);
+  const written: ApplyRecord['files'] = [];
+  try {
+    for (const f of files) {
+      const abs = safeResolve(root, f.path);
+      atomicWrite(abs, desired.get(f.path)!.after);
+      written.push(f);
+      if (f.mode !== undefined) chmodSync(abs, f.mode & 0o7777);
+    }
+  } catch (e) {
+    const failedPath = files[written.length]?.path ?? files[files.length - 1]!.path;
+    const unrestored = restore(ws, rec, written.reverse());
+    rec.state = 'failed';
+    rec.rolledBackAt = new Date().toISOString();
+    rec.verification.notes.push(`Writing ${failedPath} failed: ${(e as Error).message}`);
+    ws.writeJson(['fixes', applyId, 'apply.json'], rec);
+    throw new RelivaroError(
+      'FIX_FAILED',
+      `Writing ${failedPath} failed (${(e as Error).message}). ${
+        unrestored.length
+          ? `Could not restore ${unrestored.join(', ')}; the originals are in ${ws.path('fixes', applyId, 'backup')}.`
+          : 'Every file already written was restored; your working tree is unchanged.'
+      }`,
+    );
   }
+  rec.state = 'applied';
+  ws.writeJson(['fixes', applyId, 'apply.json'], rec);
   return rec;
+}
+
+/** Puts files back to their pre-apply state; returns the paths that could not be restored. */
+function restore(ws: Workspace, rec: ApplyRecord, files: ApplyRecord['files']): string[] {
+  const failed: string[] = [];
+  for (const f of files) {
+    try {
+      const abs = safeResolve(rec.root, f.path);
+      if (!f.existed) rmSync(abs, { force: true });
+      else {
+        atomicWrite(abs, readFileSync(ws.path('fixes', rec.applyId, 'backup', ...f.path.split('/'))));
+        if (f.mode !== undefined) chmodSync(abs, f.mode & 0o7777);
+      }
+    } catch {
+      failed.push(f.path);
+    }
+  }
+  return failed;
 }
 
 function record(
@@ -453,13 +533,14 @@ async function verify(
   const resolved: string[] = [];
   const unresolved: string[] = [];
   const introduced: Verification['static']['introduced'] = [];
+  const unverifiable: string[] = [];
   for (const k of new Set([...bc.keys(), ...ac.keys(), ...targeted.keys()])) {
     const before = bc.get(k) ?? 0;
     const afterN = ac.get(k) ?? 0;
     const group = targeted.get(k) ?? [];
     if (group.length && before === 0) {
       for (const i of group) {
-        resolved.push(i.findingId);
+        unverifiable.push(i.findingId);
         notes.push(
           `${i.findingId} (${i.ruleId}) is not re-checkable statically; confirm with \`relivaro audit\` after applying.`,
         );
@@ -476,7 +557,11 @@ async function verify(
         introduced.push({ ruleId: f.ruleId, file: f.location?.file, message: f.message });
     }
   }
-  const v: Verification = { static: { resolved, unresolved, introduced }, verdict: 'static-only', notes };
+  const v: Verification = {
+    static: { resolved, unresolved, introduced, unverifiable },
+    verdict: 'static-only',
+    notes,
+  };
   if (unresolved.length) notes.push(`${unresolved.length} finding(s) still detected after the change.`);
   if (introduced.length)
     notes.push(
@@ -494,12 +579,14 @@ async function verify(
       opts.onProgress?.('creating isolated copy for verification');
       const filesAll = new FileSet(root, { exclude: config.exclude });
       const dir = isolatedCopy(filesAll);
+      const snapshot = treeSnapshot(filesAll);
       try {
         opts.onProgress?.(`baseline: ${opts.verifyCommand}`);
         const b = await runCommand(argv, { cwd: dir, timeoutMs, allowExec: true });
         for (const [p, c] of desired) {
           const dst = join(dir, p);
           mkdirSync(dirname(dst), { recursive: true });
+          rmSync(dst, { force: true });
           writeFileSync(dst, c.after);
         }
         opts.onProgress?.(`after fix: ${opts.verifyCommand}`);
@@ -527,6 +614,11 @@ async function verify(
             'The verification command passed before the fix and fails after it: the fix introduces a regression.',
           );
         }
+        const touched = changedSince(filesAll, snapshot);
+        if (touched.length)
+          notes.push(
+            `The verification command modified ${touched.length} file(s) in the original project, outside the isolated copy: ${touched.slice(0, 5).join(', ')}${touched.length > 5 ? ', …' : ''}. Review them before continuing.`,
+          );
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
@@ -595,26 +687,43 @@ export function rollback(ws: Workspace, id: string, force: boolean): ApplyRecord
       'ROLLBACK_CONFLICT',
       `${rec.applyId} was already rolled back at ${rec.rolledBackAt}.`,
     );
-  const conflicts = rec.files.filter((f) => currentHash(rec.root, f.path) !== f.afterHash);
+  // Files still in their original state need nothing (an interrupted apply may not have reached them).
+  const pending = rec.files.filter((f) => {
+    const cur = currentHash(rec.root, f.path);
+    return f.existed ? cur !== f.beforeHash : cur !== null;
+  });
+  const conflicts = pending.filter((f) => currentHash(rec.root, f.path) !== f.afterHash);
   if (conflicts.length && !force)
     throw new RelivaroError(
       'ROLLBACK_CONFLICT',
       `Files changed after the fix was applied: ${conflicts.map((c) => c.path).join(', ')}. Rolling back would overwrite those changes.`,
-      'Inspect the files, or re-run with --force to restore the backups anyway.',
+      'Inspect the files, or re-run with --force to restore the backups anyway (your edits are saved under .relivaro/fixes/<apply id>/conflicts/).',
     );
-  for (const f of rec.files) {
-    const abs = safeResolve(rec.root, f.path);
-    if (!f.existed) {
-      rmSync(abs, { force: true });
-      continue;
-    }
-    const backup = readFileSync(ws.path('fixes', rec.applyId, 'backup', ...f.path.split('/')), 'utf8');
-    if (sha256(backup) !== f.beforeHash)
-      throw new RelivaroError('ROLLBACK_CONFLICT', `Backup for ${f.path} is corrupt; not restoring.`);
-    atomicWrite(abs, backup);
-    if (f.mode !== undefined) chmodSync(abs, f.mode & 0o7777);
+  // Validate every backup before touching anything, so a corrupt backup never leaves a half-restored tree.
+  for (const f of pending) {
+    if (!f.existed) continue;
+    const file = ws.path('fixes', rec.applyId, 'backup', ...f.path.split('/'));
+    if (!existsSync(file) || sha256(readFileSync(file)) !== f.beforeHash)
+      throw new RelivaroError(
+        'ROLLBACK_CONFLICT',
+        `Backup for ${f.path} is missing or corrupt; nothing restored.`,
+      );
   }
+  const preserved: string[] = [];
+  for (const f of conflicts) {
+    const abs = safeResolve(rec.root, f.path);
+    if (!existsSync(abs)) continue;
+    ws.writeText(['fixes', rec.applyId, 'conflicts', ...f.path.split('/')], readFileSync(abs, 'utf8'));
+    preserved.push(f.path);
+  }
+  const unrestored = restore(ws, rec, pending);
+  if (unrestored.length)
+    throw new RelivaroError(
+      'ROLLBACK_CONFLICT',
+      `Could not restore ${unrestored.join(', ')}; the originals are in ${ws.path('fixes', rec.applyId, 'backup')}.`,
+    );
   rec.rolledBackAt = new Date().toISOString();
+  if (preserved.length) rec.preserved = preserved;
   ws.writeJson(['fixes', rec.applyId, 'apply.json'], rec);
   return rec;
 }

@@ -53,7 +53,10 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
   const byShort = new Map(all.filter((o) => o.short).map((o) => [o.short!, o]));
   const opts: Parsed['opts'] = {};
   const positionals: string[] = [];
-  for (const o of all) if (o.default !== undefined) opts[o.name] = o.default;
+  for (const o of all)
+    if (o.default !== undefined)
+      opts[o.name] = o.type === 'list' && typeof o.default === 'string' ? o.default.split(',') : o.default;
+  const given = new Set<string>();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
     if (a === '--') {
@@ -102,10 +105,8 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
         throw new RelivaroError('USAGE', `--${spec2.name} expects a number, got "${value}".`);
       opts[spec2.name] = n;
     } else if (spec2.type === 'list') {
-      const prev =
-        Array.isArray(opts[spec2.name]) && opts[spec2.name] !== spec2.default
-          ? (opts[spec2.name] as string[])
-          : [];
+      const prev = given.has(spec2.name) ? (opts[spec2.name] as string[]) : [];
+      given.add(spec2.name);
       const items = value
         .split(',')
         .map((x) => x.trim())

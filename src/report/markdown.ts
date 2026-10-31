@@ -1,5 +1,6 @@
 import type { RunRecord } from '../audit.js';
 import { type Finding, SEVERITIES } from '../core/types.js';
+import { releaseTally } from '../release/readiness.js';
 
 const ICON: Record<string, string> = { block: '⛔', warn: '⚠️', pass: '✅', unverified: '❔', 'n/a': '➖' };
 
@@ -29,9 +30,12 @@ export function toMarkdown(run: RunRecord, opts: { maxFindings?: number } = {}):
       `## Release readiness: **${r.status.toUpperCase().replace(/-/g, ' ')}** (score ${r.score}/100${r.scoreCapped ? ', capped by blockers' : ''})`,
     );
     L.push('');
-    L.push('| Gate | Status | Detail |');
-    L.push('| --- | --- | --- |');
-    for (const g of r.gates) L.push(`| ${esc(g.title)} | ${ICON[g.status]} ${g.status} | ${esc(g.detail)} |`);
+    L.push(releaseTally(r));
+    L.push('');
+    L.push('| Gate | Status | Basis | Detail |');
+    L.push('| --- | --- | --- | --- |');
+    for (const g of r.gates)
+      L.push(`| ${esc(g.title)} | ${ICON[g.status]} ${g.status} | ${g.basis ?? '—'} | ${esc(g.detail)} |`);
     L.push('');
     L.push(`> ${r.disclaimer}`);
     L.push('');

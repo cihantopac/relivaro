@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { runAudit } from '../../src/audit.js';
 import { runCommand, scrubbedEnv } from '../../src/exec/runner.js';
 import { FileSet, safeResolve } from '../../src/fs/files.js';
-import { assertLoadTarget, loadTest } from '../../src/perf/bench.js';
+import { assertLoadTarget, guardedLookup, isPrivateAddress, loadTest } from '../../src/perf/bench.js';
 import { toHtml } from '../../src/report/html.js';
 import { toMarkdown } from '../../src/report/markdown.js';
 import { toSarif } from '../../src/report/sarif.js';
@@ -195,6 +195,76 @@ describe('network boundaries', () => {
     });
     await expect(assertLoadTarget(new URL('http://127.0.0.1:1/'), false)).resolves.toEqual(['127.0.0.1']);
     await expect(assertLoadTarget(new URL('file:///etc/passwd'), false)).rejects.toThrow(/http/);
+  });
+
+  it('classifies private, mapped and special-purpose addresses', () => {
+    for (const ip of [
+      '127.0.0.1',
+      '10.1.2.3',
+      '172.31.255.255',
+      '192.168.1.1',
+      '100.64.0.1',
+      '169.254.169.254',
+      '0.0.0.0',
+      '198.18.0.1',
+      '::1',
+      '::',
+      'fd12::1',
+      'febf::1',
+      '::ffff:127.0.0.1',
+      '::ffff:172.16.0.1',
+      '::ffff:7f00:1',
+      '::ffff:a9fe:a9fe',
+      '[::1]',
+      'fe80::1%lo0',
+    ])
+      expect(isPrivateAddress(ip), ip).toBe(true);
+    for (const ip of [
+      '8.8.8.8',
+      '172.32.0.1',
+      '100.128.0.1',
+      '::ffff:8.8.8.8',
+      '64:ff9b::808:808',
+      '2001:4860::8888',
+    ])
+      expect(isPrivateAddress(ip), ip).toBe(false);
+  });
+
+  it('re-checks the address every connection uses (DNS rebinding)', async () => {
+    const lookupOnce = (allow: boolean, host: string) =>
+      new Promise<string>((resolve, reject) =>
+        guardedLookup(allow)(host, { family: 0 }, (err, address) =>
+          err ? reject(err) : resolve(String(address)),
+        ),
+      );
+    await expect(lookupOnce(false, '8.8.8.8')).rejects.toMatchObject({ code: 'TARGET_NOT_ALLOWED' });
+    await expect(lookupOnce(true, '8.8.8.8')).resolves.toBe('8.8.8.8');
+    await expect(lookupOnce(false, '127.0.0.1')).resolves.toBe('127.0.0.1');
+  });
+
+  it('load-tests a local server through the guarded client', async () => {
+    const { createServer } = await import('node:http');
+    const server = createServer((_req, res) => res.end('ok'));
+    await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+    try {
+      const port = (server.address() as { port: number }).port;
+      const r = await loadTest({
+        name: 'local',
+        url: `http://127.0.0.1:${port}/`,
+        method: 'GET',
+        headers: {},
+        concurrency: 2,
+        durationSec: 0.3,
+        maxRequests: 20,
+        timeoutMs: 2000,
+        allowRemote: false,
+      });
+      expect(r.requests).toBe(20);
+      expect(r.statusCodes['200']).toBe(20);
+      expect(r.errors).toBe(0);
+    } finally {
+      server.close();
+    }
   });
 
   it('caps load test concurrency and duration', async () => {
