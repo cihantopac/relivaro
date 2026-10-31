@@ -17,8 +17,8 @@
 
 <p align="center">
   <a href="#quick-start">Quick start</a> ·
+  <a href="#in-claude-code">Claude Code</a> ·
   <a href="#the-report">The report</a> ·
-  <a href="#claude-code-plugin">Claude Code plugin</a> ·
   <a href="#evidence">Evidence</a> ·
   <a href="#limitations">Limitations</a> ·
   <a href="docs/">Docs</a>
@@ -63,13 +63,34 @@ Most scanners give you a list. Relivaro gives you a decision you can defend.
 
 ## Quick start
 
+Use Relivaro inside Claude Code, from the terminal, or both — the plugin bundles the same engine.
+
+### In Claude Code
+
+```text
+/plugin marketplace add cihantopac/relivaro
+/plugin install relivaro@relivaro
+```
+
+Then run `/relivaro` in your project (restart Claude Code if the command does not show up yet). From a terminal:
+
+```bash
+claude plugin marketplace add cihantopac/relivaro
+claude plugin install relivaro@relivaro
+```
+
+### As a CLI
+
 ```bash
 npm install -g relivaro
 ```
 
 ```bash
-relivaro audit .                            # everything, offline and read-only
-relivaro release . --allow-exec --online    # run build/tests, check OSV.dev, assess readiness
+# Everything, offline and read-only
+relivaro audit .
+
+# Run build and tests, check OSV.dev, assess release readiness
+relivaro release . --allow-exec --online
 ```
 
 Open `.relivaro/runs/<run-id>/report.html` — or `report.md`, `report.json`, `report.sarif`. No install? Use
@@ -78,9 +99,14 @@ Open `.relivaro/runs/<run-id>/report.html` — or `report.md`, `report.json`, `r
 ### Fix, verify, roll back
 
 ```bash
-relivaro fix plan .                                              # diffs only
-relivaro fix apply latest --yes --verify "npm test" --allow-exec # verified in an isolated copy first
-relivaro fix rollback latest                                     # refuses to overwrite later edits
+# Diffs only, nothing changes
+relivaro fix plan .
+
+# Verified in an isolated copy before your tree changes
+relivaro fix apply latest --yes --verify "npm test" --allow-exec
+
+# Refuses to overwrite edits made after the fix
+relivaro fix rollback latest
 ```
 
 A multi-file apply is transactional: if any write fails, the files already written are restored. An interrupted
@@ -89,11 +115,20 @@ apply can be rolled back, and a forced rollback saves your later edits before re
 ### More
 
 ```bash
-relivaro security . --online                          # code + supply chain + known vulnerabilities
-relivaro bench . --cmd "npm run build" --runs 10 --allow-exec   # measured, with baselines
-relivaro load http://localhost:3000/health --duration 15        # local/private targets only
-relivaro contract diff openapi.yaml --base main                 # breaking API changes
-relivaro init --github-action                                   # SARIF to GitHub code scanning
+# Code, supply chain and known vulnerabilities
+relivaro security . --online
+
+# Measured benchmarks with baselines
+relivaro bench . --cmd "npm run build" --runs 10 --allow-exec
+
+# Load test (local and private targets only)
+relivaro load http://localhost:3000/health --duration 15
+
+# Breaking API changes against a git ref
+relivaro contract diff openapi.yaml --base main
+
+# CI workflow with SARIF upload to GitHub code scanning
+relivaro init --github-action
 ```
 
 ## The report
@@ -131,12 +166,7 @@ Rule reference: [docs/RULES.md](docs/RULES.md).
 
 ## Claude Code plugin
 
-```text
-/plugin marketplace add cihantopac/relivaro
-/plugin install relivaro@relivaro
-```
-
-Then `/relivaro` runs the whole flow, or use `/relivaro:audit`, `:security`, `:performance`, `:reliability`, `:test`,
+Installed as shown in [Quick start](#in-claude-code). `/relivaro` runs the whole flow, or use `/relivaro:audit`, `:security`, `:performance`, `:reliability`, `:test`,
 `:optimize` and `:release`. Claude runs the bundled engine, checks significant findings in your code, asks before
 executing project commands, going online or editing anything, and reports in your language.
 [docs/PLUGIN.md](docs/PLUGIN.md)
