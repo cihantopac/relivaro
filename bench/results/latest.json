@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.0.0",
-  "measuredAt": "2026-10-31T20:01:03.550Z",
+  "relivaro": "1.1.0",
+  "measuredAt": "2026-10-31T23:00:22.168Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 81
+        "ms": 80
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 68
+        "ms": 69
       },
       "next-app": {
         "tp": 12,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 97
+        "ms": 94
       },
       "node-api": {
         "tp": 54,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 101
+        "ms": 92
       },
       "python-app": {
         "tp": 30,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 75
+        "ms": 73
       },
       "regressions": {
         "tp": 5,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 95
+        "ms": 94
       }
     },
     "byRule": {
@@ -470,100 +470,14 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 77,
-      "medianMs": 1467,
-      "minMs": 1399,
-      "maxMs": 1565,
-      "filesPerSecond": 2086,
-      "linesPerSecond": 33134,
-      "peakRssMb": 120,
+      "medianMs": 1387,
+      "minMs": 1385,
+      "maxMs": 1452,
+      "filesPerSecond": 2207,
+      "linesPerSecond": 35045,
+      "peakRssMb": 129,
       "openFindings": 180
     },
-    "repositories": [
-      {
-        "id": "repo-1",
-        "stack": "Flutter, Riverpod, go_router, Filament, Laravel",
-        "files": 4873,
-        "linesOfCode": 241383,
-        "parsedFiles": 563,
-        "ms": 3275,
-        "peakRssMb": 189,
-        "open": 100,
-        "bySeverity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 26,
-          "low": 64,
-          "info": 10
-        }
-      },
-      {
-        "id": "repo-2",
-        "stack": "Next.js, React",
-        "files": 114,
-        "linesOfCode": 5892,
-        "parsedFiles": 62,
-        "ms": 323,
-        "peakRssMb": 129,
-        "open": 7,
-        "bySeverity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 2,
-          "low": 5,
-          "info": 0
-        }
-      },
-      {
-        "id": "repo-3",
-        "stack": "Astro, Flutter, go_router, Laravel, Livewire, Filament",
-        "files": 421,
-        "linesOfCode": 18525,
-        "parsedFiles": 128,
-        "ms": 976,
-        "peakRssMb": 146,
-        "open": 34,
-        "bySeverity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 7,
-          "low": 27,
-          "info": 0
-        }
-      },
-      {
-        "id": "repo-4",
-        "stack": "Next.js, React, Electron, Django, Flutter, Tokio",
-        "files": 1065,
-        "linesOfCode": 23628,
-        "parsedFiles": 125,
-        "ms": 1390,
-        "peakRssMb": 177,
-        "open": 38,
-        "bySeverity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 11,
-          "low": 27,
-          "info": 0
-        }
-      },
-      {
-        "id": "repo-5",
-        "stack": "Astro, Laravel, Next.js, React",
-        "files": 380,
-        "linesOfCode": 13246,
-        "parsedFiles": 105,
-        "ms": 987,
-        "peakRssMb": 152,
-        "open": 31,
-        "bySeverity": {
-          "critical": 0,
-          "high": 0,
-          "medium": 7,
-          "low": 24,
-          "info": 0
-        }
-      }
-    ]
+    "repositories": []
   }
 }

@@ -38,6 +38,8 @@ export interface ReleaseAssessment {
   disclaimer: string;
 }
 
+/** "apps/web: " for a sub-project, nothing for the project root. */
+const unitPrefix = (unit: string) => (unit === '.' ? '' : `${unit}: `);
 const open = (run: RunRecord) => run.findings.filter((f) => f.status === 'open');
 const ids = (fs: Finding[]) => fs.map((f) => f.id);
 
@@ -73,7 +75,7 @@ function checkGate(
       detail: failed
         .map(
           (c) =>
-            `${c.unit}: \`${c.command}\` ${c.status}${c.tests ? ` (${c.tests.failed}/${c.tests.total} tests failed)` : c.diagnostics ? ` (${c.diagnostics} errors)` : ''}`,
+            `${unitPrefix(c.unit)}\`${c.command}\` ${c.status}${c.tests ? ` (${c.tests.failed}/${c.tests.total} tests failed)` : c.diagnostics ? ` (${c.diagnostics} errors)` : ''}`,
         )
         .join('; '),
       findings: ids(open(run).filter((f) => f.ruleId.startsWith('exec/'))),
@@ -83,13 +85,13 @@ function checkGate(
       id,
       title,
       status: 'unverified',
-      detail: skipped.map((c) => `${c.unit}: ${c.reason}`).join('; '),
+      detail: skipped.map((c) => `${unitPrefix(c.unit)}${c.reason}`).join('; '),
     };
   const passed = cs.filter((c) => c.status === 'passed');
   const detail = passed
     .map(
       (c) =>
-        `${c.unit}: \`${c.command}\` passed in ${(c.durationMs / 1000).toFixed(1)}s${c.tests ? ` (${c.tests.passed} passed${c.tests.skipped ? `, ${c.tests.skipped} skipped` : ''})` : ''}`,
+        `${unitPrefix(c.unit)}\`${c.command}\` passed in ${(c.durationMs / 1000).toFixed(1)}s${c.tests ? ` (${c.tests.passed} passed${c.tests.skipped ? `, ${c.tests.skipped} skipped` : ''})` : ''}`,
     )
     .join('; ');
   return {

@@ -5,13 +5,11 @@ and the project uses [Semantic Versioning](https://semver.org).
 
 ## [1.1.0] — UNRELEASED
 
-Polish, brand and release-experience update. No breaking changes: JSON (schema v1), SARIF, Markdown, configuration
+Polish and release-experience update. No breaking changes: JSON (schema v1), SARIF, Markdown, configuration
 and workspace files from 1.0 keep working.
 
 ### Added
 
-- Relivaro brand identity, designed with [Markilo](https://github.com/cihantopac/markilo): logo, symbol, lockups,
-  palette, design tokens, plugin icon, favicons and social preview (`branding/`, `assets/brand/`).
 - Redesigned HTML report: a dashboard with release-readiness score, gate tiles, KPI cards, an audit → evidence → fix →
   verify → release flow, severity/category/hotspot charts, a searchable and filterable findings explorer with
   evidence snippets, verification results, coverage, measured benchmarks, comparison with the previous run and an

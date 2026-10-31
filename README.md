@@ -1,192 +1,188 @@
-# Relivaro
+<h1 align="center">Relivaro</h1>
 
-[![npm](https://img.shields.io/npm/v/relivaro.svg)](https://www.npmjs.com/package/relivaro)
-[![CI](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml/badge.svg)](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml)
-[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-![Node.js ≥ 22](https://img.shields.io/badge/node-%E2%89%A5%2022-green.svg)
+<h3 align="center">Verify the code. Prove the quality. Ship with confidence.</h3>
 
-**Verify the code. Prove the quality. Ship with confidence.**
+<p align="center">
+  Open-source release engineering for real codebases: an offline audit engine that shows its evidence,<br>
+  fixes that are verified before they touch your tree, and release gates that never hide what they did not check.
+</p>
 
-Relivaro is an open-source software quality, security, reliability, performance and release-engineering tool. It
-understands a project, finds real problems with evidence, applies safe fixes that are verified before they touch
-your working tree (with rollback), and produces an evidence-based release-readiness assessment — as a standalone CLI
-and as a Claude Code plugin.
+<p align="center">
+  <a href="https://www.npmjs.com/package/relivaro"><img alt="npm" src="https://img.shields.io/npm/v/relivaro?color=0b7285&label=npm"></a>
+  <a href="https://github.com/cihantopac/relivaro/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/cihantopac/relivaro/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-0b7285"></a>
+  <img alt="Node.js ≥ 22" src="https://img.shields.io/badge/node-%E2%89%A5%2022-121620">
+  <img alt="Platforms" src="https://img.shields.io/badge/platforms-Linux%20%7C%20macOS%20%7C%20Windows-121620">
+</p>
 
-It is built to earn trust, not to impress: offline and read-only by default, every finding carries its evidence,
-confidence and limitations, and a high score can never hide a blocker.
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#the-report">The report</a> ·
+  <a href="#claude-code-plugin">Claude Code plugin</a> ·
+  <a href="#evidence">Evidence</a> ·
+  <a href="#limitations">Limitations</a> ·
+  <a href="docs/">Docs</a>
+</p>
 
-## What it does
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/screenshots/report-hero-dark.png">
+    <img src="assets/screenshots/report-hero.png" alt="Relivaro release dashboard: readiness score, gate tally, KPIs, audit-to-release flow and findings charts" width="900">
+  </picture>
+</p>
 
-| Area | Capabilities |
-| --- | --- |
-| Project intelligence | Languages, frameworks (Next.js, React, Vue, Laravel, Django, Flask, FastAPI, Express, NestJS, Flutter, React Native, Rails, Spring, Go and Rust web stacks, …), monorepo units, databases/ORMs, queues, caches, auth libraries, integrations, CI/CD, containers and deploy targets, API routes, test frameworks, required environment variables, docs |
-| Security (37 rules) | SQL/NoSQL/command/code/template injection, XSS, SSRF, path traversal, open redirects, unsafe deserialization, weak crypto and randomness, TLS verification, JWT, CORS, CSRF, cookies, mass assignment, XXE, ReDoS-prone input, timing-unsafe comparisons, sensitive logging, hard-coded secrets (always redacted), CI/CD script injection and pwn requests, container and compose hardening, env files — mapped to CWE and OWASP Top 10:2025 / API Security Top 10:2023 |
-| Supply chain (14 rules) | Missing or out-of-sync lockfiles, non-registry and insecure sources, install scripts, unpinned dependencies and GitHub Actions, end-of-life runtimes/frameworks, and known vulnerabilities via [OSV.dev](https://osv.dev) (`--online`) |
-| Reliability (16 rules) | Missing timeouts, swallowed exceptions, payment idempotency, read-modify-write races, queue retry policies, destructive/irreversible migrations (Laravel, Django, SQL/Prisma), graceful shutdown, health checks, error monitoring, CI job timeouts |
-| Performance | N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in request handlers, catastrophic regex backtracking, missing indexes — plus **measured** command benchmarks and controlled local HTTP load tests with baselines and budgets |
-| Quality & testing | Debug leftovers, complexity, disabled type checking, focused/skipped tests; runs your build, tests, type checker and linter (`--allow-exec`) with parsed results; reads existing lcov/Clover/Cobertura coverage; ranks untested high-risk code |
-| Safe repair | 14 deterministic, syntax-tree-based fixers; diff preview; verification by re-analysis and by your test command in an isolated copy; backups; hash-guarded rollback |
-| API contracts | OpenAPI 3.x / Swagger 2.0 validation and breaking-change detection between versions or against a git ref |
-| Release readiness | Gates for build, tests, type check, lint, secrets, security, dependencies, reproducible installs, CI, reliability, migrations, configuration, runtime support, operability, performance budgets, coverage and documentation — reported as blockers, warnings, passed and **unverified** |
-| Reports | Self-contained interactive HTML, Markdown, JSON (schema-versioned), SARIF 2.1.0 (GitHub code scanning); run history, comparison and baselines |
+## Why Relivaro
 
-Source-level rules cover **JavaScript, TypeScript (JSX/TSX), PHP and Python** using tree-sitter syntax trees. Other
-ecosystems (Go, Ruby, Java/Kotlin, Swift, Dart/Flutter, Rust) get project intelligence, dependency, configuration,
-CI/CD and secret analysis. See [Limitations](#limitations).
+Most scanners give you a list. Relivaro gives you a decision you can defend.
 
-## Install
+- **Evidence, not opinions.** Every finding carries the file and line, a redacted snippet, structured facts,
+  confidence, impact, remediation, how to verify it, and CWE/OWASP mapping.
+- **Fixes you can trust.** Deterministic, syntax-tree fixers. A fix is re-analysed and, if you want, tested in an
+  isolated copy *before* your working tree changes — with backups and hash-guarded rollback.
+- **Honest release gates.** Build, tests, secrets, security, dependencies, CI, migrations and more, each marked as
+  executed, measured, static analysis or **not run**. Unverified is a state, never a silent pass.
+- **Safe by default.** Offline and read-only. Project code runs only with `--allow-exec`, the network is used only
+  with `--online`, and files change only through `fix apply --yes`.
 
-Requires Node.js 22 or newer (git is used when available). No native compilation, no install scripts, no runtime
-dependencies. Works on Linux, macOS and Windows.
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/diagrams/workflow-dark.svg">
+    <img src="assets/diagrams/workflow-light.svg" alt="Audit → Evidence → Fix → Verify → Release" width="900">
+  </picture>
+</p>
+
+| | What happens | You get |
+| --- | --- | --- |
+| **Audit** | Project intelligence (stacks, monorepo units, data stores, CI/CD, routes, env vars) and 83 rules over tree-sitter syntax trees with intra-procedural taint | Findings with confidence, not keyword hits |
+| **Evidence** | Each finding is tied to code, facts and standards; secrets are always redacted | A reason to act — or to suppress with a reason |
+| **Fix** | 14 deterministic fixers produce a reviewable diff plan | Nothing changes until you approve |
+| **Verify** | Targeted findings must disappear, nothing new may appear, your test command must still pass | `verified`, `static-only` or a refused change |
+| **Release** | Gates combine executed checks, measurements and static analysis | ready · ready with warnings · needs verification · not ready |
+
+## Quick start
 
 ```bash
 npm install -g relivaro
 ```
 
-Or run without installing:
-
 ```bash
-npx relivaro audit .
+relivaro audit .                            # everything, offline and read-only
+relivaro release . --allow-exec --online    # run build/tests, check OSV.dev, assess readiness
 ```
 
-From a clone (the built CLI is committed in `plugin/dist/`):
-
-```bash
-git clone https://github.com/cihantopac/relivaro.git
-cd relivaro
-npm link
-```
-
-### Claude Code plugin
-
-```
-/plugin install relivaro --marketplace cihantopac/relivaro
-```
-
-Then use `/relivaro`, `/relivaro:audit`, `/relivaro:security`, `/relivaro:performance`, `/relivaro:reliability`,
-`/relivaro:test`, `/relivaro:optimize` or `/relivaro:release`. Claude runs the bundled engine, verifies findings in
-your code, asks before running project commands, going online or editing anything, and reports in your language. See
-[docs/PLUGIN.md](docs/PLUGIN.md).
-
-## Quick start
-
-```bash
-relivaro discover .            # what Relivaro understands about the project
-relivaro audit .               # everything, offline and read-only
-relivaro security . --online   # include known dependency vulnerabilities (OSV.dev)
-relivaro test . --allow-exec   # run the project's tests (executes project code)
-relivaro release . --allow-exec --online   # production-readiness gates
-```
-
-Reports are written to `.relivaro/runs/<run-id>/` (`report.html`, `report.md`, `report.json`, `report.sarif`). The
-directory ignores itself in git. Use `--workspace <dir>` to keep the analysed repository completely untouched, or
-`--no-write` to print only.
+Open `.relivaro/runs/<run-id>/report.html` — or `report.md`, `report.json`, `report.sarif`. No install? Use
+`npx relivaro audit .`. Requires Node.js 22+; no native builds, no install scripts, no runtime dependencies.
 
 ### Fix, verify, roll back
 
 ```bash
-relivaro fix plan .                       # diffs for every fixable finding — nothing is changed
-relivaro fix apply latest --yes --verify "npm test" --allow-exec
-relivaro fix rollback latest              # refuses if files changed after the fix (use --force to override)
+relivaro fix plan .                                              # diffs only
+relivaro fix apply latest --yes --verify "npm test" --allow-exec # verified in an isolated copy first
+relivaro fix rollback latest                                     # refuses to overwrite later edits
 ```
 
-`apply` re-analyses the changed files (targeted findings must disappear and nothing new may appear) and, with
-`--verify`, runs your command in an isolated copy before and after the change. Your working tree is modified only if
-verification passes. A backup of every changed file is kept for rollback.
+A multi-file apply is transactional: if any write fails, the files already written are restored. An interrupted
+apply can be rolled back, and a forced rollback saves your later edits before restoring.
 
-### Measure performance
+### More
 
 ```bash
-relivaro bench . --cmd "npm run build" --name build --runs 10 --allow-exec
-relivaro load http://localhost:3000/api/health --duration 15 --concurrency 20 --name health
+relivaro security . --online                          # code + supply chain + known vulnerabilities
+relivaro bench . --cmd "npm run build" --runs 10 --allow-exec   # measured, with baselines
+relivaro load http://localhost:3000/health --duration 15        # local/private targets only
+relivaro contract diff openapi.yaml --base main                 # breaking API changes
+relivaro init --github-action                                   # SARIF to GitHub code scanning
 ```
 
-The first measurement becomes the baseline; later runs report the change and whether it is statistically significant.
-Load tests only accept loopback/private targets (public hosts need `--allow-remote`) and are capped at 64 concurrent
-connections, 120 s and 200k requests. Add `performance.budgets` to the config to make `relivaro release` enforce them.
+## The report
 
-### CI
+One self-contained HTML file per run: no CDN, no fonts, no network — open it from disk or attach it to a ticket.
 
-```bash
-relivaro init --github-action
-```
+<table>
+  <tr>
+    <td width="66%"><img src="assets/screenshots/report-findings.png" alt="Findings explorer with evidence snippet, impact, remediation and automated fix command"></td>
+    <td width="34%"><img src="assets/screenshots/report-mobile-dark-tr.png" alt="The report on a phone, dark theme, in Turkish"></td>
+  </tr>
+  <tr>
+    <td><sub>Findings explorer: search, filter by severity, category, gate or fixability; evidence with the reported line highlighted.</sub></td>
+    <td><sub>Responsive, light and dark, <b>English | Türkçe</b>.</sub></td>
+  </tr>
+</table>
 
-writes `relivaro.config.json` and a workflow that uploads SARIF to GitHub code scanning. Or run directly:
+Gate tiles show what each result rests on; charts are drawn only from what the run measured; a "what this run did
+not verify" panel lists every limitation. Details: [docs/REPORT.md](docs/REPORT.md).
 
-```bash
-relivaro audit . --online --format sarif,md --out relivaro-report --fail-on high
-```
+## Coverage
 
-## Commands
-
-| Command | Purpose |
+| Area | Highlights |
 | --- | --- |
-| `audit` | Complete audit across all categories |
-| `security` · `performance` · `reliability` · `quality` · `test` | One area at a time |
-| `release` | Production-readiness gates (exit 1 when not ready) |
-| `discover` | Project profile |
-| `fix list\|plan\|show\|apply\|rollback\|history` | Verified, reversible fixes |
-| `report` · `compare` · `baseline` | Re-render runs, diff runs, accept existing findings |
-| `bench` · `load` | Measured performance with baselines |
-| `contract validate\|diff` | OpenAPI validation and breaking changes |
-| `rules` · `init` · `doctor` | Rule reference, setup, environment self-check |
+| Security · 37 rules | Injection (SQL/NoSQL/command/code/template), XSS, SSRF, path traversal, open redirects, unsafe deserialization, weak crypto, TLS, JWT, CORS, CSRF, cookies, mass assignment, XXE, ReDoS, secrets, CI/CD script injection, container hardening |
+| Supply chain · 14 rules | Lockfiles, non-registry sources, install scripts, unpinned dependencies and GitHub Actions, end-of-life runtimes, known vulnerabilities via [OSV.dev](https://osv.dev) |
+| Reliability · 16 rules | Timeouts, swallowed exceptions, payment idempotency, races, queue retries, destructive migrations, graceful shutdown, health checks, monitoring |
+| Performance · 6 rules | N+1 queries, counting by loading rows, unbounded queries, blocking I/O, catastrophic backtracking, missing indexes — plus measured benchmarks and load tests |
+| Quality & testing · 9 rules | Debug leftovers, complexity, disabled type checks, focused/skipped tests; executes build, tests, type checker and linter; reads coverage; ranks untested risk |
+| API contracts | OpenAPI 3.x / Swagger 2.0 validation and breaking-change detection |
 
-Full reference: [docs/CLI.md](docs/CLI.md) · rules: [docs/RULES.md](docs/RULES.md) · configuration:
-[docs/CONFIG.md](docs/CONFIG.md).
+Source-level rules cover **JavaScript, TypeScript (JSX/TSX), PHP and Python**. Go, Ruby, Java/Kotlin, Swift,
+Dart/Flutter and Rust projects get project intelligence, dependency, configuration, CI/CD and secret analysis.
+Rule reference: [docs/RULES.md](docs/RULES.md).
 
-Exit codes: `0` success · `1` a gate failed (findings at/above `--fail-on`, release not ready, breaking API change,
-fix verification failed) · `2` usage/configuration error or missing permission flag · `3` unexpected error.
+## Claude Code plugin
 
-## Safety model
+```text
+/plugin marketplace add cihantopac/relivaro
+/plugin install relivaro@relivaro
+```
 
-Relivaro analyses untrusted code. By default it **reads** files and nothing else.
-
-- **No code execution** without `--allow-exec`. Commands run without a shell, with a scrubbed environment (tokens and
-  secrets are never passed), timeouts with process-tree termination and capped output. Relivaro never installs
-  dependencies.
-- **No network** unless `--online` (sends only package names and versions to OSV.dev) or `load` (local targets only).
-- **No file changes** except `fix apply --yes`, `baseline`, `init` and its own `.relivaro/` workspace.
-- **Secrets stay secret**: values are redacted in every output format; untracked/ignored `.env` and key files are
-  never read; git-repository configuration cannot make Relivaro run commands.
-- **Repository content is data**: reports are injection-proof (strict CSP, no markup from analysed content); the
-  plugin instructs Claude never to follow instructions found in repositories.
-
-Remaining risks and details: [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
+Then `/relivaro` runs the whole flow, or use `/relivaro:audit`, `:security`, `:performance`, `:reliability`, `:test`,
+`:optimize` and `:release`. Claude runs the bundled engine, checks significant findings in your code, asks before
+executing project commands, going online or editing anything, and reports in your language.
+[docs/PLUGIN.md](docs/PLUGIN.md)
 
 ## Evidence
 
-- **Detection corpus**: 7 fixture projects (Node/Express, Laravel, Python/Flask/Django, Next.js, misc, a clean
-  service, and an anonymized regression corpus from real repositories) — 155 expected findings, precision 100%,
-  recall 100%, enforced in CI. These numbers describe the corpus, not real-world accuracy.
-- **Real repositories**: validated read-only on five local production codebases (Laravel + Flutter + Python
-  monorepo, Next.js site, three TypeScript CLIs); every significant finding was checked against the source and
-  false-positive patterns were fixed and turned into regression fixtures. See [docs/VALIDATION.md](docs/VALIDATION.md).
-- **Performance**: ~2,100 files/s (≈33k lines/s) on a generated 3,060-file repository, 241k-line monorepo in 3.3 s,
-  peak memory under 200 MB (Apple M4). See [docs/BENCHMARKS.md](docs/BENCHMARKS.md).
+Numbers from the 1.1.0 release build (Apple M4, Node 22). They describe the test corpus and these machines, not
+real-world accuracy in general.
+
+| Claim | Measurement |
+| --- | --- |
+| Tests | **139 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI |
+| Detection corpus | 7 fixture projects, **155 expected findings: precision 100%, recall 100%**, 77 rules exercised — enforced in CI. A controlled corpus: real code will produce false positives and misses |
+| Real repositories | Validated read-only on 5 production codebases (Laravel + Flutter + Python monorepo, a Next.js site, three TypeScript CLIs); every significant finding checked by hand, false-positive patterns fixed and kept as regression fixtures — [docs/VALIDATION.md](docs/VALIDATION.md) |
+| Speed | 3,060-file synthetic repository in **1.39 s** (2,207 files/s, peak RSS 129 MB); a 241k-line monorepo in about 3 s — [docs/BENCHMARKS.md](docs/BENCHMARKS.md) |
+| Fix safety | Regression tests for interrupted and failed multi-file applies, corrupt backups, forced rollbacks and symlinks in the verification copy |
+| Report safety | Tests inject `</script>` payloads through analysed source; the report stays inert and makes no network requests |
 
 ## Limitations
 
-- Taint analysis is intra-procedural (within a function) with framework-aware sources and sanitizers; flows across
-  functions or files are not tracked. Findings carry confidence levels accordingly; low-confidence findings never
+- Taint tracking is intra-procedural; flows across functions or files are not followed. Low-confidence findings never
   block a release.
-- No AST rules for Go, Ruby, Java/Kotlin, Swift, Dart, Rust or C#.
-- Static performance findings are *suspected* until measured with `bench`/`load`.
-- Not a DAST tool or fuzzer; authorization logic and business rules need human (or agent-assisted) review.
-- Execution checks are isolated by process controls, not a sandbox: run untrusted projects in a container or VM.
-- Passing Relivaro does not mean software is secure or bug-free.
+- No syntax-tree rules for Go, Ruby, Java/Kotlin, Swift, Dart, Rust or C#.
+- Static performance findings are suspicions until measured with `bench` or `load`.
+- Not a DAST tool or fuzzer; authorization logic and business rules still need human review.
+- `--allow-exec` runs project code with process controls, not a sandbox: use a container or VM for untrusted code.
+- Passing Relivaro does not mean software is secure or bug-free. Details:
+  [docs/SECURITY_MODEL.md](docs/SECURITY_MODEL.md).
 
 ## Documentation
 
-[Architecture](docs/ARCHITECTURE.md) · [Security model](docs/SECURITY_MODEL.md) · [Configuration](docs/CONFIG.md) ·
-[CLI](docs/CLI.md) · [Rules](docs/RULES.md) · [Plugin](docs/PLUGIN.md) · [Validation](docs/VALIDATION.md) ·
-[Benchmarks](docs/BENCHMARKS.md) · [Research](docs/RESEARCH.md) · [Acceptance criteria](docs/ACCEPTANCE.md) ·
-[Release readiness](docs/RELEASE_READINESS.md) · [Development plan](docs/DEVELOPMENT_PLAN.md)
+[CLI](docs/CLI.md) · [Configuration](docs/CONFIG.md) · [Rules](docs/RULES.md) · [HTML report](docs/REPORT.md) ·
+[Plugin](docs/PLUGIN.md) · [Security model](docs/SECURITY_MODEL.md) · [Architecture](docs/ARCHITECTURE.md) ·
+[Validation](docs/VALIDATION.md) · [Benchmarks](docs/BENCHMARKS.md) · [Release readiness](docs/RELEASE_READINESS.md) ·
+[Changelog](CHANGELOG.md)
 
-## Part of a product family
+## Product family
 
-Relivaro is an independent product alongside [Markilo](https://github.com/cihantopac/markilo) (brand identity),
-[Searvex](https://github.com/cihantopac/searvex) (search and GEO) and [Jourilo](https://github.com/cihantopac/jourilo)
-(UX and conversion). Each works on its own.
+Independent tools by the same author. Each works on its own; none requires another.
+
+| | |
+| --- | --- |
+| [**Markilo**](https://github.com/cihantopac/markilo) | Brand identity and vector design — researched, verified, exported |
+| [**Searvex**](https://github.com/cihantopac/searvex) | SEO, GEO and search intelligence with sourced audits |
+| [**Jourilo**](https://github.com/cihantopac/jourilo) | UX, user journeys and conversion engineering in a real browser |
+| **Relivaro** | Software quality, security and release readiness |
 
 ## License
 

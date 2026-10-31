@@ -56,7 +56,7 @@ function s(tag, o, kids) {
   if (o) for (var k in o) if (o[k] !== undefined && o[k] !== null) e.setAttribute(k, o[k]);
   return add(e, kids);
 }
-/* Text with backtick-quoted spans rendered as code (used for Relivaro's own strings only). */
+/* Text with backtick-quoted spans rendered as code elements; every part is a text node, never markup. */
 function md(text) {
   var parts = String(text).split(String.fromCharCode(96)), f = document.createDocumentFragment();
   parts.forEach(function (p, i) { if (p) f.appendChild(i % 2 ? el('code', { text: p }) : document.createTextNode(p)); });
@@ -124,7 +124,7 @@ function ring(score, color) {
   var r = 56, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(1, score / 100));
   return s('svg', { width: 132, height: 132, viewBox: '0 0 132 132', 'aria-hidden': 'true' }, [
     s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: cssVar('surface-2'), 'stroke-width': 12 }),
-    s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: color, 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': (c * frac).toFixed(1) + ' ' + c.toFixed(1) })
+    frac > 0 ? s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: color, 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': (c * frac).toFixed(1) + ' ' + c.toFixed(1) }) : null
   ]);
 }
 var STATUS_TONE = { ready: 'pass', 'ready-with-warnings': 'warn', 'needs-verification': 'unverified', 'not-ready': 'block' };
@@ -342,7 +342,7 @@ function snippet(text, line) {
 }
 function findingBody(f) {
   var b = el('div', { cls: 'body' });
-  b.appendChild(el('p', { cls: 'msg', text: f.message }));
+  b.appendChild(el('p', { cls: 'msg' }, [md(f.message)]));
   var ev = f.evidence || {};
   if (ev.snippet) b.appendChild(snippet(ev.snippet, f.location && f.location.line));
   if (ev.facts) {
@@ -351,7 +351,7 @@ function findingBody(f) {
     b.appendChild(facts);
   }
   if (ev.output) { b.appendChild(el('h4', { cls: 'muted', style: { margin: '10px 0 0', 'font-size': '11px' }, text: t('finding.output') })); b.appendChild(el('div', { cls: 'snip' }, [el('pre', { text: (ev.command ? '$ ' + ev.command + '\n' : '') + ev.output })])); }
-  function kv(k, v, mono) { return v ? el('div', null, [el('h4', { text: t(k) }), el('p', mono ? { cls: 'mono', style: { 'font-size': '12px' }, text: v } : { text: v })]) : null; }
+  function kv(k, v, mono) { return v ? el('div', null, [el('h4', { text: t(k) }), mono ? el('p', { cls: 'mono', style: { 'font-size': '12px' }, text: v }) : el('p', null, [md(v)])]) : null; }
   b.appendChild(el('div', { cls: 'kv' }, [
     kv('finding.impact', f.impact),
     kv('finding.fix', f.recommendation),
@@ -379,7 +379,7 @@ function findingRow(f) {
   var sevStyle = { color: cssVar(f.severity), background: 'color-mix(in srgb, ' + cssVar(f.severity) + ' 13%, transparent)' };
   d.appendChild(el('summary', null, [
     el('span', { cls: 'sev', style: sevStyle }, [t('sev.' + f.severity)]),
-    el('span', { cls: 'ttl', text: f.title }),
+    el('span', { cls: 'ttl' }, [md(f.title)]),
     el('span', { cls: 'side' }, [el('span', { text: t('cat.' + f.category) }), f.fixer ? el('span', { cls: 'pill st-pass', text: t('finding.fixable') }) : null, f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
     where ? el('span', { cls: 'loc', title: where }, [el('bdi', { text: where })]) : null
   ]));

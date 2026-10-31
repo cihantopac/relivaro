@@ -68,7 +68,7 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 <body>
 <a class="skip" id="skip" href="#findings">Skip to findings</a>
 <header class="top"><div class="wrap top-in">
-<span class="brand" aria-label="Relivaro">${BRAND.symbol}${BRAND.wordmark}</span>
+<span class="brand">Relivaro</span>
 <nav class="tabs" id="nav" aria-label="Sections"></nav>
 <div class="tools">
 <div class="seg" id="lang" role="group"><button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="tr" lang="tr">TR</button></div>
@@ -76,7 +76,7 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 </div>
 </div></header>
 <main class="wrap" id="app"><noscript><p>This report needs JavaScript to render. The same results are in report.md and report.json next to this file.</p></noscript></main>
-<footer class="wrap">${BRAND.symbol}<span id="foot-text"></span></footer>
+<footer class="wrap"><span id="foot-text"></span></footer>
 <script type="application/json" id="data">${payload}</script>
 <script>${REPORT_JS}</script>
 </body>

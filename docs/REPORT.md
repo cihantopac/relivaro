@@ -4,7 +4,7 @@ Every analysis command writes `report.html` next to `report.json`, `report.md` (
 `.relivaro/runs/<run-id>/`. It is a single self-contained file: open it from disk, attach it to a ticket or publish it
 as a CI artifact. It makes no network requests.
 
-![Relivaro HTML report](../assets/screenshots/report-desktop-light.png)
+![Relivaro HTML report: release gates with their basis](../assets/screenshots/report-gates.png)
 
 ## What it shows
 
