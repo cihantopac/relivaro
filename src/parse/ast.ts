@@ -105,8 +105,39 @@ export function walk(root: Node, visit: (n: Node) => unknown): void {
   cursor.delete();
 }
 
+/** Per-tree index of nodes by type, built in one traversal the first time a rule collects from the root. */
+const typeIndex = new WeakMap<object, Map<string, Node[]>>();
+
+function indexFor(root: Node): Map<string, Node[]> {
+  let idx = typeIndex.get(root.tree);
+  if (!idx) {
+    const built = new Map<string, Node[]>();
+    walk(root, (n) => {
+      const list = built.get(n.type);
+      if (list) list.push(n);
+      else built.set(n.type, [n]);
+    });
+    idx = built;
+    typeIndex.set(root.tree, idx);
+  }
+  return idx;
+}
+
+/** Drops the type index of a tree (call after analysing a file so node objects can be collected). */
+export function forgetTree(tree: Tree): void {
+  typeIndex.delete(tree);
+}
+
 export function collect(root: Node, types: Set<string> | string): Node[] {
   const set = typeof types === 'string' ? new Set([types]) : types;
+  if (!root.parent) {
+    const idx = indexFor(root);
+    const merged: Node[] = [];
+    for (const t of set) merged.push(...(idx.get(t) ?? []));
+    return set.size > 1
+      ? merged.sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex)
+      : merged;
+  }
   const out: Node[] = [];
   walk(root, (n) => {
     if (set.has(n.type)) out.push(n);
@@ -191,13 +222,10 @@ export function enclosingLoop(n: Node, lang: Language): Node | null {
 export function calls(tree: Tree | Node, lang: Language): CallInfo[] {
   const root = 'rootNode' in tree ? tree.rootNode : tree;
   const out: CallInfo[] = [];
-  const types = CALL_TYPES[lang];
-  walk(root, (n) => {
-    if (types.has(n.type)) {
-      const info = callInfo(n, lang);
-      if (info) out.push(info);
-    }
-  });
+  for (const n of collect(root, CALL_TYPES[lang])) {
+    const info = callInfo(n, lang);
+    if (info) out.push(info);
+  }
   return out;
 }
 

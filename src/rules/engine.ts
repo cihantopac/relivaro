@@ -2,7 +2,7 @@ import { matchesAny } from '../core/glob.js';
 import { findingId, fingerprint } from '../core/hash.js';
 import { redact } from '../core/secrets.js';
 import { type Category, type Finding, type ProjectFile, SEVERITIES, type Severity } from '../core/types.js';
-import { collect, calls as collectCalls, FUNCTION_TYPES, taintedAt } from '../parse/ast.js';
+import { collect, calls as collectCalls, FUNCTION_TYPES, forgetTree, taintedAt } from '../parse/ast.js';
 import { parse } from '../parse/treesitter.js';
 import { cyclomaticComplexity } from './quality.js';
 import type { AstContext, AstRule, FileRule, Hit, ProjectContext, ProjectRule, Rule } from './types.js';
@@ -328,6 +328,7 @@ export async function analyze(
         if (cc > maxCc) maxCc = cc;
       }
       complexity.set(file.path, maxCc);
+      forgetTree(tree);
       tree.delete();
     }
   }

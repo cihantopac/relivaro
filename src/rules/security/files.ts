@@ -23,6 +23,11 @@ import type { FileContext, FileRule, Hit, ProjectRule } from '../types.js';
 const SECRET_SCAN_SKIP =
   /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|Gemfile\.lock|pubspec\.lock|go\.sum|Podfile\.lock|Package\.resolved)$|\.(?:svg|snap|lock)$/;
 
+/** Cheap prefilters: a line can only match a provider pattern if it contains one of these markers. */
+const SECRET_HINT =
+  /AKIA|ASIA|aws_?secret|gh[pousr]_|github_pat_|glpat-|xox[baprs]-|hooks\.slack|[sr]k_(?:live|test)_|AIza|GOCSPX-|npm_|SG\.|T3BlbkFJ|sk-ant-|\bSK[0-9a-f]{8}|key-[0-9a-f]{8}|:AA|discord|AccountKey=|APP_KEY|:\/\/[^\s:@/]+:[^\s@/]+@|eyJ|PRIVATE KEY/i;
+const GENERIC_HINT = /pass|pwd|secret|api[_-]?key|apikey|token|private[_-]?key/i;
+
 const hardcodedSecret: FileRule = {
   kind: 'file',
   id: 'sec/hardcoded-secret',
@@ -49,8 +54,10 @@ const hardcodedSecret: FileRule = {
     for (let i = 0; i < ctx.lines.length; i++) {
       const line = ctx.lines[i]!;
       if (line.length > 4000 || !line.trim()) continue;
+      const provider = SECRET_HINT.test(line);
+      if (!provider && !GENERIC_HINT.test(line)) continue;
       let matched = false;
-      for (const p of SECRET_PATTERNS) {
+      for (const p of provider ? SECRET_PATTERNS : []) {
         p.regex.lastIndex = 0;
         for (const m of line.matchAll(p.regex)) {
           const value = p.group === 0 ? m[0] : m[p.group];

@@ -1,6 +1,6 @@
 {
   "relivaro": "1.0.0",
-  "measuredAt": "2026-10-31T19:52:56.603Z",
+  "measuredAt": "2026-10-31T20:01:03.550Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 112
+        "ms": 106
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 95
+        "ms": 81
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 72
+        "ms": 68
       },
       "next-app": {
         "tp": 12,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 95
+        "ms": 97
       },
       "node-api": {
         "tp": 54,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 102
+        "ms": 101
       },
       "python-app": {
         "tp": 30,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 80
+        "ms": 75
       },
       "regressions": {
         "tp": 5,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 98
+        "ms": 95
       }
     },
     "byRule": {
@@ -470,12 +470,12 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 77,
-      "medianMs": 3145,
-      "minMs": 3048,
-      "maxMs": 3196,
-      "filesPerSecond": 973,
-      "linesPerSecond": 15452,
-      "peakRssMb": 0,
+      "medianMs": 1467,
+      "minMs": 1399,
+      "maxMs": 1565,
+      "filesPerSecond": 2086,
+      "linesPerSecond": 33134,
+      "peakRssMb": 120,
       "openFindings": 180
     },
     "repositories": [
@@ -485,8 +485,8 @@
         "files": 4873,
         "linesOfCode": 241383,
         "parsedFiles": 563,
-        "ms": 7495,
-        "peakRssMb": 0,
+        "ms": 3275,
+        "peakRssMb": 189,
         "open": 100,
         "bySeverity": {
           "critical": 0,
@@ -502,8 +502,8 @@
         "files": 114,
         "linesOfCode": 5892,
         "parsedFiles": 62,
-        "ms": 448,
-        "peakRssMb": 0,
+        "ms": 323,
+        "peakRssMb": 129,
         "open": 7,
         "bySeverity": {
           "critical": 0,
@@ -519,8 +519,8 @@
         "files": 421,
         "linesOfCode": 18525,
         "parsedFiles": 128,
-        "ms": 1749,
-        "peakRssMb": 0,
+        "ms": 976,
+        "peakRssMb": 146,
         "open": 34,
         "bySeverity": {
           "critical": 0,
@@ -536,8 +536,8 @@
         "files": 1065,
         "linesOfCode": 23628,
         "parsedFiles": 125,
-        "ms": 2465,
-        "peakRssMb": 0,
+        "ms": 1390,
+        "peakRssMb": 177,
         "open": 38,
         "bySeverity": {
           "critical": 0,
@@ -553,8 +553,8 @@
         "files": 380,
         "linesOfCode": 13246,
         "parsedFiles": 105,
-        "ms": 1745,
-        "peakRssMb": 0,
+        "ms": 987,
+        "peakRssMb": 152,
         "open": 31,
         "bySeverity": {
           "critical": 0,

@@ -1016,8 +1016,31 @@ function walk2(root, visit) {
   }
   cursor.delete();
 }
+function indexFor(root) {
+  let idx = typeIndex.get(root.tree);
+  if (!idx) {
+    const built = /* @__PURE__ */ new Map();
+    walk2(root, (n) => {
+      const list = built.get(n.type);
+      if (list) list.push(n);
+      else built.set(n.type, [n]);
+    });
+    idx = built;
+    typeIndex.set(root.tree, idx);
+  }
+  return idx;
+}
+function forgetTree(tree) {
+  typeIndex.delete(tree);
+}
 function collect(root, types) {
   const set = typeof types === "string" ? /* @__PURE__ */ new Set([types]) : types;
+  if (!root.parent) {
+    const idx = indexFor(root);
+    const merged = [];
+    for (const t2 of set) merged.push(...idx.get(t2) ?? []);
+    return set.size > 1 ? merged.sort((a, b) => a.startIndex - b.startIndex || b.endIndex - a.endIndex) : merged;
+  }
   const out2 = [];
   walk2(root, (n) => {
     if (set.has(n.type)) out2.push(n);
@@ -1075,13 +1098,10 @@ function enclosingLoop(n, lang) {
 function calls(tree, lang) {
   const root = "rootNode" in tree ? tree.rootNode : tree;
   const out2 = [];
-  const types = CALL_TYPES[lang];
-  walk2(root, (n) => {
-    if (types.has(n.type)) {
-      const info2 = callInfo(n, lang);
-      if (info2) out2.push(info2);
-    }
-  });
+  for (const n of collect(root, CALL_TYPES[lang])) {
+    const info2 = callInfo(n, lang);
+    if (info2) out2.push(info2);
+  }
   return out2;
 }
 function callInfo(n, lang) {
@@ -1372,7 +1392,7 @@ function parameterNames(fn, lang) {
   });
   return out2;
 }
-var CALL_TYPES, FUNCTION_TYPES, LOOP_TYPES, JS_SOURCES, PHP_SOURCES, PY_SOURCES, SANITIZERS, PHP_REQUEST_NON_INPUT, VALIDATOR_NAME;
+var CALL_TYPES, FUNCTION_TYPES, LOOP_TYPES, typeIndex, JS_SOURCES, PHP_SOURCES, PY_SOURCES, SANITIZERS, PHP_REQUEST_NON_INPUT, VALIDATOR_NAME;
 var init_ast = __esm({
   "src/parse/ast.ts"() {
     "use strict";
@@ -1430,6 +1450,7 @@ var init_ast = __esm({
       php: /* @__PURE__ */ new Set(["for_statement", "foreach_statement", "while_statement", "do_statement"]),
       python: /* @__PURE__ */ new Set(["for_statement", "while_statement"])
     };
+    typeIndex = /* @__PURE__ */ new WeakMap();
     JS_SOURCES = [
       /^(?:req|request|ctx\.request|ctx|context\.req)\.(?:query|body|params|headers|cookies|signedCookies|files?|url|originalUrl|path|hostname|ip)\b/,
       /^event\.(?:body|queryStringParameters|multiValueQueryStringParameters|pathParameters|headers)\b/,
@@ -11862,7 +11883,7 @@ function dockerInstructions(text) {
   }
   return out2;
 }
-var import_yaml, SECRET_SCAN_SKIP, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
+var import_yaml, SECRET_SCAN_SKIP, SECRET_HINT, GENERIC_HINT, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
 var init_files2 = __esm({
   "src/rules/security/files.ts"() {
     "use strict";
@@ -11871,6 +11892,8 @@ var init_files2 = __esm({
     init_files();
     init_helpers();
     SECRET_SCAN_SKIP = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|Gemfile\.lock|pubspec\.lock|go\.sum|Podfile\.lock|Package\.resolved)$|\.(?:svg|snap|lock)$/;
+    SECRET_HINT = /AKIA|ASIA|aws_?secret|gh[pousr]_|github_pat_|glpat-|xox[baprs]-|hooks\.slack|[sr]k_(?:live|test)_|AIza|GOCSPX-|npm_|SG\.|T3BlbkFJ|sk-ant-|\bSK[0-9a-f]{8}|key-[0-9a-f]{8}|:AA|discord|AccountKey=|APP_KEY|:\/\/[^\s:@/]+:[^\s@/]+@|eyJ|PRIVATE KEY/i;
+    GENERIC_HINT = /pass|pwd|secret|api[_-]?key|apikey|token|private[_-]?key/i;
     hardcodedSecret = {
       kind: "file",
       id: "sec/hardcoded-secret",
@@ -11891,8 +11914,10 @@ var init_files2 = __esm({
         for (let i2 = 0; i2 < ctx.lines.length; i2++) {
           const line = ctx.lines[i2];
           if (line.length > 4e3 || !line.trim()) continue;
+          const provider = SECRET_HINT.test(line);
+          if (!provider && !GENERIC_HINT.test(line)) continue;
           let matched = false;
-          for (const p of SECRET_PATTERNS) {
+          for (const p of provider ? SECRET_PATTERNS : []) {
             p.regex.lastIndex = 0;
             for (const m of line.matchAll(p.regex)) {
               const value = p.group === 0 ? m[0] : m[p.group];
@@ -21998,6 +22023,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
         if (cc > maxCc) maxCc = cc;
       }
       complexity2.set(file.path, maxCc);
+      forgetTree(tree);
       tree.delete();
     }
   }
