@@ -1,0 +1,10 @@
+{
+  "findings": [
+    { "rule": "sc/lockfile-out-of-sync", "file": "composer.lock" },
+    { "rule": "sc/end-of-life-runtime", "file": "composer.json", "line": 5 },
+    { "rule": "sc/end-of-life-runtime", "file": "composer.json", "line": 6 },
+    { "rule": "sc/end-of-life-runtime", "file": "composer.lock", "line": 4 },
+    { "rule": "sec/env-file-not-ignored" },
+    { "rule": "rel/no-error-monitoring", "file": "composer.json" }
+  ]
+}

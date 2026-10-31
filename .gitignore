@@ -1,0 +1,12 @@
+node_modules/
+coverage/
+tests/.tmp/
+*.log
+.DS_Store
+Thumbs.db
+.env
+.env.*
+!.env.example
+# Relivaro run data (reports, fix backups, history) never belongs in git.
+/.relivaro/
+plugin/node_modules/

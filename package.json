@@ -1,0 +1,73 @@
+{
+  "name": "relivaro",
+  "version": "1.0.0",
+  "description": "Open-source software quality, security, reliability, performance and release engineering platform: evidence-based audits, verified safe fixes with rollback, and release-readiness reports.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "author": "Cihan Topaç (https://github.com/cihantopac)",
+  "homepage": "https://github.com/cihantopac/relivaro#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cihantopac/relivaro.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cihantopac/relivaro/issues"
+  },
+  "keywords": [
+    "security",
+    "sast",
+    "code-quality",
+    "reliability",
+    "performance",
+    "release-readiness",
+    "sarif",
+    "secrets",
+    "supply-chain",
+    "claude-code",
+    "claude-code-plugin"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "bin": {
+    "relivaro": "plugin/dist/relivaro.mjs"
+  },
+  "files": [
+    "plugin/dist",
+    "schemas",
+    "LICENSE",
+    "NOTICE",
+    "THIRD_PARTY_NOTICES.md",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "vitest run",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "vitest run --project e2e",
+    "test:security": "vitest run --project security",
+    "bench": "node scripts/bench.mjs",
+    "check:dist": "node scripts/check-dist.mjs",
+    "validate:plugin": "claude plugin validate . && claude plugin validate plugin",
+    "ci": "npm run lint && npm run typecheck && npm run build && npm test && npm run check:dist"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.4",
+    "@types/node": "^22.20.5",
+    "esbuild": "^0.28.2",
+    "smol-toml": "^1.9.1",
+    "tree-sitter-javascript": "^0.25.0",
+    "tree-sitter-php": "^0.24.2",
+    "tree-sitter-python": "^0.25.0",
+    "tree-sitter-typescript": "^0.23.2",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5",
+    "web-tree-sitter": "^0.27.1",
+    "yaml": "^2.9.1"
+  }
+}

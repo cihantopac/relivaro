@@ -1,0 +1,25 @@
+{
+  "comment": "Findings without a source line, or in files that cannot hold inline annotations.",
+  "findings": [
+    { "rule": "sc/lockfile-out-of-sync", "file": "package-lock.json" },
+    { "rule": "sc/dependency-install-scripts", "file": "package-lock.json" },
+    { "rule": "sc/non-registry-dependency", "file": "package.json" },
+    { "rule": "sc/end-of-life-runtime", "file": ".nvmrc" },
+    { "rule": "rel/no-graceful-shutdown", "file": "package.json" },
+    { "rule": "rel/no-health-check", "file": "package.json" },
+    { "rule": "rel/no-error-monitoring", "file": "package.json" },
+    { "rule": "sec/docker-unpinned-base-image", "file": "Dockerfile", "line": 1 },
+    { "rule": "sec/docker-runs-as-root", "file": "Dockerfile", "line": 1 },
+    { "rule": "sec/docker-remote-script-execution", "file": "Dockerfile", "line": 3 },
+    { "rule": "sec/docker-secret-in-image", "file": "Dockerfile", "line": 4 },
+    { "rule": "sec/docker-context-leak", "file": "Dockerfile", "line": 5 },
+    { "rule": "sec/compose-insecure-service", "file": "docker-compose.yml", "line": 4 },
+    { "rule": "sec/compose-insecure-service", "file": "docker-compose.yml", "line": 10 },
+    { "rule": "sec/gha-pwn-request", "file": ".github/workflows/ci.yml", "line": 10 },
+    { "rule": "sec/gha-unpinned-action", "file": ".github/workflows/ci.yml", "line": 13 },
+    { "rule": "sec/gha-unpinned-action", "file": ".github/workflows/ci.yml", "line": 10 },
+    { "rule": "sec/gha-script-injection", "file": ".github/workflows/ci.yml", "line": 16 },
+    { "rule": "sec/gha-excessive-permissions", "file": ".github/workflows/ci.yml", "line": 2 },
+    { "rule": "rel/gha-no-timeout", "file": ".github/workflows/ci.yml", "line": 7 }
+  ]
+}
