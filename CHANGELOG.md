@@ -3,7 +3,7 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
-## [1.1.0] — UNRELEASED
+## [1.1.0] — 2026-11-01
 
 Polish and release-experience update. No breaking changes: JSON (schema v1), SARIF, Markdown, configuration
 and workspace files from 1.0 keep working.
