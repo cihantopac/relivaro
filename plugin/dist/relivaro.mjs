@@ -24954,7 +24954,7 @@ jobs:
         with:
           node-version: 22
       - name: Relivaro security & quality audit
-        run: npx --yes github:cihantopac/relivaro#v${VERSION} audit . --online --format sarif,md --out relivaro-report --fail-on high
+        run: npx --yes relivaro@${VERSION} audit . --online --format sarif,md --out relivaro-report --fail-on high
       - name: Upload SARIF to code scanning
         if: always()
         uses: github/codeql-action/upload-sarif@v3

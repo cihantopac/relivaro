@@ -1,5 +1,6 @@
 # Relivaro
 
+[![npm](https://img.shields.io/npm/v/relivaro.svg)](https://www.npmjs.com/package/relivaro)
 [![CI](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml/badge.svg)](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 ![Node.js ≥ 22](https://img.shields.io/badge/node-%E2%89%A5%2022-green.svg)
@@ -35,20 +36,20 @@ CI/CD and secret analysis. See [Limitations](#limitations).
 
 ## Install
 
-Requires Node.js 22 or newer and git. No native compilation, no install scripts, no runtime dependencies — the
-built CLI is committed in `plugin/dist/`, so installing straight from GitHub works.
+Requires Node.js 22 or newer (git is used when available). No native compilation, no install scripts, no runtime
+dependencies. Works on Linux, macOS and Windows.
 
 ```bash
-npm install -g github:cihantopac/relivaro
+npm install -g relivaro
 ```
 
 Or run without installing:
 
 ```bash
-npx github:cihantopac/relivaro audit .
+npx relivaro audit .
 ```
 
-From a clone:
+From a clone (the built CLI is committed in `plugin/dist/`):
 
 ```bash
 git clone https://github.com/cihantopac/relivaro.git

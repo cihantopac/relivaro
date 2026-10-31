@@ -42,11 +42,13 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 | Performance | 3060 files in 1.47 s (2086 files/s), 241k-line monorepo in 3.3 s, peak RSS < 200 MB; self-audit budget met |
 | Claude Code plugin | `claude plugin validate --strict` passes for marketplace and plugin; headless run of `/relivaro:security` verified findings in code |
 | Exit codes, errors | e2e tests for 0/1/2, JSON errors on stderr |
-| CI and quality gates | `.github/workflows/ci.yml`: Linux/macOS/Windows × Node 22/24, lint, typecheck, dist check, tests, clean install, benchmark gate, plugin validation, self-audit with SARIF |
+| CI and quality gates | Green on GitHub Actions — `.github/workflows/ci.yml`: Linux/macOS/Windows × Node 22/24, lint, typecheck, dist check, tests, clean install, benchmark gate, plugin validation, self-audit with SARIF |
 | Documentation and OSS files | README, CLI and rule references (generated), configuration, security model, architecture, plugin, validation, benchmarks, research; LICENSE (Apache-2.0), NOTICE, third-party notices, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG |
 
-## Not verified here (non-blocking, documented)
+## Cross-platform verification
 
-- The CI workflows have not yet run on GitHub-hosted runners; local verification was on macOS arm64. Windows-specific code paths (`.cmd` shims, `taskkill`, junctions) are implemented but unexercised until the first CI run.
-- npm publication and marketplace installation from GitHub require the maintainer's approval and have not been performed.
+The CI matrix (Ubuntu, macOS, Windows × Node 22 and 24) passes on GitHub-hosted runners, including the clean-install test, benchmark gate, strict plugin validation and the self-audit release gate with SARIF upload. The first Windows run exposed a real defect (8.3 short paths made git-listed files look outside the root), fixed before release.
+
+## Remaining limitations
+
 - Limitations of the analysis itself are listed in the README (intra-procedural taint, AST languages, static performance suspects, no sandbox for executed commands).

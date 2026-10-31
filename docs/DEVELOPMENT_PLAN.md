@@ -4,9 +4,7 @@ Persistent record of scope, decisions, verified progress and open issues. Update
 
 ## Status (2026-10-31)
 
-v1.0.0 release candidate: all acceptance criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met except those that need
-infrastructure not available locally (see *Pending external verification*). Publishing awaits the maintainer's
-approval.
+v1.0.0 released (GitHub, npm). All acceptance criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
 
 ## Milestones (internal)
 
@@ -41,11 +39,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md#key-decisions). Additional ones:
 - Command benchmarks report wall time only (no child-process memory).
 - Execution checks are not sandboxed (documented in SECURITY_MODEL.md).
 
-## Pending external verification
+## Cross-platform
 
-- CI on GitHub-hosted Windows and Linux runners (the workflows exist; local runs were on macOS arm64). Windows-specific
-  code paths (`.cmd` shims, `taskkill`, path separators) are implemented but have not executed on Windows yet.
-- npm publication and marketplace installation from GitHub (require the maintainer's approval).
+CI passes on Ubuntu, macOS and Windows with Node 22 and 24. The first Windows run found a file-listing defect (8.3 short paths), fixed in 1.0.0.
 
 ## Backlog (post-1.0)
 

@@ -60,7 +60,7 @@ infrastructure not available during local development.
 
 ### Quality
 
-- [~] Unit, integration, security and e2e test suites pass on Linux, macOS and Windows (Node 22, 24) in CI. — *verified on macOS arm64 (Node 22); Linux/Windows run in CI on first push*
+- [x] Unit, integration, security and e2e test suites pass on Linux, macOS and Windows (Node 22, 24) in CI.
 - [x] Clean-environment installation from the packed tarball is tested in CI.
 - [x] Lint and type check pass; bundled `plugin/dist` matches sources (CI guard).
 - [x] `claude plugin validate` passes for the marketplace and the plugin.
