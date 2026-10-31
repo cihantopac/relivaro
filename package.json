@@ -1,10 +1,10 @@
 {
   "name": "relivaro",
   "version": "1.0.0",
-  "description": "Open-source software quality, security, reliability, performance and release engineering platform: evidence-based audits, verified safe fixes with rollback, and release-readiness reports.",
+  "description": "Verify the code. Prove the quality. Ship with confidence. Open-source CLI and Claude Code plugin for evidence-based security, quality and reliability audits, verified safe fixes with rollback, and release-readiness gates.",
   "license": "Apache-2.0",
   "type": "module",
-  "author": "Cihan Topa\u00e7 (https://github.com/cihantopac)",
+  "author": "Cihan Topaç (https://github.com/cihantopac)",
   "homepage": "https://github.com/cihantopac/relivaro#readme",
   "repository": {
     "type": "git",
@@ -24,7 +24,14 @@
     "secrets",
     "supply-chain",
     "claude-code",
-    "claude-code-plugin"
+    "claude-code-plugin",
+    "static-analysis",
+    "code-review",
+    "release-engineering",
+    "devsecops",
+    "cli",
+    "openapi",
+    "owasp"
   ],
   "engines": {
     "node": ">=22"

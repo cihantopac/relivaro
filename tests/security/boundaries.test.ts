@@ -308,5 +308,35 @@ describe('report injection', () => {
     expect(html.match(/<script/g)!.length).toBe(2);
     expect(html).toContain("default-src 'none'");
     expect(readFileSync(join(dir, 'app.py'), 'utf8')).toContain(payload);
+    // The client never parses data as markup.
+    expect(html).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write|eval\(|new Function/);
+  });
+
+  it('is self-contained: no external fonts, scripts, styles or images', async () => {
+    const fx = materialize('node-api');
+    try {
+      const { run } = await runAudit({ root: fx.dir, command: 'release', noWrite: true, release: true });
+      const html = toHtml(run);
+      expect(html).not.toMatch(/\b(?:src|href)=["']?(?:https?:)?\/\//i);
+      expect(html).not.toMatch(/@import|url\(\s*["']?(?:https?:)?\/\//i);
+      expect(html).not.toMatch(/fonts\.googleapis|cdn\.|unpkg|jsdelivr/i);
+      expect(html).toContain('data-lang="tr"');
+    } finally {
+      fx.cleanup();
+    }
+  });
+});
+
+describe('report localization', () => {
+  it('has a Turkish string for every English one, with the same placeholders', async () => {
+    const { I18N } = await import('../../src/report/html-i18n.js');
+    const keys = Object.keys(I18N.en).sort();
+    expect(Object.keys(I18N.tr).sort()).toEqual(keys);
+    const ph = (x: string) => (x.match(/\{\w+\}/g) ?? []).sort().join();
+    for (const k of keys) {
+      const key = k as keyof typeof I18N.en;
+      expect(ph(I18N.tr[key]), k).toBe(ph(I18N.en[key]));
+      expect(I18N.tr[key].trim(), k).not.toBe('');
+    }
   });
 });

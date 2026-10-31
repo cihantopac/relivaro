@@ -3,6 +3,43 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.1.0] — UNRELEASED
+
+Polish, brand and release-experience update. No breaking changes: JSON (schema v1), SARIF, Markdown, configuration
+and workspace files from 1.0 keep working.
+
+### Added
+
+- Relivaro brand identity, designed with [Markilo](https://github.com/cihantopac/markilo): logo, symbol, lockups,
+  palette, design tokens, plugin icon, favicons and social preview (`branding/`, `assets/brand/`).
+- Redesigned HTML report: a dashboard with release-readiness score, gate tiles, KPI cards, an audit → evidence → fix →
+  verify → release flow, severity/category/hotspot charts, a searchable and filterable findings explorer with
+  evidence snippets, verification results, coverage, measured benchmarks, comparison with the previous run and an
+  explicit "what this run did not verify" panel. English and Türkçe with a language switcher (browser language by
+  default), light and dark themes, keyboard accessible, responsive, still a single offline file under a strict CSP.
+- Release gates carry their `basis` (`executed`, `measured`, `advisory-db`, `static`, `not-run`) and the assessment a
+  `tally`, so a static "pass" is never mistaken for an executed one. CLI and Markdown show both.
+- `relivaro rules <id>` as a shorthand for `rules show <id>`.
+
+### Changed
+
+- `release` reports `ready` only when every applicable gate passed **and was verified**; unverified gates now yield
+  `ready-with-warnings` (exit codes are unchanged).
+- Fix verification reports findings it cannot re-check statically as `unverifiable` instead of `resolved`.
+
+### Fixed
+
+- `fix apply` is transactional across files: targets are re-checked right before writing, a failed write restores
+  the files already written, and an interrupted apply is recorded (`state: applying`) and can be rolled back.
+- `fix rollback --force` saves later edits under `.relivaro/fixes/<id>/conflicts/` before restoring, validates every
+  backup before touching any file, and leaves files that are already in their original state alone.
+- Isolated verification copies dereference symlinks, never write through a link into the project, and report files
+  the verification command changed in the original project.
+- `load` re-validates the target address on every connection (DNS rebinding) and classifies shared (100.64/10),
+  benchmarking (198.18/15), "this network" (0/8), IPv4-mapped and NAT64 addresses correctly; `.test` hosts are
+  resolved instead of assumed local. Keep-alive connections are closed when the test ends.
+- `relivaro report` without `--format` wrote no files (list option defaults were not split).
+
 ## [1.0.0] — 2026-10-31
 
 First public release.

@@ -5,11 +5,21 @@ analysis engine (bundled in `dist/`, no installation step) and verified, reversi
 
 ## Install
 
-```
-/plugin install relivaro --marketplace cihantopac/relivaro
+In Claude Code:
+
+```text
+/plugin marketplace add cihantopac/relivaro
+/plugin install relivaro@relivaro
 ```
 
-(On older Claude Code versions: `/plugin marketplace add cihantopac/relivaro`, then `/plugin install relivaro@relivaro`.)
+Or from a terminal:
+
+```bash
+claude plugin marketplace add cihantopac/relivaro
+claude plugin install relivaro@relivaro
+```
+
+To update later: `claude plugin marketplace update relivaro`, then `claude plugin update relivaro@relivaro`.
 
 ## Commands
 

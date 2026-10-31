@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="150" viewBox="0 0 960 150" role="img" aria-labelledby="t d">
+<title id="t">Relivaro workflow</title><desc id="d">Audit, Evidence, Fix, Verify, Release</desc>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}</style>
+<rect x="1.0" y="1" width="170.8" height="148" rx="14" fill="#ffffff" stroke="#d5dae2" stroke-width="1.5"/>
+<text x="22.0" y="36" font-size="12" font-weight="600" fill="#7c8595" letter-spacing="1">01</text>
+<text x="22.0" y="70" font-size="22" font-weight="700" fill="#121620">Audit</text>
+<text x="22.0" y="98" font-size="12.5" fill="#566070">83 rules · AST + taint</text>
+<text x="22.0" y="118" font-size="12.5" fill="#566070">deterministic, offline</text>
+<path d="M175.8 68.0 l16 7 l-16 7" fill="none" stroke="#0b7285" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="197.8" y="1" width="170.8" height="148" rx="14" fill="#ffffff" stroke="#d5dae2" stroke-width="1.5"/>
+<text x="218.8" y="36" font-size="12" font-weight="600" fill="#7c8595" letter-spacing="1">02</text>
+<text x="218.8" y="70" font-size="22" font-weight="700" fill="#121620">Evidence</text>
+<text x="218.8" y="98" font-size="12.5" fill="#566070">file:line + snippet</text>
+<text x="218.8" y="118" font-size="12.5" fill="#566070">CWE and OWASP mapped</text>
+<path d="M372.6 68.0 l16 7 l-16 7" fill="none" stroke="#0b7285" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="394.6" y="1" width="170.8" height="148" rx="14" fill="#ffffff" stroke="#d5dae2" stroke-width="1.5"/>
+<text x="415.6" y="36" font-size="12" font-weight="600" fill="#7c8595" letter-spacing="1">03</text>
+<text x="415.6" y="70" font-size="22" font-weight="700" fill="#121620">Fix</text>
+<text x="415.6" y="98" font-size="12.5" fill="#566070">14 syntax-tree fixers</text>
+<text x="415.6" y="118" font-size="12.5" fill="#566070">diff preview, backups</text>
+<path d="M569.4 68.0 l16 7 l-16 7" fill="none" stroke="#0b7285" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="591.4" y="1" width="170.8" height="148" rx="14" fill="#ffffff" stroke="#d5dae2" stroke-width="1.5"/>
+<text x="612.4" y="36" font-size="12" font-weight="600" fill="#7c8595" letter-spacing="1">04</text>
+<text x="612.4" y="70" font-size="22" font-weight="700" fill="#121620">Verify</text>
+<text x="612.4" y="98" font-size="12.5" fill="#566070">re-analysis + your tests</text>
+<text x="612.4" y="118" font-size="12.5" fill="#566070">isolated copy, rollback</text>
+<path d="M766.2 68.0 l16 7 l-16 7" fill="none" stroke="#0b7285" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+<rect x="788.2" y="1" width="170.8" height="148" rx="14" fill="#0b7285" stroke="#0b7285" stroke-width="1.5"/>
+<text x="809.2" y="36" font-size="12" font-weight="600" fill="#d4eef2" letter-spacing="1">05</text>
+<text x="809.2" y="70" font-size="22" font-weight="700" fill="#ffffff">Release</text>
+<text x="809.2" y="98" font-size="12.5" fill="#d4eef2">up to 18 gates</text>
+<text x="809.2" y="118" font-size="12.5" fill="#d4eef2">with an unverified state</text>
+</svg>

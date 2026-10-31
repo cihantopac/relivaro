@@ -3,9 +3,21 @@
 The plugin lives in [`plugin/`](../plugin) and is published through the marketplace manifest in
 [`.claude-plugin/marketplace.json`](../.claude-plugin/marketplace.json).
 
+In Claude Code:
+
+```text
+/plugin marketplace add cihantopac/relivaro
+/plugin install relivaro@relivaro
 ```
-/plugin install relivaro --marketplace cihantopac/relivaro
+
+Or from a terminal:
+
+```bash
+claude plugin marketplace add cihantopac/relivaro
+claude plugin install relivaro@relivaro
 ```
+
+To update later: `claude plugin marketplace update relivaro`, then `claude plugin update relivaro@relivaro`.
 
 It bundles the complete engine (`plugin/dist/relivaro.mjs` + WASM grammars): nothing is installed or compiled, and
 the engine works offline.

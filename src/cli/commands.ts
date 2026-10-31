@@ -23,7 +23,7 @@ import {
 } from '../perf/bench.js';
 import { assessRelease } from '../release/readiness.js';
 import { compareRuns } from '../report/compare.js';
-import { toHtml } from '../report/html.js';
+import { type HtmlExtras, toHtml } from '../report/html.js';
 import { toMarkdown } from '../report/markdown.js';
 import { toSarif } from '../report/sarif.js';
 import { allRuleMeta, findRule } from '../rules/index.js';
@@ -156,6 +156,25 @@ export function compactRun(run: RunRecord, maxFindings = 150) {
   };
 }
 
+/** Context for the HTML dashboard: the previous run of this project, measured benchmarks and fix history. */
+function htmlExtras(ws: Workspace, run: RunRecord): HtmlExtras {
+  const runs = ws.listRuns();
+  const prevId = runs[runs.indexOf(run.runId) - 1];
+  const prev = prevId ? ws.readJson<RunRecord>(['runs', prevId, 'run.json']) : undefined;
+  const fixes = history(ws).filter((r) => r.root === run.root);
+  return {
+    comparison: prev ? compareRuns(prev, run) : undefined,
+    bench: benchSnapshots(ws),
+    fixes: fixes.length
+      ? {
+          applied: fixes.filter((r) => r.state !== 'failed' && !r.rolledBackAt).length,
+          verified: fixes.filter((r) => r.verification.verdict === 'verified' && !r.rolledBackAt).length,
+          rolledBack: fixes.filter((r) => r.rolledBackAt).length,
+        }
+      : undefined,
+  };
+}
+
 function writeReports(
   ws: Workspace,
   run: RunRecord,
@@ -167,7 +186,7 @@ function writeReports(
   const render: Record<string, () => [string, string]> = {
     json: () => ['report.json', `${JSON.stringify(run, null, 2)}\n`],
     md: () => ['report.md', toMarkdown(run)],
-    html: () => ['report.html', toHtml(run)],
+    html: () => ['report.html', toHtml(run, htmlExtras(ws, run))],
     sarif: () => ['report.sarif', `${JSON.stringify(toSarif(run), null, 2)}\n`],
   };
   for (const f of formats) {

@@ -10,7 +10,9 @@
       "!fixtures",
       "!bench/results",
       "!**/*.md",
-      "!plugin/NOTICE"
+      "!plugin/NOTICE",
+      "!branding",
+      "!assets"
     ]
   },
   "formatter": {
