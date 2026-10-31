@@ -1,5 +1,9 @@
 # Relivaro
 
+[![CI](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml/badge.svg)](https://github.com/cihantopac/relivaro/actions/workflows/ci.yml)
+[![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
+![Node.js ≥ 22](https://img.shields.io/badge/node-%E2%89%A5%2022-green.svg)
+
 **Verify the code. Prove the quality. Ship with confidence.**
 
 Relivaro is an open-source software quality, security, reliability, performance and release-engineering tool. It
@@ -31,16 +35,25 @@ CI/CD and secret analysis. See [Limitations](#limitations).
 
 ## Install
 
-Requires Node.js 22 or newer. No native compilation, no install scripts, no runtime dependencies.
+Requires Node.js 22 or newer and git. No native compilation, no install scripts, no runtime dependencies — the
+built CLI is committed in `plugin/dist/`, so installing straight from GitHub works.
 
 ```bash
-npm install -g relivaro
+npm install -g github:cihantopac/relivaro
 ```
 
 Or run without installing:
 
 ```bash
-npx relivaro audit .
+npx github:cihantopac/relivaro audit .
+```
+
+From a clone:
+
+```bash
+git clone https://github.com/cihantopac/relivaro.git
+cd relivaro
+npm link
 ```
 
 ### Claude Code plugin
