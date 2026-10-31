@@ -10,7 +10,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
 import { matchesAny } from '../core/glob.js';
 import type { FileKind, Language, ProjectFile } from '../core/types.js';
@@ -364,7 +364,7 @@ export class FileSet {
     this.root = resolve(root);
     if (!existsSync(this.root) || !statSync(this.root).isDirectory())
       throw new RelivaroError('NOT_FOUND', `Not a directory: ${root}`);
-    this.realRoot = realpathSync(this.root);
+    this.realRoot = realpathSync.native(this.root);
     this.maxBytes = (opts.maxFileSizeKb ?? 1024) * 1024;
     const listed = opts.useGit === false ? null : gitListFiles(this.root);
     this.gitRepo = listed !== null;
@@ -398,7 +398,7 @@ export class FileSet {
       }
       if (st.isSymbolicLink()) {
         try {
-          const target = realpathSync(abs);
+          const target = realpathSync.native(abs);
           if (!isInside(this.realRoot, target) || !statSync(target).isFile()) {
             this.skipped.symlinkOutside++;
             continue;
@@ -514,14 +514,14 @@ export function safeResolve(root: string, relPath: string): string {
     throw new RelivaroError('PATH_OUTSIDE_ROOT', `Path escapes the project root: ${relPath}`);
   let realRoot = root;
   try {
-    realRoot = realpathSync(root);
+    realRoot = realpathSync.native(root);
   } catch {
     /* root does not exist yet */
   }
   const abs = join(realRoot, relPath);
   let real: string;
   try {
-    real = realpathSync(abs);
+    real = realpathSync.native(abs);
   } catch {
     real = abs;
   }
@@ -589,25 +589,14 @@ export function runGit(cwd: string, args: string[], maxBuffer = 256 * 1024 * 102
 }
 
 function gitListFiles(root: string): { path: string; tracked: boolean }[] | null {
-  const top = runGit(root, ['rev-parse', '--show-toplevel']);
-  if (top === null) return null;
-  const tracked = runGit(root, ['ls-files', '-z', '--cached', '--full-name', '--', '.']);
-  const untracked = runGit(root, [
-    'ls-files',
-    '-z',
-    '--others',
-    '--exclude-standard',
-    '--full-name',
-    '--',
-    '.',
-  ]);
+  const inside = runGit(root, ['rev-parse', '--is-inside-work-tree']);
+  if (inside === null || inside.trim() !== 'true') return null;
+  // Without --full-name, ls-files prints paths relative to the working directory (the analysed root). This avoids
+  // comparing git's top-level path with ours, which differs on Windows (8.3 short names) and through symlinks.
+  const tracked = runGit(root, ['ls-files', '-z', '--cached', '--', '.']);
+  const untracked = runGit(root, ['ls-files', '-z', '--others', '--exclude-standard', '--', '.']);
   if (tracked === null || untracked === null) return null;
-  // ls-files --full-name is relative to the top-level; convert to paths relative to the analysed root.
-  const topDir = realpathSync(top.trim());
-  const realRoot = realpathSync(root);
-  const prefix = relative(topDir, realRoot).split(sep).join('/');
-  const strip = (p: string) =>
-    prefix ? (p.startsWith(`${prefix}/`) ? p.slice(prefix.length + 1) : null) : p;
+  const strip = (p: string): string | null => (p.startsWith('../') ? null : p);
   const out: { path: string; tracked: boolean }[] = [];
   const seen = new Set<string>();
   for (const [list, isTracked] of [

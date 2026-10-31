@@ -23,6 +23,9 @@ export function toSarif(run: RunRecord): object {
   const used = new Set(run.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
   const index = new Map(rules.map((r, i) => [r.id, i]));
+  // Code scanning requires a location on every result; project-level findings point at the main manifest.
+  const fallbackUri =
+    run.profile.manifests.find((m) => !m.file.includes('/'))?.file ?? run.profile.docs.readme ?? '.gitignore';
   return {
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     version: '2.1.0',
@@ -64,13 +67,13 @@ export function toSarif(run: RunRecord): object {
         invocations: [{ executionSuccessful: true, startTimeUtc: run.startedAt }],
         results: run.findings
           .filter((f) => f.status !== 'baseline')
-          .map((f) => result(f, index.get(f.ruleId))),
+          .map((f) => result(f, index.get(f.ruleId), fallbackUri)),
       },
     ],
   };
 }
 
-function result(f: Finding, ruleIndex: number | undefined): object {
+function result(f: Finding, ruleIndex: number | undefined, fallbackUri: string): object {
   const r: Record<string, unknown> = {
     ruleId: f.ruleId,
     level: LEVEL[f.severity],
@@ -85,21 +88,20 @@ function result(f: Finding, ruleIndex: number | undefined): object {
     },
   };
   if (ruleIndex !== undefined) r.ruleIndex = ruleIndex;
-  if (f.location) {
-    const region: Record<string, number> = {};
-    if (f.location.line) region.startLine = f.location.line;
-    if (f.location.column) region.startColumn = f.location.column;
-    if (f.location.endLine && f.location.endLine >= (f.location.line ?? 0))
-      region.endLine = f.location.endLine;
-    r.locations = [
-      {
-        physicalLocation: {
-          artifactLocation: { uri: encodeURI(f.location.file), uriBaseId: '%SRCROOT%' },
-          ...(Object.keys(region).length ? { region } : {}),
-        },
+  const factPath = typeof f.evidence.facts?.path === 'string' ? f.evidence.facts.path : undefined;
+  const loc = f.location ?? { file: factPath ?? fallbackUri, line: 1 };
+  const region: Record<string, number> = {};
+  if (loc.line) region.startLine = loc.line;
+  if (loc.column) region.startColumn = loc.column;
+  if (loc.endLine && loc.endLine >= (loc.line ?? 0)) region.endLine = loc.endLine;
+  r.locations = [
+    {
+      physicalLocation: {
+        artifactLocation: { uri: encodeURI(loc.file), uriBaseId: '%SRCROOT%' },
+        ...(Object.keys(region).length ? { region } : {}),
       },
-    ];
-  }
+    },
+  ];
   if (f.status === 'suppressed')
     r.suppressions = [{ kind: 'inSource', justification: f.suppression?.reason ?? '' }];
   return r;

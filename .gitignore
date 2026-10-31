@@ -7,6 +7,8 @@ Thumbs.db
 .env
 .env.*
 !.env.example
+# Fixture projects intentionally contain env files (with placeholder secrets).
+!fixtures/projects/**/.env*
 # Relivaro run data (reports, fix backups, history) never belongs in git.
 /.relivaro/
 plugin/node_modules/

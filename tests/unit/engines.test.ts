@@ -340,3 +340,21 @@ describe('diff, stats, network policy', () => {
     for (const ip of ['8.8.8.8', '172.32.0.1', '2001:4860::8888']) expect(isPrivateAddress(ip)).toBe(false);
   });
 });
+
+describe('sarif', () => {
+  it('gives every result a location (GitHub code scanning requirement)', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const r = run({
+      findings: [
+        finding({ location: undefined, ruleId: 'exec/test-failure' }),
+        finding({ location: { file: 'a.ts', line: 3 } }),
+      ],
+    });
+    r.profile.manifests = [{ file: 'package.json', ecosystem: 'npm', dependencies: 0, devDependencies: 0 }];
+    const results = (toSarif(r) as any).runs[0].results;
+    expect(results.map((x: any) => x.locations[0].physicalLocation.artifactLocation.uri)).toEqual([
+      'package.json',
+      'a.ts',
+    ]);
+  });
+});
