@@ -161,6 +161,26 @@ describe('execution checks', () => {
     }
   });
 
+  it('never plans checks for fixture, example or benchmark sub-projects', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'relivaro-units-'));
+    try {
+      for (const sub of ['', 'fixtures/app', 'bench/scenarios/demo', 'packages/core']) {
+        mkdirSync(join(dir, sub, 'node_modules'), { recursive: true });
+        writeFileSync(
+          join(dir, sub, 'package.json'),
+          JSON.stringify({ name: `p-${sub || 'root'}`, scripts: { test: 'vitest run' } }),
+        );
+      }
+      const files = new FileSet(dir, { useGit: false });
+      const planned = planChecks(files, discover(files), defaultConfig(), ['test']);
+      expect(planned.map((p) => p.unit).sort()).toEqual(['.', 'packages/core']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('skips checks when dependencies are not installed instead of installing them', async () => {
     const fx = materialize('clean-service', { gitInit: false });
     try {

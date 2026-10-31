@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RelivaroConfig } from '../core/config.js';
 import { type RunResult, runCommand, splitCommand, tail, whichSync } from '../exec/runner.js';
-import type { FileSet } from '../fs/files.js';
+import { type FileSet, isTestPath } from '../fs/files.js';
 import type { ProjectProfile, Unit } from '../intel/discover.js';
 import { registerExternalRule } from '../rules/index.js';
 import type { Hit, RuleMeta } from '../rules/types.js';
@@ -81,6 +81,8 @@ export function planChecks(
     });
 
   for (const u of profile.units) {
+    // Fixture, example and benchmark sub-projects are test data, not part of the product.
+    if (u.path !== '.' && isTestPath(`${u.path}/`)) continue;
     const cwd = join(root, u.path === '.' ? '' : u.path);
     const eco = new Set(u.ecosystems);
     if (eco.has('npm')) planNode(u, root, cwd, add, files);

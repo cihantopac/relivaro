@@ -20650,6 +20650,7 @@ function tail(s, n = 40) {
 }
 
 // src/checks/exec.ts
+init_files();
 init_rules();
 var NPM_DEFAULT_TEST = /no test specified/;
 function hasDir(root, unit, d) {
@@ -20690,6 +20691,7 @@ function planChecks(files, profile, config, kinds) {
       parser: kind === "test" ? "tests" : kind === "typecheck" && /\btsc\b/.test(cmd) ? "tsc" : "generic"
     });
   for (const u of profile.units) {
+    if (u.path !== "." && isTestPath(`${u.path}/`)) continue;
     const cwd = join5(root, u.path === "." ? "" : u.path);
     const eco = new Set(u.ecosystems);
     if (eco.has("npm")) planNode(u, root, cwd, add, files);
@@ -21378,6 +21380,7 @@ init_files();
 init_discover();
 
 // src/release/readiness.ts
+init_files();
 var open = (run2) => run2.findings.filter((f) => f.status === "open");
 var ids = (fs2) => fs2.map((f) => f.id);
 function checkGate(run2, kind, title, failStatus) {
@@ -21644,7 +21647,9 @@ function assessRelease(run2, config, bench = []) {
   const ops = all.filter(
     (f) => /^rel\/(?:no-health-check|no-error-monitoring|no-graceful-shutdown)$/.test(f.ruleId)
   );
-  const deployable = run2.profile.units.some((u) => ["web-backend", "fullstack", "mobile"].includes(u.kind));
+  const deployable = run2.profile.units.some(
+    (u) => (u.path === "." || !isTestPath(`${u.path}/`)) && ["web-backend", "fullstack", "mobile"].includes(u.kind)
+  );
   gates.push(
     ops.length ? {
       id: "operability",

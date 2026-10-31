@@ -1,6 +1,7 @@
 import type { RunRecord } from '../audit.js';
 import type { RelivaroConfig } from '../core/config.js';
 import { type Finding, severityAtLeast } from '../core/types.js';
+import { isTestPath } from '../fs/files.js';
 
 export type GateStatus = 'pass' | 'warn' | 'block' | 'unverified' | 'n/a';
 
@@ -375,7 +376,11 @@ export function assessRelease(
   const ops = all.filter((f) =>
     /^rel\/(?:no-health-check|no-error-monitoring|no-graceful-shutdown)$/.test(f.ruleId),
   );
-  const deployable = run.profile.units.some((u) => ['web-backend', 'fullstack', 'mobile'].includes(u.kind));
+  const deployable = run.profile.units.some(
+    (u) =>
+      (u.path === '.' || !isTestPath(`${u.path}/`)) &&
+      ['web-backend', 'fullstack', 'mobile'].includes(u.kind),
+  );
   gates.push(
     ops.length
       ? {
