@@ -12,7 +12,10 @@ export function toHtml(run: RunRecord): string {
     .replace(/</g, '\\u003c')
     .replace(/\u2028/g, '\\u2028')
     .replace(/\u2029/g, '\\u2029');
-  const title = `Relivaro — ${run.profile.name}`.replace(/[<>&"]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!);
+  const title = `Relivaro — ${run.profile.name}`.replace(
+    /[<>&"]/g,
+    (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;' })[c]!,
+  );
   return `<!doctype html>
 <html lang="en">
 <head>

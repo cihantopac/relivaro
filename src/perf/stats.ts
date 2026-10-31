@@ -24,7 +24,17 @@ export function stats(samples: number[]): Stats {
   const mean = n ? s.reduce((a, b) => a + b, 0) / n : 0;
   const variance = n > 1 ? s.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
   const r = (x: number) => Math.round(x * 100) / 100;
-  return { n, minMs: r(s[0] ?? 0), maxMs: r(s[n - 1] ?? 0), meanMs: r(mean), medianMs: r(quantile(s, 0.5)), p90Ms: r(quantile(s, 0.9)), p95Ms: r(quantile(s, 0.95)), p99Ms: r(quantile(s, 0.99)), stddevMs: r(Math.sqrt(variance)) };
+  return {
+    n,
+    minMs: r(s[0] ?? 0),
+    maxMs: r(s[n - 1] ?? 0),
+    meanMs: r(mean),
+    medianMs: r(quantile(s, 0.5)),
+    p90Ms: r(quantile(s, 0.9)),
+    p95Ms: r(quantile(s, 0.95)),
+    p99Ms: r(quantile(s, 0.99)),
+    stddevMs: r(Math.sqrt(variance)),
+  };
 }
 
 export interface Comparison {
@@ -38,8 +48,15 @@ export interface Comparison {
 
 export function compareStats(base: Stats, cur: Stats): Comparison {
   const changePct = base.meanMs ? ((cur.meanMs - base.meanMs) / base.meanMs) * 100 : 0;
-  const se = Math.sqrt((base.stddevMs ** 2) / Math.max(base.n, 1) + (cur.stddevMs ** 2) / Math.max(cur.n, 1));
+  const se = Math.sqrt(base.stddevMs ** 2 / Math.max(base.n, 1) + cur.stddevMs ** 2 / Math.max(cur.n, 1));
   const diff = cur.meanMs - base.meanMs;
-  const significant = se === 0 ? Math.abs(changePct) > 5 : Math.abs(diff) > 1.96 * se && Math.abs(changePct) > 2;
-  return { baselineMeanMs: base.meanMs, currentMeanMs: cur.meanMs, changePct: Math.round(changePct * 10) / 10, significant, verdict: !significant ? 'no significant change' : diff < 0 ? 'faster' : 'slower' };
+  const significant =
+    se === 0 ? Math.abs(changePct) > 5 : Math.abs(diff) > 1.96 * se && Math.abs(changePct) > 2;
+  return {
+    baselineMeanMs: base.meanMs,
+    currentMeanMs: cur.meanMs,
+    changePct: Math.round(changePct * 10) / 10,
+    significant,
+    verdict: !significant ? 'no significant change' : diff < 0 ? 'faster' : 'slower',
+  };
 }

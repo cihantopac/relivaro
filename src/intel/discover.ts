@@ -1,8 +1,21 @@
 import { parse as parseYaml } from 'yaml';
 import { type LockfileInfo, parseLockfile, pinnedRequirements } from '../deps/lockfiles.js';
 import { type Ecosystem, type ManifestInfo, parseManifest } from '../deps/manifests.js';
-import { isEnvTemplate, type FileSet } from '../fs/files.js';
-import { CARGO, COMPOSER, COMPOSE_IMAGES, GO, lookup, MAVEN, NPM, PUB, PYPI, RUBYGEMS, type Tech, type TechKind } from './catalog.js';
+import { type FileSet, isEnvTemplate } from '../fs/files.js';
+import {
+  CARGO,
+  COMPOSE_IMAGES,
+  COMPOSER,
+  GO,
+  lookup,
+  MAVEN,
+  NPM,
+  PUB,
+  PYPI,
+  RUBYGEMS,
+  type Tech,
+  type TechKind,
+} from './catalog.js';
 
 export interface TechHit extends Tech {
   /** Unit path where it was found (`.` for root). */
@@ -46,11 +59,25 @@ export interface ProjectProfile {
   ci: { system: string; file: string; runsTests: boolean; runsLint: boolean; runsBuild: boolean }[];
   containers: { dockerfiles: string[]; compose: string[]; services: string[] };
   deploy: { kind: string; file: string }[];
-  tests: { frameworks: string[]; testFiles: number; sourceFiles: number; e2e: string[]; coverageReports: string[] };
+  tests: {
+    frameworks: string[];
+    testFiles: number;
+    sourceFiles: number;
+    e2e: string[];
+    coverageReports: string[];
+  };
   api: { routeFiles: string[]; routes: number; specs: string[]; graphql: string[] };
   envVars: EnvVarInfo[];
   envTemplates: string[];
-  docs: { readme?: string; readmeBytes: number; license?: string; changelog?: string; contributing?: string; security?: string; docsDir: boolean };
+  docs: {
+    readme?: string;
+    readmeBytes: number;
+    license?: string;
+    changelog?: string;
+    contributing?: string;
+    security?: string;
+    docsDir: boolean;
+  };
   manifests: ManifestInfo[];
   lockfiles: LockfileInfo[];
   migrations: string[];
@@ -58,12 +85,47 @@ export interface ProjectProfile {
 }
 
 const LANG_BY_EXT: Record<string, string> = {
-  js: 'JavaScript', mjs: 'JavaScript', cjs: 'JavaScript', jsx: 'JavaScript', ts: 'TypeScript', mts: 'TypeScript',
-  cts: 'TypeScript', tsx: 'TypeScript', php: 'PHP', py: 'Python', go: 'Go', rb: 'Ruby', java: 'Java', kt: 'Kotlin',
-  kts: 'Kotlin', swift: 'Swift', m: 'Objective-C', mm: 'Objective-C', dart: 'Dart', rs: 'Rust', cs: 'C#', c: 'C',
-  h: 'C/C++ header', cpp: 'C++', hpp: 'C++', scala: 'Scala', ex: 'Elixir', exs: 'Elixir', lua: 'Lua', sh: 'Shell',
-  bash: 'Shell', zsh: 'Shell', ps1: 'PowerShell', sql: 'SQL', vue: 'Vue', svelte: 'Svelte', astro: 'Astro',
-  html: 'HTML', css: 'CSS', scss: 'SCSS', less: 'Less',
+  js: 'JavaScript',
+  mjs: 'JavaScript',
+  cjs: 'JavaScript',
+  jsx: 'JavaScript',
+  ts: 'TypeScript',
+  mts: 'TypeScript',
+  cts: 'TypeScript',
+  tsx: 'TypeScript',
+  php: 'PHP',
+  py: 'Python',
+  go: 'Go',
+  rb: 'Ruby',
+  java: 'Java',
+  kt: 'Kotlin',
+  kts: 'Kotlin',
+  swift: 'Swift',
+  m: 'Objective-C',
+  mm: 'Objective-C',
+  dart: 'Dart',
+  rs: 'Rust',
+  cs: 'C#',
+  c: 'C',
+  h: 'C/C++ header',
+  cpp: 'C++',
+  hpp: 'C++',
+  scala: 'Scala',
+  ex: 'Elixir',
+  exs: 'Elixir',
+  lua: 'Lua',
+  sh: 'Shell',
+  bash: 'Shell',
+  zsh: 'Shell',
+  ps1: 'PowerShell',
+  sql: 'SQL',
+  vue: 'Vue',
+  svelte: 'Svelte',
+  astro: 'Astro',
+  html: 'HTML',
+  css: 'CSS',
+  scss: 'SCSS',
+  less: 'Less',
 };
 
 const CATALOG_BY_ECO: Partial<Record<Ecosystem, Record<string, Tech>>> = {
@@ -117,21 +179,41 @@ export function discover(files: FileSet): ProjectProfile {
   }
   // requirements.txt with every line pinned also serves as the resolved set for Python.
   for (const m of manifests)
-    if (m.ecosystem === 'PyPI' && /requirements/.test(m.file) && m.deps.length && m.deps.every((d) => d.spec.startsWith('==')))
+    if (
+      m.ecosystem === 'PyPI' &&
+      /requirements/.test(m.file) &&
+      m.deps.length &&
+      m.deps.every((d) => d.spec.startsWith('=='))
+    )
       lockfiles.push(pinnedRequirements(m.file, files.read(m.file) ?? ''));
 
-  const xcodeProjects = files.files.filter((f) => /\.xcodeproj\/project\.pbxproj$/.test(f.path)).map((f) => f.path.replace(/\/[^/]+\.xcodeproj\/project\.pbxproj$/, '') || '.');
+  const xcodeProjects = files.files
+    .filter((f) => /\.xcodeproj\/project\.pbxproj$/.test(f.path))
+    .map((f) => f.path.replace(/\/[^/]+\.xcodeproj\/project\.pbxproj$/, '') || '.');
 
   // Units: every directory with a manifest (or an Xcode project).
-  const unitPaths = new Set<string>([...manifests.map((m) => dirOf(m.file)), ...xcodeProjects.map((p) => (p === '' ? '.' : p))]);
+  const unitPaths = new Set<string>([
+    ...manifests.map((m) => dirOf(m.file)),
+    ...xcodeProjects.map((p) => (p === '' ? '.' : p)),
+  ]);
   if (unitPaths.size === 0) unitPaths.add('.');
   // Android Gradle modules (`app/build.gradle`) belong to the enclosing Flutter/Android project unit.
   for (const p of [...unitPaths]) {
     const parent = dirOf(p);
-    if (/(?:^|\/)(?:android|ios|macos|linux|windows|web)(?:\/app)?$/.test(p) && unitPaths.has(parent.replace(/\/android$|\/ios$/, '') || '.')) unitPaths.delete(p);
+    if (
+      /(?:^|\/)(?:android|ios|macos|linux|windows|web)(?:\/app)?$/.test(p) &&
+      unitPaths.has(parent.replace(/\/android$|\/ios$/, '') || '.')
+    )
+      unitPaths.delete(p);
     if (/(?:^|\/)android\/app$/.test(p) || /(?:^|\/)android$/.test(p)) {
       const flutterRoot = p.replace(/\/android(?:\/app)?$/, '') || '.';
-      if (unitPaths.has(flutterRoot) && manifests.some((m) => m.file === (flutterRoot === '.' ? 'pubspec.yaml' : `${flutterRoot}/pubspec.yaml`))) unitPaths.delete(p);
+      if (
+        unitPaths.has(flutterRoot) &&
+        manifests.some(
+          (m) => m.file === (flutterRoot === '.' ? 'pubspec.yaml' : `${flutterRoot}/pubspec.yaml`),
+        )
+      )
+        unitPaths.delete(p);
     }
   }
 
@@ -169,20 +251,33 @@ export function discover(files: FileSet): ProjectProfile {
       }
       if (!unit.packageManager && unit.ecosystems.includes('npm')) {
         const lf = unit.lockfiles.map((l) => l.split('/').pop());
-        unit.packageManager = lf.includes('pnpm-lock.yaml') ? 'pnpm' : lf.includes('yarn.lock') ? 'yarn' : lf.some((l) => l?.startsWith('bun.')) ? 'bun' : 'npm';
+        unit.packageManager = lf.includes('pnpm-lock.yaml')
+          ? 'pnpm'
+          : lf.includes('yarn.lock')
+            ? 'yarn'
+            : lf.some((l) => l?.startsWith('bun.'))
+              ? 'bun'
+              : 'npm';
       }
-      if (xcodeProjects.includes(path) || (path === '.' && xcodeProjects.includes(''))) addTech({ name: 'iOS (Xcode)', kind: 'mobile', unit: path, evidence: 'xcodeproj' });
+      if (xcodeProjects.includes(path) || (path === '.' && xcodeProjects.includes('')))
+        addTech({ name: 'iOS (Xcode)', kind: 'mobile', unit: path, evidence: 'xcodeproj' });
       return unit;
     });
 
   // Unit attribution for files: deepest unit containing the file.
   const unitFor = (p: string): Unit => {
     let best = units[0]!;
-    for (const u of units) if (within(u.path, p) && u.path.length >= best.path.length && (u.path !== '.' || best.path === '.')) best = u;
+    for (const u of units)
+      if (within(u.path, p) && u.path.length >= best.path.length && (u.path !== '.' || best.path === '.'))
+        best = u;
     return best;
   };
   for (const f of files.files) {
-    if (f.kind !== 'source' || !/\.(?:[cm]?[jt]sx?|php|py|go|rb|java|kt|swift|dart|rs|cs|vue|svelte)$/.test(f.path)) continue;
+    if (
+      f.kind !== 'source' ||
+      !/\.(?:[cm]?[jt]sx?|php|py|go|rb|java|kt|swift|dart|rs|cs|vue|svelte)$/.test(f.path)
+    )
+      continue;
     const u = unitFor(f.path);
     if (f.isTest) u.testFiles++;
     else u.sourceFiles++;
@@ -192,15 +287,27 @@ export function discover(files: FileSet): ProjectProfile {
   if (files.has('artisan')) addTech({ name: 'Laravel', kind: 'fullstack', unit: '.', evidence: 'artisan' });
   for (const f of files.files) {
     const b = f.path.split('/').pop()!;
-    if (b === 'manage.py') addTech({ name: 'Django', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
-    if (/^next\.config\.[cm]?[jt]s$/.test(b)) addTech({ name: 'Next.js', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
-    if (b === 'artisan' && f.path !== 'artisan') addTech({ name: 'Laravel', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
+    if (b === 'manage.py')
+      addTech({ name: 'Django', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
+    if (/^next\.config\.[cm]?[jt]s$/.test(b))
+      addTech({ name: 'Next.js', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
+    if (b === 'artisan' && f.path !== 'artisan')
+      addTech({ name: 'Laravel', kind: 'fullstack', unit: unitFor(f.path).path, evidence: f.path });
   }
 
   for (const u of units) {
     const techs = technologies.filter((t) => t.unit === u.path);
-    u.frameworks = [...new Set(techs.filter((t) => ['frontend', 'backend', 'fullstack', 'mobile', 'desktop'].includes(t.kind)).map((t) => t.name))];
-    u.kind = unitKind(techs.map((t) => t.kind), manifests.filter((m) => dirOf(m.file) === u.path));
+    u.frameworks = [
+      ...new Set(
+        techs
+          .filter((t) => ['frontend', 'backend', 'fullstack', 'mobile', 'desktop'].includes(t.kind))
+          .map((t) => t.name),
+      ),
+    ];
+    u.kind = unitKind(
+      techs.map((t) => t.kind),
+      manifests.filter((m) => dirOf(m.file) === u.path),
+    );
   }
 
   // CI
@@ -221,8 +328,12 @@ export function discover(files: FileSet): ProjectProfile {
     ci.push({
       system,
       file: f.path,
-      runsTests: /\b(?:test|pytest|phpunit|pest|vitest|jest|mocha|go test|cargo test|flutter test|rspec)\b/.test(text),
-      runsLint: /\b(?:lint|eslint|biome|phpstan|psalm|ruff|flake8|mypy|pint|rubocop|analyze|tsc|typecheck)\b/.test(text),
+      runsTests:
+        /\b(?:test|pytest|phpunit|pest|vitest|jest|mocha|go test|cargo test|flutter test|rspec)\b/.test(text),
+      runsLint:
+        /\b(?:lint|eslint|biome|phpstan|psalm|ruff|flake8|mypy|pint|rubocop|analyze|tsc|typecheck)\b/.test(
+          text,
+        ),
       runsBuild: /\b(?:build|compile|bundle|assemble)\b/.test(text),
     });
   }
@@ -275,28 +386,59 @@ export function discover(files: FileSet): ProjectProfile {
         if (!deploy.some((d) => d.kind === kind)) deploy.push({ kind, file: f.path });
         break;
       }
-    if ((f.kind === 'config' && /\.ya?ml$/.test(f.path) && /(?:^|\/)(?:k8s|kubernetes|deploy|manifests|helm)\//.test(f.path)) && !deploy.some((d) => d.kind === 'Kubernetes')) {
+    if (
+      f.kind === 'config' &&
+      /\.ya?ml$/.test(f.path) &&
+      /(?:^|\/)(?:k8s|kubernetes|deploy|manifests|helm)\//.test(f.path) &&
+      !deploy.some((d) => d.kind === 'Kubernetes')
+    ) {
       const text = files.read(f.path) ?? '';
-      if (/^kind:\s*(?:Deployment|StatefulSet|Service|Ingress)\b/m.test(text) && /^apiVersion:/m.test(text)) deploy.push({ kind: 'Kubernetes', file: f.path });
+      if (/^kind:\s*(?:Deployment|StatefulSet|Service|Ingress)\b/m.test(text) && /^apiVersion:/m.test(text))
+        deploy.push({ kind: 'Kubernetes', file: f.path });
     }
   }
 
   // Tests
   const testFrameworks = [...new Set(technologies.filter((t) => t.kind === 'testing').map((t) => t.name))];
-  if (files.files.some((f) => /(?:^|\/)phpunit\.xml(?:\.dist)?$/.test(f.path)) && !testFrameworks.includes('PHPUnit')) testFrameworks.push('PHPUnit');
-  if (files.files.some((f) => /(?:^|\/)(?:pytest\.ini|conftest\.py)$/.test(f.path)) && !testFrameworks.includes('pytest')) testFrameworks.push('pytest');
+  if (
+    files.files.some((f) => /(?:^|\/)phpunit\.xml(?:\.dist)?$/.test(f.path)) &&
+    !testFrameworks.includes('PHPUnit')
+  )
+    testFrameworks.push('PHPUnit');
+  if (
+    files.files.some((f) => /(?:^|\/)(?:pytest\.ini|conftest\.py)$/.test(f.path)) &&
+    !testFrameworks.includes('pytest')
+  )
+    testFrameworks.push('pytest');
   if (files.files.some((f) => f.path.endsWith('_test.go'))) testFrameworks.push('go test');
-  const e2e = files.files.filter((f) => /(?:^|\/)(?:playwright\.config\.[cm]?[jt]s|cypress\.config\.[cm]?[jt]s|integration_test\/|tests\/Browser\/|e2e\/)/.test(f.path)).map((f) => f.path).slice(0, 10);
+  const e2e = files.files
+    .filter((f) =>
+      /(?:^|\/)(?:playwright\.config\.[cm]?[jt]s|cypress\.config\.[cm]?[jt]s|integration_test\/|tests\/Browser\/|e2e\/)/.test(
+        f.path,
+      ),
+    )
+    .map((f) => f.path)
+    .slice(0, 10);
   const coverageReports = files.files
-    .filter((f) => /(?:^|\/)(?:lcov\.info|clover\.xml|cobertura(?:-coverage)?\.xml|coverage\.xml|coverage-final\.json|coverage-summary\.json)$/.test(f.path))
+    .filter((f) =>
+      /(?:^|\/)(?:lcov\.info|clover\.xml|cobertura(?:-coverage)?\.xml|coverage\.xml|coverage-final\.json|coverage-summary\.json)$/.test(
+        f.path,
+      ),
+    )
     .map((f) => f.path);
 
   // API surface
   const routeFiles: string[] = [];
   let routes = 0;
   const ROUTE_RE: [RegExp, RegExp][] = [
-    [/(?:^|\/)routes\/[^/]+\.php$/, /\bRoute::(?:get|post|put|patch|delete|options|any|match|resource|apiResource|view|redirect)\s*\(/g],
-    [/\.(?:[cm]?[jt]s)$/, /\b(?:app|router|server|api|fastify)\.(?:get|post|put|patch|delete|all|route)\s*\(\s*['"`]\//g],
+    [
+      /(?:^|\/)routes\/[^/]+\.php$/,
+      /\bRoute::(?:get|post|put|patch|delete|options|any|match|resource|apiResource|view|redirect)\s*\(/g,
+    ],
+    [
+      /\.(?:[cm]?[jt]s)$/,
+      /\b(?:app|router|server|api|fastify)\.(?:get|post|put|patch|delete|all|route)\s*\(\s*['"`]\//g,
+    ],
     [/(?:^|\/)urls\.py$/, /\b(?:re_)?path\s*\(/g],
     [/\.py$/, /@\w+\.(?:route|get|post|put|patch|delete|api_route)\s*\(/g],
   ];
@@ -318,17 +460,33 @@ export function discover(files: FileSet): ProjectProfile {
       break;
     }
   }
-  const specs = files.files.filter((f) => /(?:^|\/)(?:openapi|swagger)[\w.-]*\.(?:ya?ml|json)$/i.test(f.path)).map((f) => f.path);
-  const graphql = files.files.filter((f) => /\.(?:graphql|gql)$/.test(f.path) || /(?:^|\/)schema\.graphql/.test(f.path)).map((f) => f.path).slice(0, 20);
+  const specs = files.files
+    .filter((f) => /(?:^|\/)(?:openapi|swagger)[\w.-]*\.(?:ya?ml|json)$/i.test(f.path))
+    .map((f) => f.path);
+  const graphql = files.files
+    .filter((f) => /\.(?:graphql|gql)$/.test(f.path) || /(?:^|\/)schema\.graphql/.test(f.path))
+    .map((f) => f.path)
+    .slice(0, 20);
 
   // Environment variables
   const envTemplates = files.files.filter((f) => isEnvTemplate(f.path)).map((f) => f.path);
   const documented = new Set<string>();
-  for (const t of envTemplates) for (const m of (files.read(t) ?? '').matchAll(/^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/gm)) documented.add(m[1]!);
-  for (const c of compose) for (const m of (files.read(c) ?? '').matchAll(/\$\{([A-Z][A-Z0-9_]*)/g)) documented.add(m[1]!);
-  for (const c of compose) for (const m of (files.read(c) ?? '').matchAll(/^\s+-?\s*([A-Z][A-Z0-9_]{2,})\s*[:=]/gm)) documented.add(m[1]!);
+  for (const t of envTemplates)
+    for (const m of (files.read(t) ?? '').matchAll(/^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/gm))
+      documented.add(m[1]!);
+  for (const c of compose)
+    for (const m of (files.read(c) ?? '').matchAll(/\$\{([A-Z][A-Z0-9_]*)/g)) documented.add(m[1]!);
+  for (const c of compose)
+    for (const m of (files.read(c) ?? '').matchAll(/^\s+-?\s*([A-Z][A-Z0-9_]{2,})\s*[:=]/gm))
+      documented.add(m[1]!);
   const readme = files.files.find((f) => /^readme(?:\.\w+)?$/i.test(f.path));
-  const docText = [readme?.path, ...files.files.filter((f) => /^docs\/.*\.md$/i.test(f.path)).map((f) => f.path).slice(0, 50)]
+  const docText = [
+    readme?.path,
+    ...files.files
+      .filter((f) => /^docs\/.*\.md$/i.test(f.path))
+      .map((f) => f.path)
+      .slice(0, 50),
+  ]
     .filter((p): p is string => !!p)
     .map((p) => files.read(p) ?? '')
     .join('\n');
@@ -352,7 +510,10 @@ export function discover(files: FileSet): ProjectProfile {
     root: files.root,
     name,
     gitRepo: files.gitRepo,
-    monorepo: units.filter((u) => u.manifests.length).length > 1 || manifests.some((m) => m.workspaces.length > 0) || files.has('pnpm-workspace.yaml'),
+    monorepo:
+      units.filter((u) => u.manifests.length).length > 1 ||
+      manifests.some((m) => m.workspaces.length > 0) ||
+      files.has('pnpm-workspace.yaml'),
     languages: [...langs.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.lines - a.lines),
     units,
     technologies,
@@ -404,23 +565,40 @@ function unitKind(kinds: TechKind[], ms: ManifestInfo[]): Unit['kind'] {
 
 const ENV_PATTERNS: { re: RegExp; ext: RegExp }[] = [
   // JS/TS: process.env.X, process.env['X'], import.meta.env.X; optional when followed by ?? or ||.
-  { re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g, ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/ },
+  {
+    re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
+    ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/,
+  },
   // PHP: env('X'), env('X', default), getenv('X')
   { re: /\b(?:env|getenv)\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?/g, ext: /\.php$/ },
   // Python: os.environ['X'], os.environ.get('X', d), os.getenv('X', d)
-  { re: /\bos\.(?:environ\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|environ\.get\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?|getenv\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g, ext: /\.py$/ },
+  {
+    re: /\bos\.(?:environ\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|environ\.get\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?|getenv\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g,
+    ext: /\.py$/,
+  },
   // Go, Ruby, Dart
   { re: /\bos\.(?:Getenv|LookupEnv)\(\s*"([A-Z_][A-Z0-9_]*)"/g, ext: /\.go$/ },
-  { re: /\bENV(?:\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|\.fetch\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g, ext: /\.rb$/ },
+  {
+    re: /\bENV(?:\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|\.fetch\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g,
+    ext: /\.rb$/,
+  },
   { re: /\bString\.fromEnvironment\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?/g, ext: /\.dart$/ },
 ];
 
-const AMBIENT_ENV = /^(?:NODE_ENV|CI|HOME|PATH|PWD|USER|SHELL|TERM|TZ|LANG|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
+const AMBIENT_ENV =
+  /^(?:NODE_ENV|CI|HOME|PATH|PWD|USER|SHELL|TERM|TZ|LANG|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
 
 function collectEnvVars(files: FileSet, documented: Set<string>): EnvVarInfo[] {
   const vars = new Map<string, EnvVarInfo>();
   for (const f of files.files) {
-    if (f.isTest || (f.kind !== 'source' && f.kind !== 'template' && f.kind !== 'migration' && !(f.kind === 'config' && f.path.endsWith('.php')))) continue;
+    if (
+      f.isTest ||
+      (f.kind !== 'source' &&
+        f.kind !== 'template' &&
+        f.kind !== 'migration' &&
+        !(f.kind === 'config' && f.path.endsWith('.php')))
+    )
+      continue;
     for (const p of ENV_PATTERNS) {
       if (!p.ext.test(f.path)) continue;
       const text = files.read(f.path);

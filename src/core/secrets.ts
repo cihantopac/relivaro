@@ -25,7 +25,13 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     group: 0,
     severity: 'critical',
   },
-  { id: 'aws-access-key', name: 'AWS access key id', regex: /\b((?:AKIA|ASIA)[0-9A-Z]{16})\b/g, group: 1, severity: 'high' },
+  {
+    id: 'aws-access-key',
+    name: 'AWS access key id',
+    regex: /\b((?:AKIA|ASIA)[0-9A-Z]{16})\b/g,
+    group: 1,
+    severity: 'high',
+  },
   {
     id: 'aws-secret-key',
     name: 'AWS secret access key',
@@ -34,10 +40,34 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     severity: 'critical',
     minEntropy: 4,
   },
-  { id: 'github-token', name: 'GitHub token', regex: /\b((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255})\b/g, group: 1, severity: 'critical' },
-  { id: 'github-fine-grained', name: 'GitHub fine-grained token', regex: /\b(github_pat_[A-Za-z0-9_]{82})\b/g, group: 1, severity: 'critical' },
-  { id: 'gitlab-token', name: 'GitLab token', regex: /\b(glpat-[A-Za-z0-9_-]{20,})\b/g, group: 1, severity: 'critical' },
-  { id: 'slack-token', name: 'Slack token', regex: /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g, group: 1, severity: 'high' },
+  {
+    id: 'github-token',
+    name: 'GitHub token',
+    regex: /\b((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'github-fine-grained',
+    name: 'GitHub fine-grained token',
+    regex: /\b(github_pat_[A-Za-z0-9_]{82})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'gitlab-token',
+    name: 'GitLab token',
+    regex: /\b(glpat-[A-Za-z0-9_-]{20,})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'slack-token',
+    name: 'Slack token',
+    regex: /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g,
+    group: 1,
+    severity: 'high',
+  },
   {
     id: 'slack-webhook',
     name: 'Slack webhook URL',
@@ -45,12 +75,48 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     group: 1,
     severity: 'high',
   },
-  { id: 'stripe-live-key', name: 'Stripe live secret key', regex: /\b((?:sk|rk)_live_[A-Za-z0-9]{20,})\b/g, group: 1, severity: 'critical' },
-  { id: 'stripe-test-key', name: 'Stripe test secret key', regex: /\b((?:sk|rk)_test_[A-Za-z0-9]{20,})\b/g, group: 1, severity: 'low' },
-  { id: 'google-api-key', name: 'Google API key', regex: /\b(AIza[0-9A-Za-z_-]{35})\b/g, group: 1, severity: 'medium' },
-  { id: 'google-oauth-secret', name: 'Google OAuth client secret', regex: /\b(GOCSPX-[A-Za-z0-9_-]{28})\b/g, group: 1, severity: 'high' },
-  { id: 'npm-token', name: 'npm access token', regex: /\b(npm_[A-Za-z0-9]{36})\b/g, group: 1, severity: 'critical' },
-  { id: 'sendgrid-key', name: 'SendGrid API key', regex: /\b(SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43})\b/g, group: 1, severity: 'high' },
+  {
+    id: 'stripe-live-key',
+    name: 'Stripe live secret key',
+    regex: /\b((?:sk|rk)_live_[A-Za-z0-9]{20,})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'stripe-test-key',
+    name: 'Stripe test secret key',
+    regex: /\b((?:sk|rk)_test_[A-Za-z0-9]{20,})\b/g,
+    group: 1,
+    severity: 'low',
+  },
+  {
+    id: 'google-api-key',
+    name: 'Google API key',
+    regex: /\b(AIza[0-9A-Za-z_-]{35})\b/g,
+    group: 1,
+    severity: 'medium',
+  },
+  {
+    id: 'google-oauth-secret',
+    name: 'Google OAuth client secret',
+    regex: /\b(GOCSPX-[A-Za-z0-9_-]{28})\b/g,
+    group: 1,
+    severity: 'high',
+  },
+  {
+    id: 'npm-token',
+    name: 'npm access token',
+    regex: /\b(npm_[A-Za-z0-9]{36})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'sendgrid-key',
+    name: 'SendGrid API key',
+    regex: /\b(SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43})\b/g,
+    group: 1,
+    severity: 'high',
+  },
   {
     id: 'openai-key',
     name: 'OpenAI API key',
@@ -58,9 +124,29 @@ export const SECRET_PATTERNS: SecretPattern[] = [
     group: 1,
     severity: 'critical',
   },
-  { id: 'anthropic-key', name: 'Anthropic API key', regex: /\b(sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{80,})\b/g, group: 1, severity: 'critical' },
-  { id: 'twilio-key', name: 'Twilio API key', regex: /\b(SK[0-9a-f]{32})\b/g, group: 1, severity: 'high', minEntropy: 3.3 },
-  { id: 'mailgun-key', name: 'Mailgun API key', regex: /\b(key-[0-9a-f]{32})\b/g, group: 1, severity: 'high', minEntropy: 3.3 },
+  {
+    id: 'anthropic-key',
+    name: 'Anthropic API key',
+    regex: /\b(sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{80,})\b/g,
+    group: 1,
+    severity: 'critical',
+  },
+  {
+    id: 'twilio-key',
+    name: 'Twilio API key',
+    regex: /\b(SK[0-9a-f]{32})\b/g,
+    group: 1,
+    severity: 'high',
+    minEntropy: 3.3,
+  },
+  {
+    id: 'mailgun-key',
+    name: 'Mailgun API key',
+    regex: /\b(key-[0-9a-f]{32})\b/g,
+    group: 1,
+    severity: 'high',
+    minEntropy: 3.3,
+  },
   {
     id: 'telegram-bot-token',
     name: 'Telegram bot token',
@@ -92,7 +178,8 @@ export const SECRET_PATTERNS: SecretPattern[] = [
   {
     id: 'db-url-password',
     name: 'Connection string with password',
-    regex: /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqps?):\/\/[^\s:@/'"`]+:([^\s@/'"`]{4,})@[^\s'"`]+/g,
+    regex:
+      /\b(?:postgres(?:ql)?|mysql|mariadb|mongodb(?:\+srv)?|redis|rediss|amqps?):\/\/[^\s:@/'"`]+:([^\s@/'"`]{4,})@[^\s'"`]+/g,
     group: 1,
     severity: 'high',
   },
@@ -152,7 +239,8 @@ export function redact(text: string): string {
   for (const p of SECRET_PATTERNS) {
     p.regex.lastIndex = 0;
     out = out.replace(p.regex, (match: string, ...groups: unknown[]) => {
-      if (p.group === 0) return p.id === 'private-key' ? '-----BEGIN [REDACTED] PRIVATE KEY-----' : maskSecret(match);
+      if (p.group === 0)
+        return p.id === 'private-key' ? '-----BEGIN [REDACTED] PRIVATE KEY-----' : maskSecret(match);
       const value = groups[p.group - 1];
       if (typeof value !== 'string' || value.length === 0) return match;
       if (p.minEntropy && shannonEntropy(value) < p.minEntropy) return match;

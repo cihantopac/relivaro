@@ -1,5 +1,13 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { RelivaroError } from './errors.js';
 
@@ -22,7 +30,9 @@ export class Workspace {
   }
 
   path(...parts: string[]): string {
-    for (const p of parts) if (p.includes('..') || /^[\\/]/.test(p)) throw new RelivaroError('PATH_OUTSIDE_ROOT', `Invalid workspace path segment: ${p}`);
+    for (const p of parts)
+      if (p.includes('..') || /^[\\/]/.test(p))
+        throw new RelivaroError('PATH_OUTSIDE_ROOT', `Invalid workspace path segment: ${p}`);
     return join(this.dir, ...parts);
   }
 
@@ -61,12 +71,17 @@ export class Workspace {
     if (!existsSync(dir)) return [];
     return readdirSync(dir)
       .filter((d) => existsSync(join(dir, d, 'run.json')))
-      .sort((a, b) => statSync(join(dir, a, 'run.json')).mtimeMs - statSync(join(dir, b, 'run.json')).mtimeMs || a.localeCompare(b));
+      .sort(
+        (a, b) =>
+          statSync(join(dir, a, 'run.json')).mtimeMs - statSync(join(dir, b, 'run.json')).mtimeMs ||
+          a.localeCompare(b),
+      );
   }
 
   resolveRun(idOrAlias: string): string {
     const runs = this.listRuns();
-    if (!runs.length) throw new RelivaroError('NOT_FOUND', `No runs in ${this.dir}`, 'Run `relivaro audit` first.');
+    if (!runs.length)
+      throw new RelivaroError('NOT_FOUND', `No runs in ${this.dir}`, 'Run `relivaro audit` first.');
     if (idOrAlias === 'latest' || idOrAlias === 'last') return runs[runs.length - 1]!;
     if (idOrAlias === 'previous' || idOrAlias === 'prev') {
       if (runs.length < 2) throw new RelivaroError('NOT_FOUND', 'There is no previous run.');
@@ -74,7 +89,8 @@ export class Workspace {
     }
     const matches = runs.filter((r) => r === idOrAlias || r.startsWith(idOrAlias) || r.endsWith(idOrAlias));
     if (matches.length === 1) return matches[0]!;
-    if (matches.length > 1) throw new RelivaroError('USAGE', `Run id "${idOrAlias}" is ambiguous: ${matches.join(', ')}`);
+    if (matches.length > 1)
+      throw new RelivaroError('USAGE', `Run id "${idOrAlias}" is ambiguous: ${matches.join(', ')}`);
     throw new RelivaroError('NOT_FOUND', `Run not found: ${idOrAlias}`);
   }
 }

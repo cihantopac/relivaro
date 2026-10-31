@@ -22,7 +22,9 @@ export function unifiedDiff(path: string, before: string, after: string, context
     const n = midA.length;
     const m = midB.length;
     const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i]![j] = midA[i] === midB[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        dp[i]![j] = midA[i] === midB[j] ? dp[i + 1]![j + 1]! + 1 : Math.max(dp[i + 1]![j]!, dp[i]![j + 1]!);
     let i = 0;
     let j = 0;
     while (i < n && j < m) {
@@ -68,7 +70,9 @@ export function unifiedDiff(path: string, before: string, after: string, context
     const chunk = full.slice(hs, he);
     const countA = chunk.filter((o) => o.t !== '+').length;
     const countB = chunk.filter((o) => o.t !== '-').length;
-    out.push(`@@ -${countA ? posA[hs] : posA[hs]! - 1},${countA} +${countB ? posB[hs] : posB[hs]! - 1},${countB} @@`);
+    out.push(
+      `@@ -${countA ? posA[hs] : posA[hs]! - 1},${countA} +${countB ? posB[hs] : posB[hs]! - 1},${countB} @@`,
+    );
     for (const o of chunk) out.push(`${o.t}${o.s}`);
     idx = he;
   }

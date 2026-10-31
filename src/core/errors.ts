@@ -47,7 +47,11 @@ export class RelivaroError extends Error {
     this.hint = hint;
   }
   get exitCode(): number {
-    return USAGE_CODES.has(this.code) ? EXIT.USAGE : this.code === 'FIX_CONFLICT' || this.code === 'ROLLBACK_CONFLICT' || this.code === 'FIX_FAILED' ? EXIT.GATE_FAILED : EXIT.RUNTIME;
+    return USAGE_CODES.has(this.code)
+      ? EXIT.USAGE
+      : this.code === 'FIX_CONFLICT' || this.code === 'ROLLBACK_CONFLICT' || this.code === 'FIX_FAILED'
+        ? EXIT.GATE_FAILED
+        : EXIT.RUNTIME;
   }
 }
 

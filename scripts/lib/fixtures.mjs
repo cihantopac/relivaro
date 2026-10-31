@@ -4,7 +4,16 @@
 // an annotatable line. Synthetic secrets are injected at materialisation time (`__RLV_SECRET_<KIND>__`) so the
 // repository itself never contains strings that look like real credentials.
 import { execFileSync } from 'node:child_process';
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +32,9 @@ const SECRETS = {
 };
 
 export function listFixtures() {
-  return readdirSync(FIXTURES).filter((d) => statSync(join(FIXTURES, d)).isDirectory()).sort();
+  return readdirSync(FIXTURES)
+    .filter((d) => statSync(join(FIXTURES, d)).isDirectory())
+    .sort();
 }
 
 function walk(dir, base = dir, out = []) {
@@ -60,7 +71,21 @@ export function expectations(dir) {
 }
 
 function git(cwd, args) {
-  execFileSync('git', ['-c', 'user.name=Relivaro Fixture', '-c', 'user.email=fixture@relivaro.invalid', '-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null', ...args], { cwd, stdio: 'ignore' });
+  execFileSync(
+    'git',
+    [
+      '-c',
+      'user.name=Relivaro Fixture',
+      '-c',
+      'user.email=fixture@relivaro.invalid',
+      '-c',
+      'commit.gpgsign=false',
+      '-c',
+      'core.hooksPath=/dev/null',
+      ...args,
+    ],
+    { cwd, stdio: 'ignore' },
+  );
 }
 
 /** Copies a fixture to a temp dir, injects synthetic secrets and (by default) makes it a git repo with one commit. */
@@ -69,13 +94,19 @@ export function materialize(name, { gitInit = true } = {}) {
   const dir = mkdtempSync(join(tmpdir(), `relivaro-fx-${name}-`));
   cpSync(src, dir, { recursive: true });
   const expected = expectations(dir);
-  const setup = existsSync(join(dir, '.setup.json')) ? JSON.parse(readFileSync(join(dir, '.setup.json'), 'utf8')) : {};
+  const setup = existsSync(join(dir, '.setup.json'))
+    ? JSON.parse(readFileSync(join(dir, '.setup.json'), 'utf8'))
+    : {};
   rmSync(join(dir, '.expect.json'), { force: true });
   rmSync(join(dir, '.setup.json'), { force: true });
   for (const f of walk(dir)) {
     const p = join(dir, f);
     const t = readFileSync(p, 'utf8');
-    if (t.includes('__RLV_SECRET_')) writeFileSync(p, t.replace(/__RLV_SECRET_([A-Z]+)__/g, (_m, k) => SECRETS[k] ?? 'unknown'));
+    if (t.includes('__RLV_SECRET_'))
+      writeFileSync(
+        p,
+        t.replace(/__RLV_SECRET_([A-Z]+)__/g, (_m, k) => SECRETS[k] ?? 'unknown'),
+      );
   }
   if (gitInit) {
     git(dir, ['init', '-q', '-b', 'main']);
@@ -93,8 +124,19 @@ export function score(findings, expected) {
   const tp = [];
   const fn = [];
   for (const e of expected) {
-    const idx = open.findIndex((f, i) => !used.has(i) && f.ruleId === e.rule && (f.location?.file ?? '') === (e.file ?? '') && (e.line === undefined || f.location?.line === e.line));
-    const idx2 = idx >= 0 ? idx : open.findIndex((f, i) => !used.has(i) && f.ruleId === e.rule && e.file === undefined && !f.location);
+    const idx = open.findIndex(
+      (f, i) =>
+        !used.has(i) &&
+        f.ruleId === e.rule &&
+        (f.location?.file ?? '') === (e.file ?? '') &&
+        (e.line === undefined || f.location?.line === e.line),
+    );
+    const idx2 =
+      idx >= 0
+        ? idx
+        : open.findIndex(
+            (f, i) => !used.has(i) && f.ruleId === e.rule && e.file === undefined && !f.location,
+          );
     if (idx2 >= 0) {
       used.add(idx2);
       tp.push(e);

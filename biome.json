@@ -1,7 +1,15 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!plugin/dist", "!**/node_modules", "!.relivaro", "!tests/.tmp", "!fixtures", "!bench/results"]
+    "includes": [
+      "**",
+      "!plugin/dist",
+      "!**/node_modules",
+      "!.relivaro",
+      "!tests/.tmp",
+      "!fixtures",
+      "!bench/results"
+    ]
   },
   "formatter": {
     "indentStyle": "space",
@@ -28,5 +36,27 @@
         "noControlCharactersInRegex": "off"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/deps/**", "src/contract/**", "src/checks/coverage.ts", "tests/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["tests/**", "src/core/secrets.ts", "src/rules/security/files.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noTemplateCurlyInString": "off"
+          }
+        }
+      }
+    }
+  ]
 }

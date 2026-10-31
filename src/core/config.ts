@@ -22,7 +22,10 @@ export interface RelivaroConfig {
     blockOn: Severity;
   };
   performance: {
-    budgets: Record<string, { meanMs?: number; p95Ms?: number; p99Ms?: number; errorRate?: number; maxRegressionPct?: number }>;
+    budgets: Record<
+      string,
+      { meanMs?: number; p95Ms?: number; p99Ms?: number; errorRate?: number; maxRegressionPct?: number }
+    >;
   };
   env: { optional: string[] };
 }
@@ -63,12 +66,18 @@ export function loadConfig(root: string, explicitPath?: string): { config: Reliv
 }
 
 function fail(file: string, msg: string): never {
-  throw new RelivaroError('CONFIG_INVALID', `${file}: ${msg}`, 'See docs/CONFIG.md for the configuration format.');
+  throw new RelivaroError(
+    'CONFIG_INVALID',
+    `${file}: ${msg}`,
+    'See docs/CONFIG.md for the configuration format.',
+  );
 }
 
-const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isObj = (v: unknown): v is Record<string, unknown> =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
 const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every((x) => typeof x === 'string');
-const isSeverity = (v: unknown): v is Severity => typeof v === 'string' && (SEVERITIES as readonly string[]).includes(v);
+const isSeverity = (v: unknown): v is Severity =>
+  typeof v === 'string' && (SEVERITIES as readonly string[]).includes(v);
 
 const KNOWN_KEYS = new Set([
   '$schema',
@@ -101,9 +110,14 @@ export function validateConfig(raw: unknown, file = 'config'): RelivaroConfig {
     for (const [id, v] of Object.entries(raw.rules)) {
       if (v === 'off') c.rules[id] = 'off';
       else if (isObj(v)) {
-        if (v.severity !== undefined && !isSeverity(v.severity)) fail(file, `rules.${id}.severity is invalid`);
-        if (v.exclude !== undefined && !isStrArr(v.exclude)) fail(file, `rules.${id}.exclude must be string[]`);
-        c.rules[id] = { severity: v.severity as Severity | undefined, exclude: v.exclude as string[] | undefined };
+        if (v.severity !== undefined && !isSeverity(v.severity))
+          fail(file, `rules.${id}.severity is invalid`);
+        if (v.exclude !== undefined && !isStrArr(v.exclude))
+          fail(file, `rules.${id}.exclude must be string[]`);
+        c.rules[id] = {
+          severity: v.severity as Severity | undefined,
+          exclude: v.exclude as string[] | undefined,
+        };
       } else fail(file, `rules.${id} must be "off" or an object`);
     }
   }
@@ -119,7 +133,8 @@ export function validateConfig(raw: unknown, file = 'config'): RelivaroConfig {
   if (raw.commands !== undefined) {
     if (!isObj(raw.commands)) fail(file, '"commands" must be an object');
     for (const [k, v] of Object.entries(raw.commands)) {
-      if (!['build', 'test', 'typecheck', 'lint'].includes(k)) fail(file, `commands.${k} is not a known command`);
+      if (!['build', 'test', 'typecheck', 'lint'].includes(k))
+        fail(file, `commands.${k} is not a known command`);
       if (typeof v !== 'string' || !v.trim()) fail(file, `commands.${k} must be a non-empty string`);
       c.commands[k as keyof RelivaroConfig['commands']] = v;
     }
@@ -162,7 +177,8 @@ export function validateConfig(raw: unknown, file = 'config'): RelivaroConfig {
       for (const [k, v] of Object.entries(b)) {
         if (!['meanMs', 'p95Ms', 'p99Ms', 'errorRate', 'maxRegressionPct'].includes(k))
           fail(file, `performance.budgets.${name}.${k} is unknown`);
-        if (typeof v !== 'number' || v < 0) fail(file, `performance.budgets.${name}.${k} must be a non-negative number`);
+        if (typeof v !== 'number' || v < 0)
+          fail(file, `performance.budgets.${name}.${k} must be a non-negative number`);
       }
       c.performance.budgets[name] = b as RelivaroConfig['performance']['budgets'][string];
     }

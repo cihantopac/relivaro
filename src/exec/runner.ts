@@ -41,16 +41,62 @@ export interface RunResult {
 }
 
 const ENV_ALLOW = [
-  'PATH', 'Path', 'HOME', 'USERPROFILE', 'HOMEDRIVE', 'HOMEPATH', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ', 'TERM',
-  'TMPDIR', 'TMP', 'TEMP', 'SYSTEMROOT', 'SystemRoot', 'COMSPEC', 'PATHEXT', 'WINDIR', 'APPDATA', 'LOCALAPPDATA',
-  'PROGRAMFILES', 'ProgramFiles', 'ProgramData', 'NVM_DIR', 'NVM_BIN', 'VOLTA_HOME', 'FNM_DIR', 'PNPM_HOME',
-  'COREPACK_HOME', 'JAVA_HOME', 'ANDROID_HOME', 'ANDROID_SDK_ROOT', 'FLUTTER_ROOT', 'GOPATH', 'GOROOT',
-  'GOCACHE', 'GOMODCACHE', 'CARGO_HOME', 'RUSTUP_HOME', 'PYENV_ROOT', 'VIRTUAL_ENV', 'CONDA_PREFIX',
-  'COMPOSER_HOME', 'XDG_CACHE_HOME', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'USER', 'LOGNAME', 'SHELL',
-  'DEVELOPER_DIR', 'SDKROOT',
+  'PATH',
+  'Path',
+  'HOME',
+  'USERPROFILE',
+  'HOMEDRIVE',
+  'HOMEPATH',
+  'LANG',
+  'LC_ALL',
+  'LC_CTYPE',
+  'TZ',
+  'TERM',
+  'TMPDIR',
+  'TMP',
+  'TEMP',
+  'SYSTEMROOT',
+  'SystemRoot',
+  'COMSPEC',
+  'PATHEXT',
+  'WINDIR',
+  'APPDATA',
+  'LOCALAPPDATA',
+  'PROGRAMFILES',
+  'ProgramFiles',
+  'ProgramData',
+  'NVM_DIR',
+  'NVM_BIN',
+  'VOLTA_HOME',
+  'FNM_DIR',
+  'PNPM_HOME',
+  'COREPACK_HOME',
+  'JAVA_HOME',
+  'ANDROID_HOME',
+  'ANDROID_SDK_ROOT',
+  'FLUTTER_ROOT',
+  'GOPATH',
+  'GOROOT',
+  'GOCACHE',
+  'GOMODCACHE',
+  'CARGO_HOME',
+  'RUSTUP_HOME',
+  'PYENV_ROOT',
+  'VIRTUAL_ENV',
+  'CONDA_PREFIX',
+  'COMPOSER_HOME',
+  'XDG_CACHE_HOME',
+  'XDG_CONFIG_HOME',
+  'XDG_DATA_HOME',
+  'USER',
+  'LOGNAME',
+  'SHELL',
+  'DEVELOPER_DIR',
+  'SDKROOT',
 ];
 
-const SECRETISH = /(?:TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|API_?KEY|ACCESS_?KEY|SESSION|COOKIE|AUTH)/i;
+const SECRETISH =
+  /(?:TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE|CREDENTIAL|API_?KEY|ACCESS_?KEY|SESSION|COOKIE|AUTH)/i;
 
 export function scrubbedEnv(extra: Record<string, string> = {}): Record<string, string> {
   const env: Record<string, string> = {};
@@ -110,7 +156,8 @@ export function splitCommand(cmd: string): string[] {
 /** Resolves an executable on PATH (and Windows PATHEXT) so we can spawn without `shell: true`. */
 export function whichSync(cmd: string, pathEnv = process.env.PATH ?? process.env.Path ?? ''): string | null {
   if (cmd.includes('/') || cmd.includes('\\')) return existsSync(cmd) ? cmd : null;
-  const exts = process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';') : [''];
+  const exts =
+    process.platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';') : [''];
   for (const dir of pathEnv.split(delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {
@@ -123,7 +170,7 @@ export function whichSync(cmd: string, pathEnv = process.env.PATH ?? process.env
   return null;
 }
 
-export function runCommand(argv: string[], opts: RunOptions): Promise<RunResult> {
+export async function runCommand(argv: string[], opts: RunOptions): Promise<RunResult> {
   if (!opts.allowExec)
     throw new RelivaroError(
       'EXEC_NOT_ALLOWED',
@@ -219,7 +266,6 @@ function killTree(pid: number | undefined): void {
 }
 
 export function stripAnsi(s: string): string {
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: ANSI escape sequences
   return s.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]|\u001b\][^\u0007]*\u0007/g, '');
 }
 

@@ -2,9 +2,9 @@ import { matchesAny } from '../core/glob.js';
 import { findingId, fingerprint } from '../core/hash.js';
 import { redact } from '../core/secrets.js';
 import { type Category, type Finding, type ProjectFile, SEVERITIES, type Severity } from '../core/types.js';
-import { calls as collectCalls, collect, FUNCTION_TYPES, taintedAt } from '../parse/ast.js';
-import { cyclomaticComplexity } from './quality.js';
+import { collect, calls as collectCalls, FUNCTION_TYPES, taintedAt } from '../parse/ast.js';
 import { parse } from '../parse/treesitter.js';
+import { cyclomaticComplexity } from './quality.js';
 import type { AstContext, AstRule, FileRule, Hit, ProjectContext, ProjectRule, Rule } from './types.js';
 
 export interface AnalysisOptions {
@@ -32,37 +32,63 @@ function isServerSide(file: ProjectFile, source: string, project: ProjectContext
   if (file.language === 'php' || file.language === 'python') return !file.isTest;
   if (/^\s*['"]use client['"]/m.test(source.slice(0, 500))) return false;
   if (/^\s*['"]use server['"]/m.test(source.slice(0, 500))) return true;
-  if (/(?:^|\/)(?:app\/.*\/)?route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)middleware\.[cm]?[jt]s$|\.server\.[cm]?[jt]sx?$/.test(file.path)) return true;
-  if (/\bfrom\s+['"](?:express|fastify|koa|hono|@nestjs\/[\w-]+|next\/server|@hapi\/hapi|node:http|http|pg|mysql2?|mongoose|@prisma\/client|bullmq|ioredis)['"]|require\(\s*['"](?:express|fastify|koa|http|pg|mysql2?|mongoose)['"]\s*\)/.test(source)) return true;
+  if (
+    /(?:^|\/)(?:app\/.*\/)?route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)middleware\.[cm]?[jt]s$|\.server\.[cm]?[jt]sx?$/.test(
+      file.path,
+    )
+  )
+    return true;
+  if (
+    /\bfrom\s+['"](?:express|fastify|koa|hono|@nestjs\/[\w-]+|next\/server|@hapi\/hapi|node:http|http|pg|mysql2?|mongoose|@prisma\/client|bullmq|ioredis)['"]|require\(\s*['"](?:express|fastify|koa|http|pg|mysql2?|mongoose)['"]\s*\)/.test(
+      source,
+    )
+  )
+    return true;
   if (SERVER_PATH.test(file.path) && !CLIENT_PATH.test(file.path)) return true;
   // Plain Node projects without a frontend framework are server-side by default.
-  const frontend = project.profile.technologies.some((t) => t.kind === 'frontend' || t.kind === 'fullstack' || t.kind === 'mobile');
+  const frontend = project.profile.technologies.some(
+    (t) => t.kind === 'frontend' || t.kind === 'fullstack' || t.kind === 'mobile',
+  );
   return !frontend && !file.path.endsWith('.tsx') && !file.path.endsWith('.jsx');
 }
 
 /** For a call that spans several lines (fluent chains), point at the called method rather than the chain start. */
 function callSite(n: import('../parse/treesitter.js').Node): import('../parse/treesitter.js').Node {
   if (n.startPosition.row === n.endPosition.row) return n;
-  if (n.type === 'member_call_expression' || n.type === 'scoped_call_expression' || n.type === 'nullsafe_member_call_expression') return n.childForFieldName('name') ?? n;
+  if (
+    n.type === 'member_call_expression' ||
+    n.type === 'scoped_call_expression' ||
+    n.type === 'nullsafe_member_call_expression'
+  )
+    return n.childForFieldName('name') ?? n;
   if (n.type === 'call_expression') {
     const fn = n.childForFieldName('function');
-    if (fn?.type === 'member_expression' && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName('property') ?? n;
+    if (fn?.type === 'member_expression' && fn.startPosition.row !== fn.endPosition.row)
+      return fn.childForFieldName('property') ?? n;
   }
   if (n.type === 'call') {
     const fn = n.childForFieldName('function');
-    if (fn?.type === 'attribute' && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName('attribute') ?? n;
+    if (fn?.type === 'attribute' && fn.startPosition.row !== fn.endPosition.row)
+      return fn.childForFieldName('attribute') ?? n;
   }
   return n;
 }
 
-const DOWNGRADE: Record<Severity, Severity> = { critical: 'high', high: 'medium', medium: 'low', low: 'low', info: 'info' };
+const DOWNGRADE: Record<Severity, Severity> = {
+  critical: 'high',
+  high: 'medium',
+  medium: 'low',
+  low: 'low',
+  info: 'info',
+};
 
 interface Suppressions {
   file: { all: boolean; rules: Set<string> };
   lines: Map<number, { all: boolean; rules: Set<string>; reason?: string }>;
 }
 
-const SUPPRESS_RE = /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
+const SUPPRESS_RE =
+  /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
 
 export function parseSuppressions(lines: string[]): Suppressions {
   const s: Suppressions = { file: { all: false, rules: new Set() }, lines: new Map() };
@@ -71,8 +97,17 @@ export function parseSuppressions(lines: string[]): Suppressions {
     if (!l.includes('relivaro-ignore')) continue;
     const m = SUPPRESS_RE.exec(l);
     if (!m) continue;
-    const rules = new Set((m[2] ?? '').split(',').map((r) => r.trim()).filter((r) => r.includes('/')));
-    const entry = { all: rules.size === 0, rules, reason: m[3]?.trim().replace(/\s*(?:\*\/|-->|#}}|\?>)\s*$/, '') || undefined };
+    const rules = new Set(
+      (m[2] ?? '')
+        .split(',')
+        .map((r) => r.trim())
+        .filter((r) => r.includes('/')),
+    );
+    const entry = {
+      all: rules.size === 0,
+      rules,
+      reason: m[3]?.trim().replace(/\s*(?:\*\/|-->|#}}|\?>)\s*$/, '') || undefined,
+    };
     if (m[1] === '-file') {
       if (entry.all) s.file.all = true;
       for (const r of rules) s.file.rules.add(r);
@@ -85,7 +120,11 @@ export function parseSuppressions(lines: string[]): Suppressions {
   return s;
 }
 
-function suppressedBy(s: Suppressions | undefined, ruleId: string, line?: number): { reason?: string } | null {
+function suppressedBy(
+  s: Suppressions | undefined,
+  ruleId: string,
+  line?: number,
+): { reason?: string } | null {
   if (!s) return null;
   if (s.file.all || s.file.rules.has(ruleId)) return {};
   if (line === undefined) return null;
@@ -125,7 +164,11 @@ export class FindingBuilder {
     return l;
   }
 
-  add(rule: Rule | Omit<Rule, 'check' | 'kind'>, hit: Hit, provenance: Finding['provenance'] = 'static'): Finding | null {
+  add(
+    rule: Rule | Omit<Rule, 'check' | 'kind'>,
+    hit: Hit,
+    provenance: Finding['provenance'] = 'static',
+  ): Finding | null {
     const cfg = this.project.config.rules[rule.id];
     if (cfg === 'off') return null;
     const file = hit.file;
@@ -176,7 +219,12 @@ export class FindingBuilder {
       category: rule.category,
       provenance,
       evidence: {
-        snippet: hit.snippet !== undefined ? redact(hit.snippet) : lines && line ? snippetAround(lines, line) : undefined,
+        snippet:
+          hit.snippet !== undefined
+            ? redact(hit.snippet)
+            : lines && line
+              ? snippetAround(lines, line)
+              : undefined,
         facts: hit.facts,
       },
       impact: rule.impact,
@@ -202,11 +250,17 @@ export function selectRules(rules: Rule[], opts: AnalysisOptions, config: Projec
     (r) =>
       config.rules[r.id] !== 'off' &&
       (!opts.categories?.length || opts.categories.includes(r.category)) &&
-      (!opts.rules?.length || opts.rules.some((id) => r.id === id || (id.endsWith('*') && r.id.startsWith(id.slice(0, -1))))),
+      (!opts.rules?.length ||
+        opts.rules.some((id) => r.id === id || (id.endsWith('*') && r.id.startsWith(id.slice(0, -1))))),
   );
 }
 
-export async function analyze(project: ProjectContext, allRules: Rule[], opts: AnalysisOptions = {}, builder = new FindingBuilder(project)): Promise<AnalysisResult> {
+export async function analyze(
+  project: ProjectContext,
+  allRules: Rule[],
+  opts: AnalysisOptions = {},
+  builder = new FindingBuilder(project),
+): Promise<AnalysisResult> {
   const started = performance.now();
   const rules = selectRules(allRules, opts, project.config);
   const astRules = rules.filter((r): r is AstRule => r.kind === 'ast');
@@ -229,7 +283,8 @@ export async function analyze(project: ProjectContext, allRules: Rule[], opts: A
       const lines = text.split(/\r?\n/);
       for (const rule of applicableFileRules) {
         try {
-          for (const hit of rule.check({ project, file, text, lines })) builder.add(rule, { ...hit, file: hit.file ?? file.path });
+          for (const hit of rule.check({ project, file, text, lines }))
+            builder.add(rule, { ...hit, file: hit.file ?? file.path });
         } catch (e) {
           ruleErrors.push({ rule: rule.id, file: file.path, message: (e as Error).message });
         }

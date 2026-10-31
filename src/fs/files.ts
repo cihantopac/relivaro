@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  statSync,
+} from 'node:fs';
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
 import { matchesAny } from '../core/glob.js';
@@ -107,27 +117,140 @@ const LOCKFILES = new Set([
   'gradle.lockfile',
 ]);
 
-const TEMPLATE_EXT = new Set(['.vue', '.svelte', '.html', '.htm', '.jinja', '.jinja2', '.j2', '.twig', '.hbs', '.ejs', '.erb', '.astro']);
+const TEMPLATE_EXT = new Set([
+  '.vue',
+  '.svelte',
+  '.html',
+  '.htm',
+  '.jinja',
+  '.jinja2',
+  '.j2',
+  '.twig',
+  '.hbs',
+  '.ejs',
+  '.erb',
+  '.astro',
+]);
 const DOC_EXT = new Set(['.md', '.mdx', '.rst', '.adoc']);
-const CONFIG_EXT = new Set(['.json', '.jsonc', '.yml', '.yaml', '.toml', '.ini', '.xml', '.conf', '.properties', '.cfg', '.gradle', '.kts', '.tf', '.hcl', '.plist', '.neon']);
+const CONFIG_EXT = new Set([
+  '.json',
+  '.jsonc',
+  '.yml',
+  '.yaml',
+  '.toml',
+  '.ini',
+  '.xml',
+  '.conf',
+  '.properties',
+  '.cfg',
+  '.gradle',
+  '.kts',
+  '.tf',
+  '.hcl',
+  '.plist',
+  '.neon',
+]);
 const OTHER_TEXT_EXT = new Set([
-  '.sql', '.sh', '.bash', '.zsh', '.ps1', '.rb', '.go', '.rs', '.java', '.kt', '.swift', '.dart', '.cs', '.scala',
-  '.c', '.h', '.cpp', '.hpp', '.m', '.mm', '.lua', '.ex', '.exs', '.css', '.scss', '.less', '.txt', '.graphql', '.gql', '.proto', '.r',
+  '.sql',
+  '.sh',
+  '.bash',
+  '.zsh',
+  '.ps1',
+  '.rb',
+  '.go',
+  '.rs',
+  '.java',
+  '.kt',
+  '.swift',
+  '.dart',
+  '.cs',
+  '.scala',
+  '.c',
+  '.h',
+  '.cpp',
+  '.hpp',
+  '.m',
+  '.mm',
+  '.lua',
+  '.ex',
+  '.exs',
+  '.css',
+  '.scss',
+  '.less',
+  '.txt',
+  '.graphql',
+  '.gql',
+  '.proto',
+  '.r',
 ]);
 
 const BINARY_EXT = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.webp', '.avif', '.ico', '.icns', '.bmp', '.tiff', '.psd', '.pdf', '.zip', '.gz',
-  '.tgz', '.bz2', '.xz', '.7z', '.rar', '.jar', '.war', '.class', '.so', '.dylib', '.dll', '.exe', '.bin', '.wasm',
-  '.woff', '.woff2', '.ttf', '.otf', '.eot', '.mp3', '.mp4', '.mov', '.webm', '.wav', '.ogg', '.flac', '.mkv',
-  '.sqlite', '.db', '.lockb', '.pyc', '.o', '.a', '.ipa', '.apk', '.aab', '.dmg', '.pkg', '.heic', '.riv', '.lottie',
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.gif',
+  '.webp',
+  '.avif',
+  '.ico',
+  '.icns',
+  '.bmp',
+  '.tiff',
+  '.psd',
+  '.pdf',
+  '.zip',
+  '.gz',
+  '.tgz',
+  '.bz2',
+  '.xz',
+  '.7z',
+  '.rar',
+  '.jar',
+  '.war',
+  '.class',
+  '.so',
+  '.dylib',
+  '.dll',
+  '.exe',
+  '.bin',
+  '.wasm',
+  '.woff',
+  '.woff2',
+  '.ttf',
+  '.otf',
+  '.eot',
+  '.mp3',
+  '.mp4',
+  '.mov',
+  '.webm',
+  '.wav',
+  '.ogg',
+  '.flac',
+  '.mkv',
+  '.sqlite',
+  '.db',
+  '.lockb',
+  '.pyc',
+  '.o',
+  '.a',
+  '.ipa',
+  '.apk',
+  '.aab',
+  '.dmg',
+  '.pkg',
+  '.heic',
+  '.riv',
+  '.lottie',
 ]);
 
-const TEST_DIR = /(?:^|\/)(?:tests?|__tests__|__mocks__|spec|specs|e2e|cypress|playwright|fixtures?|testdata|test-data|examples?|samples?|demo|stubs?|benchmarks?|bench)\//i;
-const TEST_FILE = /(?:\.(?:test|spec|e2e|cy|stories)\.[cm]?[jt]sx?$|_test\.(?:py|go|dart)$|(?:^|\/)test_[^/]+\.py$|(?:^|\/)conftest\.py$|Test\.php$|_spec\.rb$)/i;
+const TEST_DIR =
+  /(?:^|\/)(?:tests?|__tests__|__mocks__|spec|specs|e2e|cypress|playwright|fixtures?|testdata|test-data|examples?|samples?|demo|stubs?|benchmarks?|bench)\//i;
+const TEST_FILE =
+  /(?:\.(?:test|spec|e2e|cy|stories)\.[cm]?[jt]sx?$|_test\.(?:py|go|dart)$|(?:^|\/)test_[^/]+\.py$|(?:^|\/)conftest\.py$|Test\.php$|_spec\.rb$)/i;
 
 const SENSITIVE_ENV = /^\.env(?:\..+)?$/i;
 const ENV_TEMPLATE = /^\.env\.(?:example|sample|template|dist|defaults|schema)$|^\.env\..*\.example$/i;
-const KEY_FILE = /(?:\.(?:pem|key|p12|pfx|jks|keystore|kdbx|ppk|asc|gpg)$|^id_(?:rsa|dsa|ecdsa|ed25519)$|^\.(?:netrc|pypirc|htpasswd)$|^credentials(?:\.json)?$)/i;
+const KEY_FILE =
+  /(?:\.(?:pem|key|p12|pfx|jks|keystore|kdbx|ppk|asc|gpg)$|^id_(?:rsa|dsa|ecdsa|ed25519)$|^\.(?:netrc|pypirc|htpasswd)$|^credentials(?:\.json)?$)/i;
 
 export function isEnvTemplate(path: string): boolean {
   return ENV_TEMPLATE.test(basename(path));
@@ -145,9 +268,18 @@ export function classify(path: string): { kind: FileKind; language?: Language } 
   const lower = b.toLowerCase();
   const ext = extname(lower);
   if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path)) return { kind: 'workflow' };
-  if (/^(?:\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.yml|\.circleci\/config\.yml|Jenkinsfile)$/.test(path))
+  if (
+    /^(?:\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.yml|\.circleci\/config\.yml|Jenkinsfile)$/.test(
+      path,
+    )
+  )
     return { kind: 'config' };
-  if (lower === 'dockerfile' || lower.startsWith('dockerfile.') || lower.endsWith('.dockerfile') || lower === 'containerfile')
+  if (
+    lower === 'dockerfile' ||
+    lower.startsWith('dockerfile.') ||
+    lower.endsWith('.dockerfile') ||
+    lower === 'containerfile'
+  )
     return { kind: 'dockerfile' };
   if (/^(?:docker-)?compose(?:\.[\w-]+)?\.ya?ml$/.test(lower)) return { kind: 'compose' };
   if (SENSITIVE_ENV.test(b) || isEnvTemplate(path)) return { kind: 'env' };
@@ -166,9 +298,18 @@ export function classify(path: string): { kind: FileKind; language?: Language } 
   const language = LANGUAGE_BY_EXT[ext];
   if (language) return { kind: 'source', language };
   if (TEMPLATE_EXT.has(ext)) return { kind: 'template' };
-  if (DOC_EXT.has(ext) || /^(?:readme|license|licence|changelog|contributing|security|notice|code_of_conduct)(?:\..*)?$/i.test(b))
+  if (
+    DOC_EXT.has(ext) ||
+    /^(?:readme|license|licence|changelog|contributing|security|notice|code_of_conduct)(?:\..*)?$/i.test(b)
+  )
     return { kind: 'doc' };
-  if (CONFIG_EXT.has(ext) || /^\.[\w.-]+rc$/.test(b) || b === '.gitignore' || b === '.dockerignore' || b === 'Procfile')
+  if (
+    CONFIG_EXT.has(ext) ||
+    /^\.[\w.-]+rc$/.test(b) ||
+    b === '.gitignore' ||
+    b === '.dockerignore' ||
+    b === 'Procfile'
+  )
     return { kind: 'config' };
   if (OTHER_TEXT_EXT.has(ext)) return { kind: 'source' };
   return { kind: 'other' };
@@ -205,7 +346,14 @@ export class FileSet {
   readonly realRoot: string;
   readonly files: ProjectFile[];
   readonly gitRepo: boolean;
-  readonly skipped: SkipStats = { excluded: 0, binary: 0, tooLarge: 0, sensitive: 0, symlinkOutside: 0, generated: 0 };
+  readonly skipped: SkipStats = {
+    excluded: 0,
+    binary: 0,
+    tooLarge: 0,
+    sensitive: 0,
+    symlinkOutside: 0,
+    generated: 0,
+  };
   /** Sensitive files present on disk that were not read (path only). */
   readonly sensitiveUnread: { path: string; ignored: boolean | undefined }[] = [];
   private readonly cache = new Map<string, string | null>();
@@ -361,9 +509,15 @@ export function isInside(root: string, target: string): boolean {
 }
 
 /** Resolves a root-relative path and refuses anything (including symlinks) that leaves the root. */
-export function safeResolve(realRoot: string, relPath: string): string {
+export function safeResolve(root: string, relPath: string): string {
   if (isAbsolute(relPath) || relPath.split(/[\\/]/).includes('..'))
     throw new RelivaroError('PATH_OUTSIDE_ROOT', `Path escapes the project root: ${relPath}`);
+  let realRoot = root;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    /* root does not exist yet */
+  }
   const abs = join(realRoot, relPath);
   let real: string;
   try {
@@ -371,7 +525,8 @@ export function safeResolve(realRoot: string, relPath: string): string {
   } catch {
     real = abs;
   }
-  if (!isInside(realRoot, real)) throw new RelivaroError('PATH_OUTSIDE_ROOT', `Path escapes the project root: ${relPath}`);
+  if (!isInside(realRoot, real))
+    throw new RelivaroError('PATH_OUTSIDE_ROOT', `Path escapes the project root: ${relPath}`);
   return real;
 }
 
@@ -391,11 +546,16 @@ function isMinified(text: string, path: string): boolean {
 /** Hardened git invocation: repository-local config cannot run commands (fsmonitor, hooks, pagers). */
 export function gitArgs(args: string[]): string[] {
   return [
-    '-c', 'core.fsmonitor=false',
-    '-c', 'core.hooksPath=/dev/null',
-    '-c', 'core.pager=cat',
-    '-c', 'core.untrackedCache=false',
-    '-c', 'protocol.file.allow=never',
+    '-c',
+    'core.fsmonitor=false',
+    '-c',
+    'core.hooksPath=/dev/null',
+    '-c',
+    'core.pager=cat',
+    '-c',
+    'core.untrackedCache=false',
+    '-c',
+    'protocol.file.allow=never',
     '--no-optional-locks',
     ...args,
   ];
@@ -432,13 +592,22 @@ function gitListFiles(root: string): { path: string; tracked: boolean }[] | null
   const top = runGit(root, ['rev-parse', '--show-toplevel']);
   if (top === null) return null;
   const tracked = runGit(root, ['ls-files', '-z', '--cached', '--full-name', '--', '.']);
-  const untracked = runGit(root, ['ls-files', '-z', '--others', '--exclude-standard', '--full-name', '--', '.']);
+  const untracked = runGit(root, [
+    'ls-files',
+    '-z',
+    '--others',
+    '--exclude-standard',
+    '--full-name',
+    '--',
+    '.',
+  ]);
   if (tracked === null || untracked === null) return null;
   // ls-files --full-name is relative to the top-level; convert to paths relative to the analysed root.
   const topDir = realpathSync(top.trim());
   const realRoot = realpathSync(root);
   const prefix = relative(topDir, realRoot).split(sep).join('/');
-  const strip = (p: string) => (prefix ? (p.startsWith(`${prefix}/`) ? p.slice(prefix.length + 1) : null) : p);
+  const strip = (p: string) =>
+    prefix ? (p.startsWith(`${prefix}/`) ? p.slice(prefix.length + 1) : null) : p;
   const out: { path: string; tracked: boolean }[] = [];
   const seen = new Set<string>();
   for (const [list, isTracked] of [
@@ -458,7 +627,16 @@ function gitListFiles(root: string): { path: string; tracked: boolean }[] | null
 
 /** Sensitive files that exist but are git-ignored (reported as present-and-ignored, never read). */
 function gitIgnoredSensitive(root: string): string[] {
-  const out = runGit(root, ['ls-files', '-z', '--others', '--ignored', '--exclude-standard', '--directory', '--', '.']);
+  const out = runGit(root, [
+    'ls-files',
+    '-z',
+    '--others',
+    '--ignored',
+    '--exclude-standard',
+    '--directory',
+    '--',
+    '.',
+  ]);
   if (!out) return [];
   return out
     .split('\0')

@@ -39,8 +39,18 @@ function npmLock(file: string, text: string): LockfileInfo {
         const name = p.name ?? path.slice(path.lastIndexOf('node_modules/') + 'node_modules/'.length);
         if (!p.version || !name) continue;
         const resolved: string = p.resolved ?? '';
-        const nonRegistry = resolved && !/^https:\/\/registry\.(?:npmjs\.org|yarnpkg\.com)\//.test(resolved) ? resolved.replace(/\/\/[^@/]+@/, '//') : undefined;
-        info.packages.push({ name, version: p.version, ecosystem: 'npm', dev: !!p.dev, hasInstallScript: !!p.hasInstallScript, nonRegistry });
+        const nonRegistry =
+          resolved && !/^https:\/\/registry\.(?:npmjs\.org|yarnpkg\.com)\//.test(resolved)
+            ? resolved.replace(/\/\/[^@/]+@/, '//')
+            : undefined;
+        info.packages.push({
+          name,
+          version: p.version,
+          ecosystem: 'npm',
+          dev: !!p.dev,
+          hasInstallScript: !!p.hasInstallScript,
+          nonRegistry,
+        });
       }
     } else if (j.dependencies) {
       const visit = (deps: Record<string, any>) => {
@@ -65,7 +75,8 @@ function pnpmLock(file: string, text: string): LockfileInfo {
     const root = new Set<string>();
     const importers = y.importers ?? { '.': y };
     for (const imp of Object.values(importers) as any[])
-      for (const f of ['dependencies', 'devDependencies', 'optionalDependencies']) for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+      for (const f of ['dependencies', 'devDependencies', 'optionalDependencies'])
+        for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
     info.rootDeps = root;
     for (const [key, p] of Object.entries((y.packages ?? {}) as Record<string, any>)) {
       // v5/6: "/name@1.2.3" or "/name/1.2.3"; v9: "name@1.2.3" (peer suffix in parentheses).
@@ -82,7 +93,13 @@ function pnpmLock(file: string, text: string): LockfileInfo {
         version = k.slice(slash + 1);
       }
       if (!name || !version || !/^\d/.test(version)) continue;
-      info.packages.push({ name, version, ecosystem: 'npm', dev: p?.dev === true, hasInstallScript: p?.requiresBuild === true });
+      info.packages.push({
+        name,
+        version,
+        ecosystem: 'npm',
+        dev: p?.dev === true,
+        hasInstallScript: p?.requiresBuild === true,
+      });
     }
   } catch (e) {
     info.error = (e as Error).message;
@@ -117,7 +134,12 @@ function composerLock(file: string, text: string): LockfileInfo {
     ] as const)
       for (const p of list)
         if (p?.name && p.version)
-          info.packages.push({ name: p.name, version: String(p.version).replace(/^v/, ''), ecosystem: 'Packagist', dev });
+          info.packages.push({
+            name: p.name,
+            version: String(p.version).replace(/^v/, ''),
+            ecosystem: 'Packagist',
+            dev,
+          });
   } catch (e) {
     info.error = (e as Error).message;
   }
@@ -127,10 +149,17 @@ function composerLock(file: string, text: string): LockfileInfo {
 function tomlPackages(file: string, text: string, ecosystem: Ecosystem): LockfileInfo {
   const info: LockfileInfo = { file, ecosystem, packages: [] };
   try {
-    const t = parseToml(text) as { package?: { name?: string; version?: string; category?: string; source?: unknown }[] };
+    const t = parseToml(text) as {
+      package?: { name?: string; version?: string; category?: string; source?: unknown }[];
+    };
     for (const p of t.package ?? [])
       if (p.name && p.version)
-        info.packages.push({ name: ecosystem === 'PyPI' ? p.name.toLowerCase() : p.name, version: p.version, ecosystem, dev: p.category === 'dev' });
+        info.packages.push({
+          name: ecosystem === 'PyPI' ? p.name.toLowerCase() : p.name,
+          version: p.version,
+          ecosystem,
+          dev: p.category === 'dev',
+        });
   } catch (e) {
     info.error = (e as Error).message;
   }
@@ -146,7 +175,13 @@ function pipfileLock(file: string, text: string): LockfileInfo {
       ['develop', true],
     ] as const)
       for (const [name, p] of Object.entries(j[section] ?? {}))
-        if (p.version) info.packages.push({ name: name.toLowerCase(), version: p.version.replace(/^==/, ''), ecosystem: 'PyPI', dev });
+        if (p.version)
+          info.packages.push({
+            name: name.toLowerCase(),
+            version: p.version.replace(/^==/, ''),
+            ecosystem: 'PyPI',
+            dev,
+          });
   } catch (e) {
     info.error = (e as Error).message;
   }
@@ -158,7 +193,8 @@ export function pinnedRequirements(file: string, text: string): LockfileInfo {
   const info: LockfileInfo = { file, ecosystem: 'PyPI', packages: [] };
   for (const l of text.split(/\r?\n/)) {
     const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*==\s*([^\s;#]+)/.exec(l);
-    if (m) info.packages.push({ name: m[1]!.toLowerCase().replace(/_/g, '-'), version: m[2]!, ecosystem: 'PyPI' });
+    if (m)
+      info.packages.push({ name: m[1]!.toLowerCase().replace(/_/g, '-'), version: m[2]!, ecosystem: 'PyPI' });
   }
   return info;
 }
@@ -180,17 +216,26 @@ function goSum(file: string, text: string): LockfileInfo {
 function gemfileLock(file: string, text: string): LockfileInfo {
   const info: LockfileInfo = { file, ecosystem: 'RubyGems', packages: [] };
   const specs = /\n\s{2}specs:\n([\s\S]*?)(?:\n\S|$)/.exec(text)?.[1] ?? '';
-  for (const m of specs.matchAll(/^ {4}([\w.-]+) \(([^)]+)\)$/gm)) info.packages.push({ name: m[1]!, version: m[2]!, ecosystem: 'RubyGems' });
+  for (const m of specs.matchAll(/^ {4}([\w.-]+) \(([^)]+)\)$/gm))
+    info.packages.push({ name: m[1]!, version: m[2]!, ecosystem: 'RubyGems' });
   return info;
 }
 
 function pubspecLock(file: string, text: string): LockfileInfo {
   const info: LockfileInfo = { file, ecosystem: 'Pub', packages: [] };
   try {
-    const y = (parseYaml(text) ?? {}) as { packages?: Record<string, { version?: string; source?: string; dependency?: string }> };
+    const y = (parseYaml(text) ?? {}) as {
+      packages?: Record<string, { version?: string; source?: string; dependency?: string }>;
+    };
     for (const [name, p] of Object.entries(y.packages ?? {}))
       if (p.version && p.source !== 'sdk')
-        info.packages.push({ name, version: p.version, ecosystem: 'Pub', dev: p.dependency === 'direct dev', nonRegistry: p.source === 'git' || p.source === 'path' ? p.source : undefined });
+        info.packages.push({
+          name,
+          version: p.version,
+          ecosystem: 'Pub',
+          dev: p.dependency === 'direct dev',
+          nonRegistry: p.source === 'git' || p.source === 'path' ? p.source : undefined,
+        });
   } catch (e) {
     info.error = (e as Error).message;
   }

@@ -1,5 +1,15 @@
 import type { Language } from '../core/types.js';
-import { type CallInfo, callInfo, enclosingFunction, functionName, isJs, isLiteral, isStaticString, stringValue, walk } from '../parse/ast.js';
+import {
+  type CallInfo,
+  callInfo,
+  enclosingFunction,
+  functionName,
+  isJs,
+  isLiteral,
+  isStaticString,
+  stringValue,
+  walk,
+} from '../parse/ast.js';
 import type { Node } from '../parse/treesitter.js';
 
 export const OWASP = {
@@ -32,14 +42,24 @@ export function dynamicParts(n: Node | null | undefined, lang: Language): Node[]
     if (!x) return;
     switch (x.type) {
       case 'template_string':
-        for (const c of x.namedChildren) if (c?.type === 'template_substitution' && c.namedChildren[0]) out.push(c.namedChildren[0]);
+        for (const c of x.namedChildren)
+          if (c?.type === 'template_substitution' && c.namedChildren[0]) out.push(c.namedChildren[0]);
         return;
       case 'string':
-        if (lang === 'python') for (const c of x.namedChildren) if (c?.type === 'interpolation' && c.namedChildren[0]) out.push(c.namedChildren[0]);
+        if (lang === 'python')
+          for (const c of x.namedChildren)
+            if (c?.type === 'interpolation' && c.namedChildren[0]) out.push(c.namedChildren[0]);
         return;
       case 'encapsed_string':
       case 'heredoc':
-        for (const c of x.namedChildren) if (c && c.type !== 'string_content' && c.type !== 'escape_sequence' && !c.type.startsWith('heredoc')) out.push(c);
+        for (const c of x.namedChildren)
+          if (
+            c &&
+            c.type !== 'string_content' &&
+            c.type !== 'escape_sequence' &&
+            !c.type.startsWith('heredoc')
+          )
+            out.push(c);
         return;
       case 'binary_expression':
       case 'binary_operator': {
@@ -47,7 +67,14 @@ export function dynamicParts(n: Node | null | undefined, lang: Language): Node[]
         if (op === '+' || op === '.') {
           for (const side of [x.childForFieldName('left'), x.childForFieldName('right')]) {
             if (!side) continue;
-            if (side.type === 'binary_expression' || side.type === 'binary_operator' || side.type === 'template_string' || side.type === 'encapsed_string' || side.type === 'string') visit(side);
+            if (
+              side.type === 'binary_expression' ||
+              side.type === 'binary_operator' ||
+              side.type === 'template_string' ||
+              side.type === 'encapsed_string' ||
+              side.type === 'string'
+            )
+              visit(side);
             else if (!isLiteral(side, lang)) out.push(side);
           }
         } else if (op === '%' && lang === 'python') {
@@ -58,8 +85,13 @@ export function dynamicParts(n: Node | null | undefined, lang: Language): Node[]
       }
       case 'call': {
         const fn = x.childForFieldName('function');
-        if (lang === 'python' && fn?.type === 'attribute' && fn.childForFieldName('attribute')?.text === 'format')
-          for (const a of x.childForFieldName('arguments')?.namedChildren ?? []) if (a) out.push(a.type === 'keyword_argument' ? (a.childForFieldName('value') ?? a) : a);
+        if (
+          lang === 'python' &&
+          fn?.type === 'attribute' &&
+          fn.childForFieldName('attribute')?.text === 'format'
+        )
+          for (const a of x.childForFieldName('arguments')?.namedChildren ?? [])
+            if (a) out.push(a.type === 'keyword_argument' ? (a.childForFieldName('value') ?? a) : a);
         return;
       }
       case 'parenthesized_expression':
@@ -73,19 +105,26 @@ export function dynamicParts(n: Node | null | undefined, lang: Language): Node[]
   return out;
 }
 
-const SAFE_PART_CALL = /^(?:parseInt|parseFloat|Number|String\(\w+\.length|encodeURIComponent|escapeshellarg|escapeshellcmd|intval|floatval|int|float|shlex\.quote|quote|PDO::quote|\$\w+->quote|mysqli_real_escape_string|addslashes|esc_sql|json_encode|JSON\.stringify|count|len|abs|Math\.\w+|\(int\)|\(float\))/;
+const SAFE_PART_CALL =
+  /^(?:parseInt|parseFloat|Number|String\(\w+\.length|encodeURIComponent|escapeshellarg|escapeshellcmd|intval|floatval|int|float|shlex\.quote|quote|PDO::quote|\$\w+->quote|mysqli_real_escape_string|addslashes|esc_sql|json_encode|JSON\.stringify|count|len|abs|Math\.\w+|\(int\)|\(float\))/;
 
 /** A dynamic part is "safe" when it is a numeric literal, a constant-looking identifier, or wrapped in an escaping/casting call. */
 export function isSafePart(part: Node, lang: Language): boolean {
   const t = part.text.trim();
   if (isLiteral(part, lang)) return true;
   if (/^[A-Z][A-Z0-9_]*$/.test(t) || /^(?:self|static)::[A-Z][A-Z0-9_]*$/.test(t)) return true;
-  if (lang === 'php' && part.type === 'cast_expression' && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t)) return true;
+  if (
+    lang === 'php' &&
+    part.type === 'cast_expression' &&
+    /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t)
+  )
+    return true;
   if (SAFE_PART_CALL.test(t.replace(/\s+/g, ''))) return true;
   if (/\.(?:length|size|count)\s*$/.test(t)) return true;
   // `String(x).replace(/[^a-z0-9-]/g, '')`: allowlist filtering that removes markup and quote characters.
   if (/\.replace\(\s*\/\[\^[^\]<>"'&`]*\]\+?\/g\w*\s*,\s*(['"`])\1\s*\)$/.test(t)) return true;
-  if ((part.type === 'identifier' || part.type === 'variable_name') && boundToLiteral(part, lang)) return true;
+  if ((part.type === 'identifier' || part.type === 'variable_name') && boundToLiteral(part, lang))
+    return true;
   return false;
 }
 
@@ -94,13 +133,28 @@ export function isConstantExpression(n: Node | null | undefined, lang: Language)
   if (!n) return false;
   if (isLiteral(n, lang)) return true;
   if (n.type === 'parenthesized_expression') return isConstantExpression(n.namedChildren[0], lang);
-  if ((n.type === 'binary_expression' || n.type === 'binary_operator') && /^[.+]$/.test(n.childForFieldName('operator')?.text ?? ''))
-    return isConstantExpression(n.childForFieldName('left'), lang) && isConstantExpression(n.childForFieldName('right'), lang);
+  if (
+    (n.type === 'binary_expression' || n.type === 'binary_operator') &&
+    /^[.+]$/.test(n.childForFieldName('operator')?.text ?? '')
+  )
+    return (
+      isConstantExpression(n.childForFieldName('left'), lang) &&
+      isConstantExpression(n.childForFieldName('right'), lang)
+    );
   if (n.type === 'array' || n.type === 'list' || n.type === 'array_creation_expression')
-    return n.namedChildren.every((c) => !c || c.type === 'comment' || isConstantExpression(c.type === 'array_element_initializer' ? c.namedChildren[c.namedChildren.length - 1] : c, lang));
+    return n.namedChildren.every(
+      (c) =>
+        !c ||
+        c.type === 'comment' ||
+        isConstantExpression(
+          c.type === 'array_element_initializer' ? c.namedChildren[c.namedChildren.length - 1] : c,
+          lang,
+        ),
+    );
   if (n.type === 'call_expression') {
     const fn = n.childForFieldName('function');
-    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'join') return isConstantExpression(fn.childForFieldName('object'), lang);
+    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'join')
+      return isConstantExpression(fn.childForFieldName('object'), lang);
   }
   return false;
 }
@@ -118,9 +172,15 @@ function boundToLiteral(id: Node, lang: Language): boolean {
       if (n.type === 'variable_declarator' && n.childForFieldName('name')?.text === name) {
         assignments++;
         if (!isConstantExpression(n.childForFieldName('value'), lang)) allConstant = false;
-      } else if ((n.type === 'assignment_expression' || n.type === 'assignment' || n.type === 'augmented_assignment_expression') && n.childForFieldName('left')?.text === name) {
+      } else if (
+        (n.type === 'assignment_expression' ||
+          n.type === 'assignment' ||
+          n.type === 'augmented_assignment_expression') &&
+        n.childForFieldName('left')?.text === name
+      ) {
         assignments++;
-        if (n.type.startsWith('augmented') || !isConstantExpression(n.childForFieldName('right'), lang)) allConstant = false;
+        if (n.type.startsWith('augmented') || !isConstantExpression(n.childForFieldName('right'), lang))
+          allConstant = false;
       }
     });
     if (assignments) return allConstant;
@@ -129,7 +189,17 @@ function boundToLiteral(id: Node, lang: Language): boolean {
   return false;
 }
 
-const FUNCTION_SCOPE = new Set(['function_declaration', 'function_expression', 'arrow_function', 'method_definition', 'function_definition', 'method_declaration', 'anonymous_function', 'program', 'module']);
+const FUNCTION_SCOPE = new Set([
+  'function_declaration',
+  'function_expression',
+  'arrow_function',
+  'method_definition',
+  'function_definition',
+  'method_declaration',
+  'anonymous_function',
+  'program',
+  'module',
+]);
 
 export function unsafeDynamicParts(n: Node | null | undefined, lang: Language): Node[] {
   return dynamicParts(n, lang).filter((p) => !isSafePart(p, lang));
@@ -147,7 +217,8 @@ export function pairs(n: Node | null | undefined): { key: string; value: Node; n
       if (k && v) out.push({ key: k.text.replace(/^['"`]|['"`]$/g, ''), value: v, node: c });
     } else if (c.type === 'array_element_initializer') {
       const kids = c.namedChildren.filter((x): x is Node => !!x);
-      if (kids.length === 2) out.push({ key: kids[0]!.text.replace(/^['"]|['"]$/g, ''), value: kids[1]!, node: c });
+      if (kids.length === 2)
+        out.push({ key: kids[0]!.text.replace(/^['"]|['"]$/g, ''), value: kids[1]!, node: c });
     } else if (c.type === 'keyword_argument') {
       const k = c.childForFieldName('name');
       const v = c.childForFieldName('value');
@@ -173,16 +244,22 @@ export function purposeName(n: Node, lang: Language): string {
   let p: Node | null = n.parent;
   for (let depth = 0; p && depth < 6; depth++, p = p.parent) {
     if (p.type === 'variable_declarator') return p.childForFieldName('name')?.text ?? '';
-    if (p.type === 'assignment_expression' || p.type === 'assignment' || p.type === 'augmented_assignment_expression')
+    if (
+      p.type === 'assignment_expression' ||
+      p.type === 'assignment' ||
+      p.type === 'augmented_assignment_expression'
+    )
       return p.childForFieldName('left')?.text ?? '';
-    if (p.type === 'pair' || p.type === 'keyword_argument') return (p.childForFieldName('key') ?? p.childForFieldName('name'))?.text ?? '';
+    if (p.type === 'pair' || p.type === 'keyword_argument')
+      return (p.childForFieldName('key') ?? p.childForFieldName('name'))?.text ?? '';
     if (p.type === 'array_element_initializer') return p.namedChildren[0]?.text ?? '';
     if (p.type === 'return_statement') return functionName(enclosingFunction(p, lang)) ?? '';
   }
   return functionName(enclosingFunction(n, lang)) ?? '';
 }
 
-export const SECRET_PURPOSE = /(?:token|secret|password|passwd|otp|nonce|salt|api_?key|apikey|session|csrf|reset|verif|invite|auth|credential|private|signature)/i;
+export const SECRET_PURPOSE =
+  /(?:token|secret|password|passwd|otp|nonce|salt|api_?key|apikey|session|csrf|reset|verif|invite|auth|credential|private|signature)/i;
 
 export function isFalse(n: Node | null | undefined): boolean {
   return !!n && /^(?:false|False|FALSE|0)$/.test(n.text.trim());
@@ -196,7 +273,9 @@ export function isTrue(n: Node | null | undefined): boolean {
 export function importsModule(source: string, modules: string[]): boolean {
   return modules.some((m) => {
     const q = m.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&');
-    return new RegExp(`(?:from\\s+['"]${q}['"]|require\\(\\s*['"]${q}['"]\\s*\\)|import\\s+['"]${q}['"]|import\\(\\s*['"]${q}['"]\\s*\\))`).test(source);
+    return new RegExp(
+      `(?:from\\s+['"]${q}['"]|require\\(\\s*['"]${q}['"]\\s*\\)|import\\s+['"]${q}['"]|import\\(\\s*['"]${q}['"]\\s*\\))`,
+    ).test(source);
   });
 }
 

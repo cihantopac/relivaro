@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Language as TSLanguage, Parser, type Node, type Tree } from 'web-tree-sitter';
+import { type Node, Parser, type Tree, Language as TSLanguage } from 'web-tree-sitter';
 import type { Language } from '../core/types.js';
 
 export type { Node, Tree };

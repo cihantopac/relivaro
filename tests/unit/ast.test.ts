@@ -4,7 +4,10 @@ import { parse } from '../../src/parse/treesitter.js';
 
 describe('walk', () => {
   it('visits every node exactly once', async () => {
-    const tree = (await parse('typescript', 'export function f(fs: any) {\n  try {\n    fs.x();\n  } catch (e) {}\n}\nconst y = 2;'))!;
+    const tree = (await parse(
+      'typescript',
+      'export function f(fs: any) {\n  try {\n    fs.x();\n  } catch (e) {}\n}\nconst y = 2;',
+    ))!;
     const types: string[] = [];
     walk(tree.rootNode, (n) => {
       types.push(n.type);
@@ -31,7 +34,10 @@ describe('walk', () => {
 describe('node identity', () => {
   it('complexity counts branches inside the function root', async () => {
     const { cyclomaticComplexity } = await import('../../src/rules/quality.js');
-    const tree = (await parse('typescript', 'function f(a, b) { if (a) { return 1; } else if (b && a) { return 2; } for (;;) {} return a ? 1 : 2; }'))!;
+    const tree = (await parse(
+      'typescript',
+      'function f(a, b) { if (a) { return 1; } else if (b && a) { return 2; } for (;;) {} return a ? 1 : 2; }',
+    ))!;
     const fn = collect(tree.rootNode, 'function_declaration')[0]!;
     // 1 + if + else-if + && + for + ternary
     expect(cyclomaticComplexity(fn, 'typescript')).toBe(6);
@@ -39,10 +45,16 @@ describe('node identity', () => {
 
   it('tracks taint through local variables in PHP and Python functions', async () => {
     const { taintedNames } = await import('../../src/parse/ast.js');
-    const php = (await parse('php', '<?php function f($request) { $name = $request->input("n"); $q = "x" . $name; return $q; }'))!;
+    const php = (await parse(
+      'php',
+      '<?php function f($request) { $name = $request->input("n"); $q = "x" . $name; return $q; }',
+    ))!;
     const fnPhp = collect(php.rootNode, 'function_definition')[0]!;
     expect([...taintedNames(fnPhp, 'php')].sort()).toEqual(['$name', '$q']);
-    const py = (await parse('python', 'def f():\n    cmd = request.args.get("c")\n    full = "ls " + cmd\n    return full\n'))!;
+    const py = (await parse(
+      'python',
+      'def f():\n    cmd = request.args.get("c")\n    full = "ls " + cmd\n    return full\n',
+    ))!;
     const fnPy = collect(py.rootNode, 'function_definition')[0]!;
     expect([...taintedNames(fnPy, 'python')].sort()).toEqual(['cmd', 'full']);
   });

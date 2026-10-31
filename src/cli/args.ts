@@ -32,8 +32,17 @@ export interface Parsed {
 }
 
 export const GLOBAL_OPTIONS: OptSpec[] = [
-  { name: 'json', type: 'boolean', description: 'Print machine-readable JSON to stdout (errors as JSON on stderr).' },
-  { name: 'quiet', type: 'boolean', short: 'q', description: 'Only print the essential result (no progress).' },
+  {
+    name: 'json',
+    type: 'boolean',
+    description: 'Print machine-readable JSON to stdout (errors as JSON on stderr).',
+  },
+  {
+    name: 'quiet',
+    type: 'boolean',
+    short: 'q',
+    description: 'Only print the essential result (no progress).',
+  },
   { name: 'no-color', type: 'boolean', description: 'Disable colored output (also honours NO_COLOR).' },
   { name: 'help', type: 'boolean', short: 'h', description: 'Show help for the command.' },
 ];
@@ -62,7 +71,12 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
         opts[name.slice(3)] = false;
         continue;
       }
-      if (!spec2) throw new RelivaroError('USAGE', `Unknown option --${name} for "${spec.name}".`, `Run \`relivaro ${spec.name} --help\`.`);
+      if (!spec2)
+        throw new RelivaroError(
+          'USAGE',
+          `Unknown option --${name} for "${spec.name}".`,
+          `Run \`relivaro ${spec.name} --help\`.`,
+        );
     } else if (/^-[a-zA-Z]$/.test(a)) {
       spec2 = byShort.get(a.slice(1));
       if (!spec2) throw new RelivaroError('USAGE', `Unknown option ${a} for "${spec.name}".`);
@@ -71,23 +85,45 @@ export function parseArgs(argv: string[], spec: CommandSpec): Parsed {
       continue;
     }
     if (spec2.type === 'boolean') {
-      if (inline !== undefined && !/^(?:true|false|1|0)$/.test(inline)) throw new RelivaroError('USAGE', `--${spec2.name} is a flag and takes no value.`);
+      if (inline !== undefined && !/^(?:true|false|1|0)$/.test(inline))
+        throw new RelivaroError('USAGE', `--${spec2.name} is a flag and takes no value.`);
       opts[spec2.name] = inline === undefined ? true : /^(?:true|1)$/.test(inline);
       continue;
     }
     const value = inline ?? argv[++i];
-    if (value === undefined || (inline === undefined && value.startsWith('--'))) throw new RelivaroError('USAGE', `--${spec2.name} requires a value${spec2.value ? ` ${spec2.value}` : ''}.`);
+    if (value === undefined || (inline === undefined && value.startsWith('--')))
+      throw new RelivaroError(
+        'USAGE',
+        `--${spec2.name} requires a value${spec2.value ? ` ${spec2.value}` : ''}.`,
+      );
     if (spec2.type === 'number') {
       const n = Number(value);
-      if (!Number.isFinite(n)) throw new RelivaroError('USAGE', `--${spec2.name} expects a number, got "${value}".`);
+      if (!Number.isFinite(n))
+        throw new RelivaroError('USAGE', `--${spec2.name} expects a number, got "${value}".`);
       opts[spec2.name] = n;
     } else if (spec2.type === 'list') {
-      const prev = Array.isArray(opts[spec2.name]) && opts[spec2.name] !== spec2.default ? (opts[spec2.name] as string[]) : [];
-      const items = value.split(',').map((x) => x.trim()).filter(Boolean);
-      if (spec2.choices) for (const it of items) if (!spec2.choices.includes(it)) throw new RelivaroError('USAGE', `--${spec2.name}: "${it}" is not one of ${spec2.choices.join(', ')}.`);
+      const prev =
+        Array.isArray(opts[spec2.name]) && opts[spec2.name] !== spec2.default
+          ? (opts[spec2.name] as string[])
+          : [];
+      const items = value
+        .split(',')
+        .map((x) => x.trim())
+        .filter(Boolean);
+      if (spec2.choices)
+        for (const it of items)
+          if (!spec2.choices.includes(it))
+            throw new RelivaroError(
+              'USAGE',
+              `--${spec2.name}: "${it}" is not one of ${spec2.choices.join(', ')}.`,
+            );
       opts[spec2.name] = [...prev, ...items];
     } else {
-      if (spec2.choices && !spec2.choices.includes(value)) throw new RelivaroError('USAGE', `--${spec2.name} must be one of ${spec2.choices.join(', ')} (got "${value}").`);
+      if (spec2.choices && !spec2.choices.includes(value))
+        throw new RelivaroError(
+          'USAGE',
+          `--${spec2.name} must be one of ${spec2.choices.join(', ')} (got "${value}").`,
+        );
       opts[spec2.name] = value;
     }
   }
@@ -102,7 +138,9 @@ export function helpText(spec: CommandSpec): string {
     lines.push('Options:');
     for (const o of opts) {
       const flag = `${o.short ? `-${o.short}, ` : '    '}--${o.name}${o.type === 'boolean' ? '' : ` ${o.value ?? `<${o.type}>`}`}`;
-      lines.push(`  ${flag.padEnd(34)} ${o.description}${o.default !== undefined && o.type !== 'boolean' ? ` (default: ${o.default})` : ''}`);
+      lines.push(
+        `  ${flag.padEnd(34)} ${o.description}${o.default !== undefined && o.type !== 'boolean' ? ` (default: ${o.default})` : ''}`,
+      );
     }
     lines.push('');
   }

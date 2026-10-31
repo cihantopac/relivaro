@@ -118,7 +118,8 @@ function redact(text) {
   for (const p of SECRET_PATTERNS) {
     p.regex.lastIndex = 0;
     out2 = out2.replace(p.regex, (match, ...groups) => {
-      if (p.group === 0) return p.id === "private-key" ? "-----BEGIN [REDACTED] PRIVATE KEY-----" : maskSecret(match);
+      if (p.group === 0)
+        return p.id === "private-key" ? "-----BEGIN [REDACTED] PRIVATE KEY-----" : maskSecret(match);
       const value = groups[p.group - 1];
       if (typeof value !== "string" || value.length === 0) return match;
       if (p.minEntropy && shannonEntropy(value) < p.minEntropy) return match;
@@ -144,7 +145,13 @@ var init_secrets = __esm({
         group: 0,
         severity: "critical"
       },
-      { id: "aws-access-key", name: "AWS access key id", regex: /\b((?:AKIA|ASIA)[0-9A-Z]{16})\b/g, group: 1, severity: "high" },
+      {
+        id: "aws-access-key",
+        name: "AWS access key id",
+        regex: /\b((?:AKIA|ASIA)[0-9A-Z]{16})\b/g,
+        group: 1,
+        severity: "high"
+      },
       {
         id: "aws-secret-key",
         name: "AWS secret access key",
@@ -153,10 +160,34 @@ var init_secrets = __esm({
         severity: "critical",
         minEntropy: 4
       },
-      { id: "github-token", name: "GitHub token", regex: /\b((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255})\b/g, group: 1, severity: "critical" },
-      { id: "github-fine-grained", name: "GitHub fine-grained token", regex: /\b(github_pat_[A-Za-z0-9_]{82})\b/g, group: 1, severity: "critical" },
-      { id: "gitlab-token", name: "GitLab token", regex: /\b(glpat-[A-Za-z0-9_-]{20,})\b/g, group: 1, severity: "critical" },
-      { id: "slack-token", name: "Slack token", regex: /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g, group: 1, severity: "high" },
+      {
+        id: "github-token",
+        name: "GitHub token",
+        regex: /\b((?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{36,255})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "github-fine-grained",
+        name: "GitHub fine-grained token",
+        regex: /\b(github_pat_[A-Za-z0-9_]{82})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "gitlab-token",
+        name: "GitLab token",
+        regex: /\b(glpat-[A-Za-z0-9_-]{20,})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "slack-token",
+        name: "Slack token",
+        regex: /\b(xox[baprs]-[A-Za-z0-9-]{10,})\b/g,
+        group: 1,
+        severity: "high"
+      },
       {
         id: "slack-webhook",
         name: "Slack webhook URL",
@@ -164,12 +195,48 @@ var init_secrets = __esm({
         group: 1,
         severity: "high"
       },
-      { id: "stripe-live-key", name: "Stripe live secret key", regex: /\b((?:sk|rk)_live_[A-Za-z0-9]{20,})\b/g, group: 1, severity: "critical" },
-      { id: "stripe-test-key", name: "Stripe test secret key", regex: /\b((?:sk|rk)_test_[A-Za-z0-9]{20,})\b/g, group: 1, severity: "low" },
-      { id: "google-api-key", name: "Google API key", regex: /\b(AIza[0-9A-Za-z_-]{35})\b/g, group: 1, severity: "medium" },
-      { id: "google-oauth-secret", name: "Google OAuth client secret", regex: /\b(GOCSPX-[A-Za-z0-9_-]{28})\b/g, group: 1, severity: "high" },
-      { id: "npm-token", name: "npm access token", regex: /\b(npm_[A-Za-z0-9]{36})\b/g, group: 1, severity: "critical" },
-      { id: "sendgrid-key", name: "SendGrid API key", regex: /\b(SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43})\b/g, group: 1, severity: "high" },
+      {
+        id: "stripe-live-key",
+        name: "Stripe live secret key",
+        regex: /\b((?:sk|rk)_live_[A-Za-z0-9]{20,})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "stripe-test-key",
+        name: "Stripe test secret key",
+        regex: /\b((?:sk|rk)_test_[A-Za-z0-9]{20,})\b/g,
+        group: 1,
+        severity: "low"
+      },
+      {
+        id: "google-api-key",
+        name: "Google API key",
+        regex: /\b(AIza[0-9A-Za-z_-]{35})\b/g,
+        group: 1,
+        severity: "medium"
+      },
+      {
+        id: "google-oauth-secret",
+        name: "Google OAuth client secret",
+        regex: /\b(GOCSPX-[A-Za-z0-9_-]{28})\b/g,
+        group: 1,
+        severity: "high"
+      },
+      {
+        id: "npm-token",
+        name: "npm access token",
+        regex: /\b(npm_[A-Za-z0-9]{36})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "sendgrid-key",
+        name: "SendGrid API key",
+        regex: /\b(SG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43})\b/g,
+        group: 1,
+        severity: "high"
+      },
       {
         id: "openai-key",
         name: "OpenAI API key",
@@ -177,9 +244,29 @@ var init_secrets = __esm({
         group: 1,
         severity: "critical"
       },
-      { id: "anthropic-key", name: "Anthropic API key", regex: /\b(sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{80,})\b/g, group: 1, severity: "critical" },
-      { id: "twilio-key", name: "Twilio API key", regex: /\b(SK[0-9a-f]{32})\b/g, group: 1, severity: "high", minEntropy: 3.3 },
-      { id: "mailgun-key", name: "Mailgun API key", regex: /\b(key-[0-9a-f]{32})\b/g, group: 1, severity: "high", minEntropy: 3.3 },
+      {
+        id: "anthropic-key",
+        name: "Anthropic API key",
+        regex: /\b(sk-ant-(?:api|admin)\d{2}-[A-Za-z0-9_-]{80,})\b/g,
+        group: 1,
+        severity: "critical"
+      },
+      {
+        id: "twilio-key",
+        name: "Twilio API key",
+        regex: /\b(SK[0-9a-f]{32})\b/g,
+        group: 1,
+        severity: "high",
+        minEntropy: 3.3
+      },
+      {
+        id: "mailgun-key",
+        name: "Mailgun API key",
+        regex: /\b(key-[0-9a-f]{32})\b/g,
+        group: 1,
+        severity: "high",
+        minEntropy: 3.3
+      },
       {
         id: "telegram-bot-token",
         name: "Telegram bot token",
@@ -299,7 +386,17 @@ __export(files_exports, {
   safeResolve: () => safeResolve
 });
 import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, lstatSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  openSync,
+  readdirSync,
+  readFileSync,
+  readSync,
+  realpathSync,
+  statSync
+} from "node:fs";
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 function isEnvTemplate(path) {
   return ENV_TEMPLATE.test(basename(path));
@@ -314,7 +411,9 @@ function classify(path) {
   const lower = b.toLowerCase();
   const ext = extname(lower);
   if (/^\.github\/workflows\/[^/]+\.ya?ml$/.test(path)) return { kind: "workflow" };
-  if (/^(?:\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.yml|\.circleci\/config\.yml|Jenkinsfile)$/.test(path))
+  if (/^(?:\.gitlab-ci\.ya?ml|azure-pipelines\.ya?ml|bitbucket-pipelines\.yml|\.circleci\/config\.yml|Jenkinsfile)$/.test(
+    path
+  ))
     return { kind: "config" };
   if (lower === "dockerfile" || lower.startsWith("dockerfile.") || lower.endsWith(".dockerfile") || lower === "containerfile")
     return { kind: "dockerfile" };
@@ -355,9 +454,14 @@ function isInside(root, target) {
   const rel = relative(root, target);
   return rel === "" || !rel.startsWith("..") && !isAbsolute(rel);
 }
-function safeResolve(realRoot, relPath) {
+function safeResolve(root, relPath) {
   if (isAbsolute(relPath) || relPath.split(/[\\/]/).includes(".."))
     throw new RelivaroError("PATH_OUTSIDE_ROOT", `Path escapes the project root: ${relPath}`);
+  let realRoot = root;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+  }
   const abs = join(realRoot, relPath);
   let real;
   try {
@@ -365,7 +469,8 @@ function safeResolve(realRoot, relPath) {
   } catch {
     real = abs;
   }
-  if (!isInside(realRoot, real)) throw new RelivaroError("PATH_OUTSIDE_ROOT", `Path escapes the project root: ${relPath}`);
+  if (!isInside(realRoot, real))
+    throw new RelivaroError("PATH_OUTSIDE_ROOT", `Path escapes the project root: ${relPath}`);
   return real;
 }
 function looksBinary(buf) {
@@ -424,7 +529,15 @@ function gitListFiles(root) {
   const top = runGit(root, ["rev-parse", "--show-toplevel"]);
   if (top === null) return null;
   const tracked = runGit(root, ["ls-files", "-z", "--cached", "--full-name", "--", "."]);
-  const untracked = runGit(root, ["ls-files", "-z", "--others", "--exclude-standard", "--full-name", "--", "."]);
+  const untracked = runGit(root, [
+    "ls-files",
+    "-z",
+    "--others",
+    "--exclude-standard",
+    "--full-name",
+    "--",
+    "."
+  ]);
   if (tracked === null || untracked === null) return null;
   const topDir = realpathSync(top.trim());
   const realRoot = realpathSync(root);
@@ -447,7 +560,16 @@ function gitListFiles(root) {
   return out2;
 }
 function gitIgnoredSensitive(root) {
-  const out2 = runGit(root, ["ls-files", "-z", "--others", "--ignored", "--exclude-standard", "--directory", "--", "."]);
+  const out2 = runGit(root, [
+    "ls-files",
+    "-z",
+    "--others",
+    "--ignored",
+    "--exclude-standard",
+    "--directory",
+    "--",
+    "."
+  ]);
   if (!out2) return [];
   return out2.split("\0").filter((p) => p && !p.endsWith("/") && isSensitivePath(p) && !isExcludedPath(p)).slice(0, 200);
 }
@@ -591,9 +713,39 @@ var init_files = __esm({
       "Package.resolved",
       "gradle.lockfile"
     ]);
-    TEMPLATE_EXT = /* @__PURE__ */ new Set([".vue", ".svelte", ".html", ".htm", ".jinja", ".jinja2", ".j2", ".twig", ".hbs", ".ejs", ".erb", ".astro"]);
+    TEMPLATE_EXT = /* @__PURE__ */ new Set([
+      ".vue",
+      ".svelte",
+      ".html",
+      ".htm",
+      ".jinja",
+      ".jinja2",
+      ".j2",
+      ".twig",
+      ".hbs",
+      ".ejs",
+      ".erb",
+      ".astro"
+    ]);
     DOC_EXT = /* @__PURE__ */ new Set([".md", ".mdx", ".rst", ".adoc"]);
-    CONFIG_EXT = /* @__PURE__ */ new Set([".json", ".jsonc", ".yml", ".yaml", ".toml", ".ini", ".xml", ".conf", ".properties", ".cfg", ".gradle", ".kts", ".tf", ".hcl", ".plist", ".neon"]);
+    CONFIG_EXT = /* @__PURE__ */ new Set([
+      ".json",
+      ".jsonc",
+      ".yml",
+      ".yaml",
+      ".toml",
+      ".ini",
+      ".xml",
+      ".conf",
+      ".properties",
+      ".cfg",
+      ".gradle",
+      ".kts",
+      ".tf",
+      ".hcl",
+      ".plist",
+      ".neon"
+    ]);
     OTHER_TEXT_EXT = /* @__PURE__ */ new Set([
       ".sql",
       ".sh",
@@ -694,7 +846,14 @@ var init_files = __esm({
       realRoot;
       files;
       gitRepo;
-      skipped = { excluded: 0, binary: 0, tooLarge: 0, sensitive: 0, symlinkOutside: 0, generated: 0 };
+      skipped = {
+        excluded: 0,
+        binary: 0,
+        tooLarge: 0,
+        sensitive: 0,
+        symlinkOutside: 0,
+        generated: 0
+      };
       /** Sensitive files present on disk that were not read (path only). */
       sensitiveUnread = [];
       cache = /* @__PURE__ */ new Map();
@@ -892,7 +1051,9 @@ function enclosingLoop(n, lang) {
       const call = p.parent?.parent;
       if (isJs(lang) && call?.type === "call_expression" && p.parent?.type === "arguments") {
         const callee = call.childForFieldName("function");
-        if (callee?.type === "member_expression" && /^(?:forEach|map|flatMap|reduce|filter|some|every)$/.test(callee.childForFieldName("property")?.text ?? ""))
+        if (callee?.type === "member_expression" && /^(?:forEach|map|flatMap|reduce|filter|some|every)$/.test(
+          callee.childForFieldName("property")?.text ?? ""
+        ))
           return call;
       }
       return null;
@@ -959,7 +1120,8 @@ function callInfo(n, lang) {
   }
   const args2 = [];
   const kwargs = /* @__PURE__ */ new Map();
-  if (argsNode?.type === "template_string") return { node: n, callee, name: name2, receiver, args: [argsNode], kwargs, isNew, tagged: true };
+  if (argsNode?.type === "template_string")
+    return { node: n, callee, name: name2, receiver, args: [argsNode], kwargs, isNew, tagged: true };
   if (argsNode) {
     for (const c of argsNode.namedChildren) {
       if (!c || c.type === "comment") continue;
@@ -994,7 +1156,9 @@ function isStaticString(n, lang) {
       return !n.namedChildren.some((c) => c?.type === "template_substitution");
     case "encapsed_string":
     case "heredoc":
-      return n.namedChildren.every((c) => !c || c.type === "string_content" || c.type === "escape_sequence" || c.type === "heredoc_start" || c.type === "heredoc_end" || c.type === "heredoc_body");
+      return n.namedChildren.every(
+        (c) => !c || c.type === "string_content" || c.type === "escape_sequence" || c.type === "heredoc_start" || c.type === "heredoc_end" || c.type === "heredoc_body"
+      );
     case "nowdoc":
       return true;
     case "concatenated_string":
@@ -1020,8 +1184,11 @@ function stringValue(n, lang) {
   if (!n || !isStaticString(n, lang)) return void 0;
   if (n.type === "binary_expression" || n.type === "binary_operator")
     return (stringValue(n.childForFieldName("left"), lang) ?? "") + (stringValue(n.childForFieldName("right"), lang) ?? "");
-  if (n.type === "concatenated_string") return n.namedChildren.map((c) => stringValue(c, lang) ?? "").join("");
-  const parts2 = n.namedChildren.filter((c) => c && (c.type === "string_content" || c.type === "string_fragment" || c.type === "escape_sequence"));
+  if (n.type === "concatenated_string")
+    return n.namedChildren.map((c) => stringValue(c, lang) ?? "").join("");
+  const parts2 = n.namedChildren.filter(
+    (c) => c && (c.type === "string_content" || c.type === "string_fragment" || c.type === "escape_sequence")
+  );
   if (parts2.length) return parts2.map((c) => c.text).join("");
   return n.text.replace(/^[a-zA-Z]*(['"`]{1,3})([\s\S]*)\1$/, "$2");
 }
@@ -1036,11 +1203,13 @@ function isSourceText(text, lang) {
   return false;
 }
 function isSanitizerCall(n, lang) {
-  if (lang === "php" && n.type === "cast_expression") return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
+  if (lang === "php" && n.type === "cast_expression")
+    return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
   const info2 = CALL_TYPES[lang].has(n.type) ? callInfo(n, lang) : null;
   if (!info2) return false;
   if (SANITIZERS.has(info2.callee) || SANITIZERS.has(info2.name) || VALIDATOR_NAME.test(info2.name)) return true;
-  if (lang === "php" && /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info2.callee)) return true;
+  if (lang === "php" && /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info2.callee))
+    return true;
   return false;
 }
 function taintedNames(fn, lang) {
@@ -1053,7 +1222,8 @@ function taintedNames(fn, lang) {
       const pair = assignmentParts(n, lang);
       if (!pair) return;
       const [target, value] = pair;
-      if (value && isTaintedExpr(value, lang, tainted)) for (const name2 of boundNames(target, lang)) tainted.add(name2);
+      if (value && isTaintedExpr(value, lang, tainted))
+        for (const name2 of boundNames(target, lang)) tainted.add(name2);
     });
     if (tainted.size === before) break;
   }
@@ -1098,7 +1268,8 @@ function assignmentParts(n, lang) {
 }
 function boundNames(target, lang) {
   const out2 = [];
-  if (target.type === "identifier" || target.type === "shorthand_property_identifier_pattern") return [target.text];
+  if (target.type === "identifier" || target.type === "shorthand_property_identifier_pattern")
+    return [target.text];
   if (lang === "php" && target.type === "variable_name") return [target.text];
   walk2(target, (n) => {
     if (n.type === "identifier" || n.type === "shorthand_property_identifier_pattern" || lang === "php" && n.type === "variable_name") {
@@ -1118,11 +1289,16 @@ function isTaintedExpr(expr, lang, tainted) {
   walk2(expr, (n) => {
     if (found) return false;
     if (isSanitizerCall(n, lang)) return false;
-    if ((n.type === "binary_expression" || n.type === "comparison_operator" || n.type === "boolean_operator") && /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(n.childForFieldName("operator")?.text ?? n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ?? ""))
+    if ((n.type === "binary_expression" || n.type === "comparison_operator" || n.type === "boolean_operator") && /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(
+      n.childForFieldName("operator")?.text ?? n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ?? ""
+    ))
       return n.childForFieldName("operator")?.text === "&&" || n.childForFieldName("operator")?.text === "||" || n.childForFieldName("operator")?.text === "??" ? void 0 : false;
     if (n.type === "unary_expression" && /^!/.test(n.text)) return false;
     if (n.type === "ternary_expression" || n.type === "conditional_expression") {
-      const branches = isJs(lang) || lang === "php" ? [n.childForFieldName("consequence") ?? n.childForFieldName("body"), n.childForFieldName("alternative")] : [n.namedChildren[0], n.namedChildren[2]];
+      const branches = isJs(lang) || lang === "php" ? [
+        n.childForFieldName("consequence") ?? n.childForFieldName("body"),
+        n.childForFieldName("alternative")
+      ] : [n.namedChildren[0], n.namedChildren[2]];
       if (branches.some((b) => b && isTaintedExpr(b, lang, tainted))) found = true;
       return false;
     }
@@ -1204,10 +1380,37 @@ var init_ast = __esm({
       python: /* @__PURE__ */ new Set(["call"])
     };
     FUNCTION_TYPES = {
-      javascript: /* @__PURE__ */ new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration", "function"]),
-      typescript: /* @__PURE__ */ new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration", "function"]),
-      tsx: /* @__PURE__ */ new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "generator_function_declaration", "function"]),
-      php: /* @__PURE__ */ new Set(["function_definition", "method_declaration", "anonymous_function", "arrow_function", "anonymous_function_creation_expression"]),
+      javascript: /* @__PURE__ */ new Set([
+        "function_declaration",
+        "function_expression",
+        "arrow_function",
+        "method_definition",
+        "generator_function_declaration",
+        "function"
+      ]),
+      typescript: /* @__PURE__ */ new Set([
+        "function_declaration",
+        "function_expression",
+        "arrow_function",
+        "method_definition",
+        "generator_function_declaration",
+        "function"
+      ]),
+      tsx: /* @__PURE__ */ new Set([
+        "function_declaration",
+        "function_expression",
+        "arrow_function",
+        "method_definition",
+        "generator_function_declaration",
+        "function"
+      ]),
+      php: /* @__PURE__ */ new Set([
+        "function_definition",
+        "method_declaration",
+        "anonymous_function",
+        "arrow_function",
+        "anonymous_function_creation_expression"
+      ]),
       python: /* @__PURE__ */ new Set(["function_definition", "lambda"])
     };
     LOOP_TYPES = {
@@ -1332,16 +1535,20 @@ function dynamicParts(n, lang) {
     if (!x) return;
     switch (x.type) {
       case "template_string":
-        for (const c of x.namedChildren) if (c?.type === "template_substitution" && c.namedChildren[0]) out2.push(c.namedChildren[0]);
+        for (const c of x.namedChildren)
+          if (c?.type === "template_substitution" && c.namedChildren[0]) out2.push(c.namedChildren[0]);
         return;
       case "string":
         if (lang === "python") {
-          for (const c of x.namedChildren) if (c?.type === "interpolation" && c.namedChildren[0]) out2.push(c.namedChildren[0]);
+          for (const c of x.namedChildren)
+            if (c?.type === "interpolation" && c.namedChildren[0]) out2.push(c.namedChildren[0]);
         }
         return;
       case "encapsed_string":
       case "heredoc":
-        for (const c of x.namedChildren) if (c && c.type !== "string_content" && c.type !== "escape_sequence" && !c.type.startsWith("heredoc")) out2.push(c);
+        for (const c of x.namedChildren)
+          if (c && c.type !== "string_content" && c.type !== "escape_sequence" && !c.type.startsWith("heredoc"))
+            out2.push(c);
         return;
       case "binary_expression":
       case "binary_operator": {
@@ -1349,7 +1556,8 @@ function dynamicParts(n, lang) {
         if (op === "+" || op === ".") {
           for (const side of [x.childForFieldName("left"), x.childForFieldName("right")]) {
             if (!side) continue;
-            if (side.type === "binary_expression" || side.type === "binary_operator" || side.type === "template_string" || side.type === "encapsed_string" || side.type === "string") visit(side);
+            if (side.type === "binary_expression" || side.type === "binary_operator" || side.type === "template_string" || side.type === "encapsed_string" || side.type === "string")
+              visit(side);
             else if (!isLiteral(side, lang)) out2.push(side);
           }
         } else if (op === "%" && lang === "python") {
@@ -1361,7 +1569,8 @@ function dynamicParts(n, lang) {
       case "call": {
         const fn = x.childForFieldName("function");
         if (lang === "python" && fn?.type === "attribute" && fn.childForFieldName("attribute")?.text === "format") {
-          for (const a of x.childForFieldName("arguments")?.namedChildren ?? []) if (a) out2.push(a.type === "keyword_argument" ? a.childForFieldName("value") ?? a : a);
+          for (const a of x.childForFieldName("arguments")?.namedChildren ?? [])
+            if (a) out2.push(a.type === "keyword_argument" ? a.childForFieldName("value") ?? a : a);
         }
         return;
       }
@@ -1379,11 +1588,13 @@ function isSafePart(part, lang) {
   const t2 = part.text.trim();
   if (isLiteral(part, lang)) return true;
   if (/^[A-Z][A-Z0-9_]*$/.test(t2) || /^(?:self|static)::[A-Z][A-Z0-9_]*$/.test(t2)) return true;
-  if (lang === "php" && part.type === "cast_expression" && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t2)) return true;
+  if (lang === "php" && part.type === "cast_expression" && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t2))
+    return true;
   if (SAFE_PART_CALL.test(t2.replace(/\s+/g, ""))) return true;
   if (/\.(?:length|size|count)\s*$/.test(t2)) return true;
   if (/\.replace\(\s*\/\[\^[^\]<>"'&`]*\]\+?\/g\w*\s*,\s*(['"`])\1\s*\)$/.test(t2)) return true;
-  if ((part.type === "identifier" || part.type === "variable_name") && boundToLiteral(part, lang)) return true;
+  if ((part.type === "identifier" || part.type === "variable_name") && boundToLiteral(part, lang))
+    return true;
   return false;
 }
 function isConstantExpression(n, lang) {
@@ -1393,10 +1604,16 @@ function isConstantExpression(n, lang) {
   if ((n.type === "binary_expression" || n.type === "binary_operator") && /^[.+]$/.test(n.childForFieldName("operator")?.text ?? ""))
     return isConstantExpression(n.childForFieldName("left"), lang) && isConstantExpression(n.childForFieldName("right"), lang);
   if (n.type === "array" || n.type === "list" || n.type === "array_creation_expression")
-    return n.namedChildren.every((c) => !c || c.type === "comment" || isConstantExpression(c.type === "array_element_initializer" ? c.namedChildren[c.namedChildren.length - 1] : c, lang));
+    return n.namedChildren.every(
+      (c) => !c || c.type === "comment" || isConstantExpression(
+        c.type === "array_element_initializer" ? c.namedChildren[c.namedChildren.length - 1] : c,
+        lang
+      )
+    );
   if (n.type === "call_expression") {
     const fn = n.childForFieldName("function");
-    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "join") return isConstantExpression(fn.childForFieldName("object"), lang);
+    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "join")
+      return isConstantExpression(fn.childForFieldName("object"), lang);
   }
   return false;
 }
@@ -1414,7 +1631,8 @@ function boundToLiteral(id, lang) {
         if (!isConstantExpression(n.childForFieldName("value"), lang)) allConstant = false;
       } else if ((n.type === "assignment_expression" || n.type === "assignment" || n.type === "augmented_assignment_expression") && n.childForFieldName("left")?.text === name2) {
         assignments++;
-        if (n.type.startsWith("augmented") || !isConstantExpression(n.childForFieldName("right"), lang)) allConstant = false;
+        if (n.type.startsWith("augmented") || !isConstantExpression(n.childForFieldName("right"), lang))
+          allConstant = false;
       }
     });
     if (assignments) return allConstant;
@@ -1436,7 +1654,8 @@ function pairs(n) {
       if (k && v) out2.push({ key: k.text.replace(/^['"`]|['"`]$/g, ""), value: v, node: c });
     } else if (c.type === "array_element_initializer") {
       const kids = c.namedChildren.filter((x) => !!x);
-      if (kids.length === 2) out2.push({ key: kids[0].text.replace(/^['"]|['"]$/g, ""), value: kids[1], node: c });
+      if (kids.length === 2)
+        out2.push({ key: kids[0].text.replace(/^['"]|['"]$/g, ""), value: kids[1], node: c });
     } else if (c.type === "keyword_argument") {
       const k = c.childForFieldName("name");
       const v = c.childForFieldName("value");
@@ -1460,7 +1679,8 @@ function purposeName(n, lang) {
     if (p.type === "variable_declarator") return p.childForFieldName("name")?.text ?? "";
     if (p.type === "assignment_expression" || p.type === "assignment" || p.type === "augmented_assignment_expression")
       return p.childForFieldName("left")?.text ?? "";
-    if (p.type === "pair" || p.type === "keyword_argument") return (p.childForFieldName("key") ?? p.childForFieldName("name"))?.text ?? "";
+    if (p.type === "pair" || p.type === "keyword_argument")
+      return (p.childForFieldName("key") ?? p.childForFieldName("name"))?.text ?? "";
     if (p.type === "array_element_initializer") return p.namedChildren[0]?.text ?? "";
     if (p.type === "return_statement") return functionName(enclosingFunction(p, lang)) ?? "";
   }
@@ -1475,7 +1695,9 @@ function isTrue(n) {
 function importsModule(source, modules) {
   return modules.some((m) => {
     const q = m.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
-    return new RegExp(`(?:from\\s+['"]${q}['"]|require\\(\\s*['"]${q}['"]\\s*\\)|import\\s+['"]${q}['"]|import\\(\\s*['"]${q}['"]\\s*\\))`).test(source);
+    return new RegExp(
+      `(?:from\\s+['"]${q}['"]|require\\(\\s*['"]${q}['"]\\s*\\)|import\\s+['"]${q}['"]|import\\(\\s*['"]${q}['"]\\s*\\))`
+    ).test(source);
   });
 }
 var OWASP, API, SAFE_PART_CALL, FUNCTION_SCOPE, SECRET_PURPOSE;
@@ -1504,7 +1726,17 @@ var init_helpers = __esm({
       API10: "API10:2023 Unsafe Consumption of APIs"
     };
     SAFE_PART_CALL = /^(?:parseInt|parseFloat|Number|String\(\w+\.length|encodeURIComponent|escapeshellarg|escapeshellcmd|intval|floatval|int|float|shlex\.quote|quote|PDO::quote|\$\w+->quote|mysqli_real_escape_string|addslashes|esc_sql|json_encode|JSON\.stringify|count|len|abs|Math\.\w+|\(int\)|\(float\))/;
-    FUNCTION_SCOPE = /* @__PURE__ */ new Set(["function_declaration", "function_expression", "arrow_function", "method_definition", "function_definition", "method_declaration", "anonymous_function", "program", "module"]);
+    FUNCTION_SCOPE = /* @__PURE__ */ new Set([
+      "function_declaration",
+      "function_expression",
+      "arrow_function",
+      "method_definition",
+      "function_definition",
+      "method_declaration",
+      "anonymous_function",
+      "program",
+      "module"
+    ]);
     SECRET_PURPOSE = /(?:token|secret|password|passwd|otp|nonce|salt|api_?key|apikey|session|csrf|reset|verif|invite|auth|credential|private|signature)/i;
   }
 });
@@ -1521,10 +1753,13 @@ var init_types = __esm({
 
 // src/rules/performance.ts
 function phpQueryInLoop(c) {
-  if (/^DB::(?:table|select|selectOne|insert|update|delete|statement|scalar)$/.test(c.callee)) return c.callee;
+  if (/^DB::(?:table|select|selectOne|insert|update|delete|statement|scalar)$/.test(c.callee))
+    return c.callee;
   if (/::/.test(c.callee) && !c.node.parent?.type.includes("member_call")) {
     const scope = c.receiver ?? "";
-    if (/^[A-Z]\w*$/.test(scope) && !PHP_FACADES.test(scope) && /^(?:find|findOrFail|findMany|where\w*|first|firstWhere|all|create|firstOrCreate|updateOrCreate|count|exists|query|with|whereIn)$/.test(c.name))
+    if (/^[A-Z]\w*$/.test(scope) && !PHP_FACADES.test(scope) && /^(?:find|findOrFail|findMany|where\w*|first|firstWhere|all|create|firstOrCreate|updateOrCreate|count|exists|query|with|whereIn)$/.test(
+      c.name
+    ))
       return c.callee;
   }
   if (c.node.type === "member_call_expression" && PHP_QUERY_TERMINAL.test(c.name)) {
@@ -1548,13 +1783,15 @@ function phpQueryInLoop(c) {
 function isRequestHandler(fn, lang, source) {
   const params = parameterNames(fn, lang);
   if (params.some((p) => /^(?:req|request|res|response|reply)$/.test(p))) return true;
-  if (params.some((p) => /^(?:ctx|c|context)$/.test(p)) && /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source)) return true;
+  if (params.some((p) => /^(?:ctx|c|context)$/.test(p)) && /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source))
+    return true;
   const name2 = functionName(fn);
   if (name2 && ROUTE_EXPORT.test(name2)) return true;
   const call = fn.parent?.parent;
   if (call?.type === "call_expression") {
     const info2 = callInfo(call, lang);
-    if (info2 && /^(?:get|post|put|patch|delete|all|use|route|handle)$/.test(info2.name) && /^(?:app|router|server|fastify|api|r)$/.test(info2.receiver ?? "")) return true;
+    if (info2 && /^(?:get|post|put|patch|delete|all|use|route|handle)$/.test(info2.name) && /^(?:app|router|server|fastify|api|r)$/.test(info2.receiver ?? ""))
+      return true;
   }
   return false;
 }
@@ -1628,7 +1865,14 @@ function union(a, b) {
   return { neg: true, set: new Set([...n.set].filter((x) => !p.set.has(x))) };
 }
 function redosRisk(pattern) {
-  const newFrame = () => ({ unbounded: false, repeated: pos([]), separators: [], alternation: false, altFirst: [], atAltStart: true });
+  const newFrame = () => ({
+    unbounded: false,
+    repeated: pos([]),
+    separators: [],
+    alternation: false,
+    altFirst: [],
+    atAltStart: true
+  });
   const stack = [newFrame()];
   const isUnboundedAt = (j) => {
     const ch = pattern[j];
@@ -1638,7 +1882,8 @@ function redosRisk(pattern) {
   };
   const quantLen = (j) => {
     const ch = pattern[j];
-    if (ch === "*" || ch === "+" || ch === "?") return 1 + (pattern[j + 1] === "?" || pattern[j + 1] === "+" ? 1 : 0);
+    if (ch === "*" || ch === "+" || ch === "?")
+      return 1 + (pattern[j + 1] === "?" || pattern[j + 1] === "+" ? 1 : 0);
     if (ch === "{") {
       const m = /^\{\d*(?:,\d*)?\}/.exec(pattern.slice(j));
       return m ? m[0].length : 0;
@@ -1692,7 +1937,10 @@ function redosRisk(pattern) {
             if (fx !== void 0 && fy !== void 0 && !disjoint(fx, fy)) return true;
           }
       }
-      const frameSet = union(frame.repeated, frame.separators.reduce((acc, s) => union(acc, s), pos([])));
+      const frameSet = union(
+        frame.repeated,
+        frame.separators.reduce((acc, s) => union(acc, s), pos([]))
+      );
       if (frame.unbounded || outerUnbounded) {
         parent.unbounded = true;
         parent.repeated = union(parent.repeated, frameSet);
@@ -1772,15 +2020,25 @@ var init_performance = __esm({
           } else {
             if (/\.objects\.(?:get|create|get_or_create|update_or_create)$/.test(c.callee) || /\.objects\.[\s\S]*\.(?:first|last|count|exists|get|values_list|update|delete)$/.test(c.callee))
               what = c.callee;
-            else if (/^(?:self\.)?(?:session|db\.session|cursor|conn|connection)\.(?:execute|query|get|scalar|scalars)$/.test(c.callee)) what = c.callee;
+            else if (/^(?:self\.)?(?:session|db\.session|cursor|conn|connection)\.(?:execute|query|get|scalar|scalars)$/.test(
+              c.callee
+            ))
+              what = c.callee;
             if (what && c.node.parent?.type === "attribute") continue;
           }
           if (!what) continue;
           const key = loop.id * 31 + what.length;
           if (reported.has(key)) continue;
           reported.add(key);
-          const offline = /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(ctx.file.path) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
-          out2.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what }, ...offline ? { severity: "low", confidence: "low" } : {} });
+          const offline = /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(
+            ctx.file.path
+          ) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
+          out2.push({
+            node: c.node,
+            message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`,
+            facts: { call: what },
+            ...offline ? { severity: "low", confidence: "low" } : {}
+          });
         }
         return out2;
       }
@@ -1811,11 +2069,22 @@ var init_performance = __esm({
             if (!loadsAll) continue;
             if (/^\$(?:request|this->request|collection|items|data)\b/.test(inner.receiver ?? "")) continue;
             const fixable = c.name === "count" && c.args.length === 0;
-            out2.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to call \`${c.name}()\`.`, fixer: fixable ? "php-count-query" : null });
+            out2.push({
+              node: c.node,
+              message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to call \`${c.name}()\`.`,
+              fixer: fixable ? "php-count-query" : null
+            });
           } else if (lang === "php" && c.callee === "count" && c.args[0] && /(?:->get\(\)|::all\(\))$/.test(compact(c.args[0].text))) {
-            out2.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to count it.` });
+            out2.push({
+              node: c.node,
+              message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to count it.`
+            });
           } else if (lang === "python" && c.callee === "len" && c.args[0] && /\.objects\.(?:all|filter|exclude)\(/.test(c.args[0].text) && !/\.(?:values_list|values)\(/.test(c.args[0].text)) {
-            out2.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` evaluates the whole queryset to count it.`, fixer: "py-queryset-count" });
+            out2.push({
+              node: c.node,
+              message: `\`${compact(c.node.text).slice(0, 70)}\` evaluates the whole queryset to count it.`,
+              fixer: "py-queryset-count"
+            });
           }
         }
         if (isJs(lang))
@@ -1823,7 +2092,11 @@ var init_performance = __esm({
             if (n.type !== "member_expression" || n.childForFieldName("property")?.text !== "length") return;
             const obj = n.childForFieldName("object");
             const inner = obj?.type === "parenthesized_expression" ? obj.namedChildren[0] : null;
-            if (inner?.type === "await_expression" && /\.(?:findMany|find|findAll)\(/.test(inner.text)) out2.push({ node: n, message: `\`${compact(n.text).slice(0, 70)}\` loads all records only to count them.` });
+            if (inner?.type === "await_expression" && /\.(?:findMany|find|findAll)\(/.test(inner.text))
+              out2.push({
+                node: n,
+                message: `\`${compact(n.text).slice(0, 70)}\` loads all records only to count them.`
+              });
           });
         return out2;
       }
@@ -1847,7 +2120,8 @@ var init_performance = __esm({
         const out2 = [];
         for (const c of ctx.calls) {
           if (ctx.lang === "php") {
-            if (c.name !== "all" || !/::all$/.test(c.callee) || !/^[A-Z]\w*$/.test(c.receiver ?? "") || PHP_FACADES.test(c.receiver ?? "")) continue;
+            if (c.name !== "all" || !/::all$/.test(c.callee) || !/^[A-Z]\w*$/.test(c.receiver ?? "") || PHP_FACADES.test(c.receiver ?? ""))
+              continue;
             if (!/(?:Controller|Http\/|Livewire|Resources)/.test(ctx.file.path)) continue;
             if (c.node.parent?.type === "member_call_expression") continue;
             out2.push({ node: c.node, message: `\`${c.callee}()\` loads the whole table in request code.` });
@@ -1855,7 +2129,11 @@ var init_performance = __esm({
             const arg = c.args[0];
             if (arg && /\b(?:take|first|cursor)\s*:/.test(arg.text)) continue;
             if (arg && /\bwhere\s*:/.test(arg.text)) continue;
-            out2.push({ node: c.node, message: `\`${c.callee}()\` without \`take\` or a filter returns every row.`, confidence: "low" });
+            out2.push({
+              node: c.node,
+              message: `\`${c.callee}()\` without \`take\` or a filter returns every row.`,
+              confidence: "low"
+            });
           }
         }
         return out2;
@@ -1879,10 +2157,16 @@ var init_performance = __esm({
         if (!ctx.serverSide || /(?:^|\/)(?:cli|bin|scripts?|tools?|commands?)\//.test(ctx.file.path)) return [];
         const out2 = [];
         for (const c of ctx.calls) {
-          if (!/Sync$/.test(c.name) || !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(c.callee)) continue;
+          if (!/Sync$/.test(c.name) || !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(
+            c.callee
+          ))
+            continue;
           const fn = enclosingFunction(c.node, ctx.lang);
           if (!fn || !isRequestHandler(fn, ctx.lang, ctx.source)) continue;
-          out2.push({ node: c.node, message: `\`${c.callee}()\` blocks the event loop inside a request handler.` });
+          out2.push({
+            node: c.node,
+            message: `\`${c.callee}()\` blocks the event loop inside a request handler.`
+          });
         }
         return out2;
       }
@@ -1910,7 +2194,12 @@ var init_performance = __esm({
         const out2 = [];
         const lang = ctx.lang;
         const check = (node, pattern) => {
-          if (pattern && pattern.length < 2e3 && redosRisk(pattern)) out2.push({ node, message: `Pattern \`${pattern.slice(0, 80)}\` contains nested unbounded quantifiers.`, facts: { pattern: pattern.slice(0, 200) } });
+          if (pattern && pattern.length < 2e3 && redosRisk(pattern))
+            out2.push({
+              node,
+              message: `Pattern \`${pattern.slice(0, 80)}\` contains nested unbounded quantifiers.`,
+              facts: { pattern: pattern.slice(0, 200) }
+            });
         };
         if (isJs(lang)) {
           for (const r of collect(ctx.tree.rootNode, "regex")) check(r, r.childForFieldName("pattern")?.text);
@@ -1923,7 +2212,9 @@ var init_performance = __esm({
               check(c.node, m?.[2]);
             }
         } else {
-          for (const c of ctx.calls) if (/^re\.(?:compile|match|search|fullmatch|findall|finditer|sub|subn|split)$/.test(c.callee)) check(c.node, stringValue(c.args[0], lang));
+          for (const c of ctx.calls)
+            if (/^re\.(?:compile|match|search|fullmatch|findall|finditer|sub|subn|split)$/.test(c.callee))
+              check(c.node, stringValue(c.args[0], lang));
         }
         return out2;
       }
@@ -1950,18 +2241,30 @@ var init_performance = __esm({
           const body2 = compact(closure.text);
           for (const stmt of collect(closure, "expression_statement")) {
             const chain = compact(stmt.text);
-            const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(chain);
+            const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(
+              chain
+            );
             if (!m) continue;
             const col = m[1];
             if (/->(?:index|unique|primary|constrained|references)\(/.test(chain)) continue;
-            const indexed = new RegExp(`\\$table->(?:index|unique|primary|foreign)\\((?:\\[[^\\]]*)?['"]${col}['"]`).test(body2);
-            if (!indexed) out2.push({ node: stmt, message: `Column \`${col}\` has no index or foreign key constraint.` });
+            const indexed = new RegExp(
+              `\\$table->(?:index|unique|primary|foreign)\\((?:\\[[^\\]]*)?['"]${col}['"]`
+            ).test(body2);
+            if (!indexed)
+              out2.push({ node: stmt, message: `Column \`${col}\` has no index or foreign key constraint.` });
           }
         }
         return out2;
       }
     };
-    performanceRules = [queryInLoop, inefficientCount, unboundedQuery, syncIo, redos, missingFkIndex];
+    performanceRules = [
+      queryInLoop,
+      inefficientCount,
+      unboundedQuery,
+      syncIo,
+      redos,
+      missingFkIndex
+    ];
   }
 });
 
@@ -2003,16 +2306,25 @@ var init_quality = __esm({
         if (ctx.file.isTest) return [];
         const out2 = [];
         if (isJs(ctx.lang)) {
-          for (const n of collect(ctx.tree.rootNode, "debugger_statement")) out2.push({ node: n, message: "`debugger` statement.", fixer: "js-remove-debugger" });
+          for (const n of collect(ctx.tree.rootNode, "debugger_statement"))
+            out2.push({ node: n, message: "`debugger` statement.", fixer: "js-remove-debugger" });
         } else if (ctx.lang === "php") {
           if (/(?:^|\/)(?:config|routes\/console|database\/seeders)\//.test(ctx.file.path)) return out2;
           for (const c of ctx.calls)
             if (/^(?:dd|dump|var_dump|ray|ddd|dumps)$/.test(c.callee) || c.callee === "print_r" && c.args.length === 1 || c.callee === "var_export" && c.args.length === 1)
-              out2.push({ node: c.node, message: `\`${c.callee}()\` debug output left in code.`, fixer: c.node.parent?.type === "expression_statement" ? "php-remove-debug-call" : null });
+              out2.push({
+                node: c.node,
+                message: `\`${c.callee}()\` debug output left in code.`,
+                fixer: c.node.parent?.type === "expression_statement" ? "php-remove-debug-call" : null
+              });
         } else {
           for (const c of ctx.calls)
             if (/^(?:breakpoint|pdb\.set_trace|ipdb\.set_trace|pudb\.set_trace)$/.test(c.callee))
-              out2.push({ node: c.node, message: `\`${c.callee}()\` breakpoint left in code.`, fixer: c.node.parent?.type === "expression_statement" ? "py-remove-breakpoint" : null });
+              out2.push({
+                node: c.node,
+                message: `\`${c.callee}()\` breakpoint left in code.`,
+                fixer: c.node.parent?.type === "expression_statement" ? "py-remove-breakpoint" : null
+              });
         }
         return out2;
       }
@@ -2036,7 +2348,11 @@ var init_quality = __esm({
         for (const c of ctx.calls) {
           if (isJs(ctx.lang)) {
             if (/^(?:it|test|describe|context|suite|specify)\.only$/.test(c.callee) || /^(?:fit|fdescribe|fcontext)$/.test(c.callee))
-              out2.push({ node: c.node.childForFieldName("function") ?? c.node, message: `\`${c.callee}\` focuses the run on this test.`, fixer: /\.only$/.test(c.callee) ? "js-remove-only" : null });
+              out2.push({
+                node: c.node.childForFieldName("function") ?? c.node,
+                message: `\`${c.callee}\` focuses the run on this test.`,
+                fixer: /\.only$/.test(c.callee) ? "js-remove-only" : null
+              });
           } else if (c.name === "only" && c.args.length === 0 && /^(?:it|test|describe)\(/.test(c.node.text)) {
             out2.push({ node: c.node, message: "Pest `->only()` focuses the run on this test." });
           }
@@ -2075,13 +2391,49 @@ var init_quality = __esm({
               first ??= d;
             }
         }
-        return count ? [{ node: first, message: `${count} test(s) skipped unconditionally in this file.`, anchor: `skips:${ctx.file.path}`, facts: { count } }] : [];
+        return count ? [
+          {
+            node: first,
+            message: `${count} test(s) skipped unconditionally in this file.`,
+            anchor: `skips:${ctx.file.path}`,
+            facts: { count }
+          }
+        ] : [];
       }
     };
     DECISION_TYPES = {
-      js: /* @__PURE__ */ new Set(["if_statement", "for_statement", "for_in_statement", "while_statement", "do_statement", "switch_case", "catch_clause", "ternary_expression"]),
-      php: /* @__PURE__ */ new Set(["if_statement", "else_if_clause", "for_statement", "foreach_statement", "while_statement", "do_statement", "case_statement", "catch_clause", "conditional_expression", "match_conditional_expression"]),
-      python: /* @__PURE__ */ new Set(["if_statement", "elif_clause", "for_statement", "while_statement", "except_clause", "conditional_expression", "if_clause", "case_clause"])
+      js: /* @__PURE__ */ new Set([
+        "if_statement",
+        "for_statement",
+        "for_in_statement",
+        "while_statement",
+        "do_statement",
+        "switch_case",
+        "catch_clause",
+        "ternary_expression"
+      ]),
+      php: /* @__PURE__ */ new Set([
+        "if_statement",
+        "else_if_clause",
+        "for_statement",
+        "foreach_statement",
+        "while_statement",
+        "do_statement",
+        "case_statement",
+        "catch_clause",
+        "conditional_expression",
+        "match_conditional_expression"
+      ]),
+      python: /* @__PURE__ */ new Set([
+        "if_statement",
+        "elif_clause",
+        "for_statement",
+        "while_statement",
+        "except_clause",
+        "conditional_expression",
+        "if_clause",
+        "case_clause"
+      ])
     };
     complexity = {
       kind: "ast",
@@ -2103,7 +2455,14 @@ var init_quality = __esm({
           if (cc <= 25) continue;
           const name2 = functionName(fn) ?? "(anonymous)";
           const lines = fn.endPosition.row - fn.startPosition.row + 1;
-          out2.push({ node: fn.childForFieldName("name") ?? fn, line: fn.startPosition.row + 1, message: `\`${name2}\` has cyclomatic complexity ${cc} across ${lines} lines.`, severity: cc > 50 ? "medium" : "low", anchor: `fn:${name2}`, facts: { complexity: cc, lines } });
+          out2.push({
+            node: fn.childForFieldName("name") ?? fn,
+            line: fn.startPosition.row + 1,
+            message: `\`${name2}\` has cyclomatic complexity ${cc} across ${lines} lines.`,
+            severity: cc > 50 ? "medium" : "low",
+            anchor: `fn:${name2}`,
+            facts: { complexity: cc, lines }
+          });
         }
         return out2;
       }
@@ -2169,26 +2528,46 @@ var init_reliability = __esm({
         if (lang === "python") {
           for (const c of ctx.calls)
             if (/^requests\.(?:get|post|put|patch|delete|head|options|request)$/.test(c.callee) && !c.kwargs.has("timeout") && !c.node.text.includes("**"))
-              out2.push({ node: c.node, message: `\`${c.callee}()\` has no \`timeout\`; requests waits forever by default.`, fixer: "py-requests-timeout" });
+              out2.push({
+                node: c.node,
+                message: `\`${c.callee}()\` has no \`timeout\`; requests waits forever by default.`,
+                fixer: "py-requests-timeout"
+              });
         } else if (isJs(lang)) {
           const hasGlobalTimeout = /axios\.defaults\.timeout\s*=/.test(ctx.source);
           for (const c of ctx.calls) {
             if (c.callee === "axios.create") {
               const cfg = objectArg(c, 0);
-              if (!cfg || !pairValue(cfg, "timeout")) out2.push({ node: c.node, message: "`axios.create()` without `timeout` (axios default is no timeout).", severity: "low" });
+              if (!cfg || !pairValue(cfg, "timeout"))
+                out2.push({
+                  node: c.node,
+                  message: "`axios.create()` without `timeout` (axios default is no timeout).",
+                  severity: "low"
+                });
             } else if (ctx.serverSide && !hasGlobalTimeout && /^axios(?:\.(?:get|post|put|patch|delete|request))?$/.test(c.callee)) {
-              if (!c.args.some((a) => a.type === "object" && pairValue(a, "timeout") !== void 0)) out2.push({ node: c.node, message: `\`${c.callee}()\` without \`timeout\` in server-side code.`, severity: "low", confidence: "medium" });
+              if (!c.args.some((a) => a.type === "object" && pairValue(a, "timeout") !== void 0))
+                out2.push({
+                  node: c.node,
+                  message: `\`${c.callee}()\` without \`timeout\` in server-side code.`,
+                  severity: "low",
+                  confidence: "medium"
+                });
             }
           }
         } else if (lang === "php") {
           for (const c of ctx.calls) {
             if (c.isNew && /(?:^|\\)(?:GuzzleHttp\\)?Client$/.test(c.callee) && /Guzzle|use GuzzleHttp/.test(ctx.source)) {
               const cfg = c.args[0];
-              if (!cfg || !/['"](?:timeout|connect_timeout)['"]|RequestOptions::TIMEOUT/.test(cfg.text)) out2.push({ node: c.node, message: "Guzzle client created without `timeout` (Guzzle default is 0 = wait forever)." });
+              if (!cfg || !/['"](?:timeout|connect_timeout)['"]|RequestOptions::TIMEOUT/.test(cfg.text))
+                out2.push({
+                  node: c.node,
+                  message: "Guzzle client created without `timeout` (Guzzle default is 0 = wait forever)."
+                });
             }
             if (c.callee === "curl_init") {
               const fn = enclosingFunction(c.node, lang) ?? ctx.tree.rootNode;
-              if (!/CURLOPT_TIMEOUT|CURLOPT_CONNECTTIMEOUT/.test(fn.text)) out2.push({ node: c.node, message: "cURL handle without `CURLOPT_TIMEOUT`.", severity: "low" });
+              if (!/CURLOPT_TIMEOUT|CURLOPT_CONNECTTIMEOUT/.test(fn.text))
+                out2.push({ node: c.node, message: "cURL handle without `CURLOPT_TIMEOUT`.", severity: "low" });
             }
           }
         }
@@ -2226,9 +2605,14 @@ var init_reliability = __esm({
             if (!block) continue;
             const stmts = block.namedChildren.filter((x) => x && x.type !== "comment");
             const explained = collect(e, "comment").some((x) => x.startPosition.row !== e.startPosition.row);
-            const benign = /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError|NotImplementedError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(e.text);
+            const benign = /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError|NotImplementedError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(
+              e.text
+            );
             if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0].text.trim()) && !explained && !benign)
-              out2.push({ node: e, message: `\`${e.text.split("\n")[0].trim()}\` followed only by \`pass\` discards the error.` });
+              out2.push({
+                node: e,
+                message: `\`${e.text.split("\n")[0].trim()}\` followed only by \`pass\` discards the error.`
+              });
           }
         }
         return out2;
@@ -2272,9 +2656,11 @@ var init_reliability = __esm({
         const lang = ctx.lang;
         const PAY = /(?:paymentIntents|charges|refunds|transfers|payouts|PaymentIntent|Charge|Refund|Transfer|Payout)/;
         for (const c of ctx.calls) {
-          if (c.name !== "create" || !PAY.test(c.callee) || !/stripe|Stripe/.test(c.callee + ctx.source.slice(0, 3e3))) continue;
+          if (c.name !== "create" || !PAY.test(c.callee) || !/stripe|Stripe/.test(c.callee + ctx.source.slice(0, 3e3)))
+            continue;
           const hasKey = isJs(lang) ? c.args.length >= 2 && /idempotencyKey/.test(c.args[1].text) : lang === "php" ? c.args.length >= 2 && /idempotency_key/.test(c.args[1].text) : c.kwargs.has("idempotency_key");
-          if (!hasKey) out2.push({ node: c.node, message: `\`${c.callee}()\` is called without an idempotency key.` });
+          if (!hasKey)
+            out2.push({ node: c.node, message: `\`${c.callee}()\` is called without an idempotency key.` });
         }
         return out2;
       }
@@ -2297,7 +2683,12 @@ var init_reliability = __esm({
       check(ctx) {
         const out2 = [];
         const lang = ctx.lang;
-        const assignTypes = /* @__PURE__ */ new Set(["assignment_expression", "augmented_assignment_expression", "assignment", "augmented_assignment"]);
+        const assignTypes = /* @__PURE__ */ new Set([
+          "assignment_expression",
+          "augmented_assignment_expression",
+          "assignment",
+          "augmented_assignment"
+        ]);
         for (const n of collect(ctx.tree.rootNode, assignTypes)) {
           const left = n.childForFieldName("left");
           const right = n.childForFieldName("right");
@@ -2312,8 +2703,14 @@ var init_reliability = __esm({
           const body2 = fn.text;
           const saves = /->save\(|\.save\(|\.update\(|->update\(|\.commit\(/.test(body2);
           if (!saves) continue;
-          if (/lockForUpdate|sharedLock|select_for_update|FOR UPDATE|DB::transaction|\$transaction|transaction\.atomic|atomic\(|->increment\(|->decrement\(|F\(\s*['"]|\{\s*(?:increment|decrement)\s*:/.test(body2)) continue;
-          out2.push({ node: n, message: `\`${compact(n.text).slice(0, 60)}\` updates \`${field}\` from a previously read value without a lock or atomic update.` });
+          if (/lockForUpdate|sharedLock|select_for_update|FOR UPDATE|DB::transaction|\$transaction|transaction\.atomic|atomic\(|->increment\(|->decrement\(|F\(\s*['"]|\{\s*(?:increment|decrement)\s*:/.test(
+            body2
+          ))
+            continue;
+          out2.push({
+            node: n,
+            message: `\`${compact(n.text).slice(0, 60)}\` updates \`${field}\` from a previously read value without a lock or atomic update.`
+          });
         }
         if (isJs(lang))
           for (const c of ctx.calls) {
@@ -2326,7 +2723,11 @@ var init_reliability = __esm({
               const v = compact(p.childForFieldName("value")?.text ?? "");
               if (RMW_FIELD.test(k) && new RegExp(`\\.${k}[-+]`).test(v)) {
                 const fn = enclosingFunction(c.node, lang) ?? ctx.tree.rootNode;
-                if (!/\$transaction|FOR UPDATE/.test(fn.text)) out2.push({ node: p, message: `\`${k}\` is written as \`${v.slice(0, 40)}\` (read-then-write); use \`{ decrement: \u2026 }\`/\`{ increment: \u2026 }\`.` });
+                if (!/\$transaction|FOR UPDATE/.test(fn.text))
+                  out2.push({
+                    node: p,
+                    message: `\`${k}\` is written as \`${v.slice(0, 40)}\` (read-then-write); use \`{ decrement: \u2026 }\`/\`{ increment: \u2026 }\`.`
+                  });
               }
             }
           }
@@ -2353,7 +2754,11 @@ var init_reliability = __esm({
           const t2 = cls.text;
           const retry = /\$tries\b|\$backoff\b|function\s+retryUntil|function\s+backoff|\$maxExceptions/.test(t2);
           const timeout = /\$timeout\b|\$failOnTimeout/.test(t2);
-          if (!retry && !timeout) out2.push({ node: cls.childForFieldName("name") ?? cls, message: `Job \`${cls.childForFieldName("name")?.text}\` relies on worker defaults for retries and timeout.` });
+          if (!retry && !timeout)
+            out2.push({
+              node: cls.childForFieldName("name") ?? cls,
+              message: `Job \`${cls.childForFieldName("name")?.text}\` relies on worker defaults for retries and timeout.`
+            });
         }
         return out2;
       }
@@ -2380,27 +2785,41 @@ var init_reliability = __esm({
           if (!up) return out2;
           for (const c of ctx.calls) {
             if (c.node.startIndex < up.startIndex || c.node.endIndex > up.endIndex) continue;
-            if (/^Schema::(?:drop|dropIfExists|dropColumns|rename)$/.test(c.callee)) out2.push({ node: c.node, message: `\`${c.callee}()\` in \`up()\` removes or renames a table.` });
-            else if (/^\$table->(?:dropColumn|renameColumn|dropColumns|dropMorphs|dropTimestamps|dropSoftDeletes|dropRememberToken)$/.test(c.callee))
+            if (/^Schema::(?:drop|dropIfExists|dropColumns|rename)$/.test(c.callee))
+              out2.push({ node: c.node, message: `\`${c.callee}()\` in \`up()\` removes or renames a table.` });
+            else if (/^\$table->(?:dropColumn|renameColumn|dropColumns|dropMorphs|dropTimestamps|dropSoftDeletes|dropRememberToken)$/.test(
+              c.callee
+            ))
               out2.push({ node: c.node, message: `\`${c.callee}()\` in \`up()\` removes or renames a column.` });
           }
           for (const c of ctx.calls) {
-            if (c.callee !== "Schema::table" || c.node.startIndex < up.startIndex || c.node.endIndex > up.endIndex) continue;
+            if (c.callee !== "Schema::table" || c.node.startIndex < up.startIndex || c.node.endIndex > up.endIndex)
+              continue;
             const closure = c.args[1];
             if (!closure) continue;
             for (const stmt of collect(closure, "expression_statement")) {
               const chain = compact(stmt.text);
               const m = /^\$table->(\w+)\(/.exec(chain);
               if (!m || !LARAVEL_COLUMN.test(m[1])) continue;
-              if (/->(?:nullable|default|useCurrent|change|storedAs|virtualAs|autoIncrement)\(/.test(chain)) continue;
-              out2.push({ node: stmt, message: `\`${chain.slice(0, 70)}\` adds a NOT NULL column without a default to an existing table.`, confidence: "medium" });
+              if (/->(?:nullable|default|useCurrent|change|storedAs|virtualAs|autoIncrement)\(/.test(chain))
+                continue;
+              out2.push({
+                node: stmt,
+                message: `\`${chain.slice(0, 70)}\` adds a NOT NULL column without a default to an existing table.`,
+                confidence: "medium"
+              });
             }
           }
         } else {
           for (const c of ctx.calls)
-            if (/^migrations\.(?:RemoveField|DeleteModel|RenameField|RenameModel)$/.test(c.callee)) out2.push({ node: c.node, message: `\`${c.callee}\` drops or renames schema objects.` });
+            if (/^migrations\.(?:RemoveField|DeleteModel|RenameField|RenameModel)$/.test(c.callee))
+              out2.push({ node: c.node, message: `\`${c.callee}\` drops or renames schema objects.` });
             else if (c.callee === "migrations.AddField" && /null\s*=\s*False|models\.\w+Field\((?![^)]*(?:null=True|default=))/.test(c.node.text) && !/null\s*=\s*True|default\s*=/.test(c.node.text))
-              out2.push({ node: c.node, message: "`AddField` adds a NOT NULL column without a default.", confidence: "medium" });
+              out2.push({
+                node: c.node,
+                message: "`AddField` adds a NOT NULL column without a default.",
+                confidence: "medium"
+              });
         }
         return out2;
       }
@@ -2422,11 +2841,30 @@ var init_reliability = __esm({
         const out2 = [];
         ctx.lines.forEach((l, i2) => {
           if (/^\s*--/.test(l)) return;
-          if (/\bDROP\s+(?:TABLE|COLUMN|SCHEMA|DATABASE)\b/i.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` drops data.` });
-          else if (/\bTRUNCATE\b/i.test(l) || /\bDELETE\s+FROM\s+\S+\s*;/i.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` deletes all rows.`, severity: "high" });
-          else if (/\bRENAME\s+(?:COLUMN|TO)\b/i.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` renames a schema object (breaks running code).` });
-          else if (/\bALTER\s+COLUMN\b[^;]*\bTYPE\b/i.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` changes a column type (may rewrite/lock the table).`, severity: "low" });
-          else if (/\bADD\s+COLUMN\b[^;]*\bNOT\s+NULL\b/i.test(l) && !/\bDEFAULT\b/i.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` adds a NOT NULL column without a default.` });
+          if (/\bDROP\s+(?:TABLE|COLUMN|SCHEMA|DATABASE)\b/i.test(l))
+            out2.push({ line: i2 + 1, message: `\`${l.trim().slice(0, 80)}\` drops data.` });
+          else if (/\bTRUNCATE\b/i.test(l) || /\bDELETE\s+FROM\s+\S+\s*;/i.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: `\`${l.trim().slice(0, 80)}\` deletes all rows.`,
+              severity: "high"
+            });
+          else if (/\bRENAME\s+(?:COLUMN|TO)\b/i.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: `\`${l.trim().slice(0, 80)}\` renames a schema object (breaks running code).`
+            });
+          else if (/\bALTER\s+COLUMN\b[^;]*\bTYPE\b/i.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: `\`${l.trim().slice(0, 80)}\` changes a column type (may rewrite/lock the table).`,
+              severity: "low"
+            });
+          else if (/\bADD\s+COLUMN\b[^;]*\bNOT\s+NULL\b/i.test(l) && !/\bDEFAULT\b/i.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: `\`${l.trim().slice(0, 80)}\` adds a NOT NULL column without a default.`
+            });
         });
         return out2;
       }
@@ -2471,9 +2909,20 @@ var init_reliability = __esm({
         for (const u of serverUnits(ctx)) {
           const techs = ctx.profile.technologies.filter((t2) => t2.unit === u.path).map((t2) => t2.name);
           if (!techs.some((t2) => /^(?:Express|Fastify|Koa|NestJS|Hono|hapi|Socket\.IO)$/.test(t2))) continue;
-          const files = ctx.files.files.filter((f) => !f.isTest && /\.[cm]?[jt]s$/.test(f.path) && (u.path === "." || f.path.startsWith(`${u.path}/`)));
-          const handles = files.some((f) => /SIGTERM|enableShutdownHooks|lightship|terminus|close-with-grace|graceful/i.test(ctx.files.read(f.path) ?? ""));
-          if (!handles) out2.push({ file: u.manifests[0], message: `Server unit \`${u.path}\` (${techs.join(", ")}) has no SIGTERM handling.`, anchor: u.path });
+          const files = ctx.files.files.filter(
+            (f) => !f.isTest && /\.[cm]?[jt]s$/.test(f.path) && (u.path === "." || f.path.startsWith(`${u.path}/`))
+          );
+          const handles = files.some(
+            (f) => /SIGTERM|enableShutdownHooks|lightship|terminus|close-with-grace|graceful/i.test(
+              ctx.files.read(f.path) ?? ""
+            )
+          );
+          if (!handles)
+            out2.push({
+              file: u.manifests[0],
+              message: `Server unit \`${u.path}\` (${techs.join(", ")}) has no SIGTERM handling.`,
+              anchor: u.path
+            });
         }
         return out2;
       }
@@ -2494,10 +2943,22 @@ var init_reliability = __esm({
         const deployed = ctx.profile.containers.dockerfiles.length || ctx.profile.deploy.length;
         if (!deployed) return out2;
         for (const u of serverUnits(ctx)) {
-          if (u.frameworks.every((f) => /^(?:Next\.js|Nuxt|Astro|SvelteKit|Remix)$/.test(f)) && !ctx.profile.containers.dockerfiles.length) continue;
-          const files = ctx.files.files.filter((f) => !f.isTest && (f.kind === "source" || f.kind === "config" || f.kind === "dockerfile") && (u.path === "." || f.path.startsWith(`${u.path}/`)));
-          const has = files.some((f) => /['"`]\/?(?:api\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i.test(ctx.files.read(f.path) ?? ""));
-          if (!has) out2.push({ file: u.manifests[0], message: `Service \`${u.path}\` (${u.frameworks.join(", ") || u.kind}) has no detectable health endpoint.`, anchor: u.path });
+          if (u.frameworks.every((f) => /^(?:Next\.js|Nuxt|Astro|SvelteKit|Remix)$/.test(f)) && !ctx.profile.containers.dockerfiles.length)
+            continue;
+          const files = ctx.files.files.filter(
+            (f) => !f.isTest && (f.kind === "source" || f.kind === "config" || f.kind === "dockerfile") && (u.path === "." || f.path.startsWith(`${u.path}/`))
+          );
+          const has = files.some(
+            (f) => /['"`]\/?(?:api\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i.test(
+              ctx.files.read(f.path) ?? ""
+            )
+          );
+          if (!has)
+            out2.push({
+              file: u.manifests[0],
+              message: `Service \`${u.path}\` (${u.frameworks.join(", ") || u.kind}) has no detectable health endpoint.`,
+              anchor: u.path
+            });
         }
         return out2;
       }
@@ -2518,8 +2979,15 @@ var init_reliability = __esm({
         const out2 = [];
         for (const u of shippedUnits(ctx)) {
           if (!["web-backend", "fullstack", "mobile"].includes(u.kind)) continue;
-          const obs = ctx.profile.technologies.some((t2) => t2.unit === u.path && t2.kind === "observability" && !/^(?:pino|winston|Monolog|structlog|zap|tracing|Laravel Telescope)$/.test(t2.name));
-          if (!obs) out2.push({ file: u.manifests[0], message: `\`${u.path}\` (${u.frameworks.join(", ") || u.kind}) has no error monitoring integration.`, anchor: u.path });
+          const obs = ctx.profile.technologies.some(
+            (t2) => t2.unit === u.path && t2.kind === "observability" && !/^(?:pino|winston|Monolog|structlog|zap|tracing|Laravel Telescope)$/.test(t2.name)
+          );
+          if (!obs)
+            out2.push({
+              file: u.manifests[0],
+              message: `\`${u.path}\` (${u.frameworks.join(", ") || u.kind}) has no error monitoring integration.`,
+              anchor: u.path
+            });
         }
         return out2;
       }
@@ -2544,7 +3012,10 @@ var init_reliability = __esm({
           if (c.name !== "forEach") continue;
           const cb = c.args[0];
           if (cb && (cb.type === "arrow_function" || cb.type === "function_expression" || cb.type === "function") && /^async\b/.test(cb.text))
-            out2.push({ node: c.node, message: "`forEach` with an async callback does not wait for it or surface its errors." });
+            out2.push({
+              node: c.node,
+              message: "`forEach` with an async callback does not wait for it or surface its errors."
+            });
         }
         return out2;
       }
@@ -2564,7 +3035,8 @@ var init_reliability = __esm({
       verification: "Exercise the failing path in a test and assert an error response instead of termination.",
       check(ctx) {
         if (!ctx.serverSide) return [];
-        if (/(?:^|\/)(?:bin|scripts?|cli|commands?|console|tools?)\//.test(ctx.file.path) || /(?:^|\/)(?:cli|main|index|server)\.[cm]?[jt]s$/.test(ctx.file.path)) return [];
+        if (/(?:^|\/)(?:bin|scripts?|cli|commands?|console|tools?)\//.test(ctx.file.path) || /(?:^|\/)(?:cli|main|index|server)\.[cm]?[jt]s$/.test(ctx.file.path))
+          return [];
         const out2 = [];
         if (isJs(ctx.lang)) {
           for (const c of ctx.calls) {
@@ -2572,15 +3044,31 @@ var init_reliability = __esm({
             const fn = enclosingFunction(c.node, ctx.lang);
             if (!fn) continue;
             const params = fn.childForFieldName("parameters")?.text ?? "";
-            if (/\b(?:req|request|ctx|res|reply)\b/.test(params)) out2.push({ node: c.node, message: "`process.exit()` inside a request handler." });
+            if (/\b(?:req|request|ctx|res|reply)\b/.test(params))
+              out2.push({ node: c.node, message: "`process.exit()` inside a request handler." });
           }
         } else if (/(?:^|\/)app\/(?:Http|Services|Models|Jobs|Actions)\//.test(ctx.file.path)) {
-          for (const n of collect(ctx.tree.rootNode, "exit_statement")) out2.push({ node: n, message: "`exit`/`die` in application code bypasses the framework response lifecycle." });
+          for (const n of collect(ctx.tree.rootNode, "exit_statement"))
+            out2.push({
+              node: n,
+              message: "`exit`/`die` in application code bypasses the framework response lifecycle."
+            });
         }
         return out2;
       }
     };
-    reliabilityAstRules = [pyRequestsTimeout, swallowed, bareExcept, stripeIdempotency, readModifyWrite, laravelJob, migrationDestructive, migrationNoDown, unhandledPromise, httpNoRetry];
+    reliabilityAstRules = [
+      pyRequestsTimeout,
+      swallowed,
+      bareExcept,
+      stripeIdempotency,
+      readModifyWrite,
+      laravelJob,
+      migrationDestructive,
+      migrationNoDown,
+      unhandledPromise,
+      httpNoRetry
+    ];
     reliabilityFileRules = [sqlMigration];
     reliabilityProjectRules = [noGracefulShutdown, noHealthCheck, noErrorTracking];
   }
@@ -2591,7 +3079,8 @@ function sqlLike(n) {
   return !!n && SQL_KEYWORDS.test(n.text);
 }
 function sqlArg(c, lang) {
-  if (lang === "php" && /^(?:mysqli_query|mysqli_multi_query|mysqli_prepare|pg_query|pg_prepare)$/.test(c.callee)) return c.args[1] ?? c.args[0];
+  if (lang === "php" && /^(?:mysqli_query|mysqli_multi_query|mysqli_prepare|pg_query|pg_prepare)$/.test(c.callee))
+    return c.args[1] ?? c.args[0];
   return c.args[0];
 }
 function isChildProcessCall(c, source) {
@@ -2622,18 +3111,23 @@ function pathGuarded(arg, call, lang) {
 }
 function fixedBase(arg, lang, tainted) {
   let left = arg;
-  while (left && (left.type === "binary_expression" || left.type === "binary_operator") && /^[.+]$/.test(left.childForFieldName("operator")?.text ?? "")) left = left.childForFieldName("left");
+  while (left && (left.type === "binary_expression" || left.type === "binary_operator") && /^[.+]$/.test(left.childForFieldName("operator")?.text ?? ""))
+    left = left.childForFieldName("left");
   if (!left || left === arg) {
-    if (arg.type === "template_string" || arg.type === "encapsed_string") return /^[`"](?:\/[^/]|https?:\/\/[^/$`"{]+\/)/.test(arg.text);
+    if (arg.type === "template_string" || arg.type === "encapsed_string")
+      return /^[`"](?:\/[^/]|https?:\/\/[^/$`"{]+\/)/.test(arg.text);
     return false;
   }
-  if (isStaticString(left, lang)) return /^(?:\/(?!\/)|https?:\/\/[^/]+\/)/.test(stringValue(left, lang) ?? "");
+  if (isStaticString(left, lang))
+    return /^(?:\/(?!\/)|https?:\/\/[^/]+\/)/.test(stringValue(left, lang) ?? "");
   return !tainted(left);
 }
 function redirectValidated(arg, call) {
-  if ((arg.type === "ternary_expression" || arg.type === "conditional_expression") && REDIRECT_GUARD.test(arg.childForFieldName("condition")?.text ?? arg.namedChildren[0]?.text ?? "")) return true;
+  if ((arg.type === "ternary_expression" || arg.type === "conditional_expression") && REDIRECT_GUARD.test(arg.childForFieldName("condition")?.text ?? arg.namedChildren[0]?.text ?? ""))
+    return true;
   for (let p = call.parent; p; p = p.parent) {
-    if (p.type === "if_statement" && REDIRECT_GUARD.test(p.childForFieldName("condition")?.text ?? "")) return true;
+    if (p.type === "if_statement" && REDIRECT_GUARD.test(p.childForFieldName("condition")?.text ?? ""))
+      return true;
     if (/function|method|arrow/.test(p.type)) break;
   }
   return false;
@@ -2674,11 +3168,18 @@ var init_code = __esm({
           if (!arg || isStaticString(arg, lang)) continue;
           const parts2 = unsafeDynamicParts(arg, lang);
           if (!parts2.length && !isLiteral(arg, lang) && ctx.tainted(arg) && (lang !== "javascript" && lang !== "typescript" && lang !== "tsx" ? true : /Unsafe$|^raw$|Raw$/.test(c.name))) {
-            out2.push({ node: c.node, message: `User input is passed directly as SQL to \`${c.callee}()\`.`, severity: "high", confidence: "high", facts: { sink: c.callee, userInput: true } });
+            out2.push({
+              node: c.node,
+              message: `User input is passed directly as SQL to \`${c.callee}()\`.`,
+              severity: "high",
+              confidence: "high",
+              facts: { sink: c.callee, userInput: true }
+            });
             continue;
           }
           if (!parts2.length || !sqlLike(arg)) continue;
-          if (isJs(lang) && /^(?:get|all|run|exec|prepare)$/.test(c.name) && !/(?:db|database|sqlite|conn|connection|client|pool|knex|stmt)/i.test(c.receiver ?? "")) continue;
+          if (isJs(lang) && /^(?:get|all|run|exec|prepare)$/.test(c.name) && !/(?:db|database|sqlite|conn|connection|client|pool|knex|stmt)/i.test(c.receiver ?? ""))
+            continue;
           const tainted = parts2.some((p) => ctx.tainted(p));
           out2.push({
             node: c.node,
@@ -2717,12 +3218,18 @@ var init_code = __esm({
               if (opts && isTrue(pairValue(opts, "shell"))) arg = c.args[0];
             }
           } else if (lang === "php") {
-            if (/^(?:exec|shell_exec|system|passthru|popen|proc_open|pcntl_exec)$/.test(c.callee)) arg = c.args[0];
-            else if (c.isNew && /(?:^|\\)Process$/.test(c.callee) && c.args[0] && c.args[0].type !== "array_creation_expression") arg = c.args[0];
+            if (/^(?:exec|shell_exec|system|passthru|popen|proc_open|pcntl_exec)$/.test(c.callee))
+              arg = c.args[0];
+            else if (c.isNew && /(?:^|\\)Process$/.test(c.callee) && c.args[0] && c.args[0].type !== "array_creation_expression")
+              arg = c.args[0];
             else if (/^Process::fromShellCommandline$/.test(c.callee)) arg = c.args[0];
           } else {
-            if (/^(?:os\.system|os\.popen|commands\.getoutput|commands\.getstatusoutput|subprocess\.getoutput|subprocess\.getstatusoutput|asyncio\.create_subprocess_shell)$/.test(c.callee)) arg = c.args[0];
-            else if (/^subprocess\.(?:run|call|check_call|check_output|Popen)$/.test(c.callee) && isTrue(c.kwargs.get("shell"))) arg = c.args[0];
+            if (/^(?:os\.system|os\.popen|commands\.getoutput|commands\.getstatusoutput|subprocess\.getoutput|subprocess\.getstatusoutput|asyncio\.create_subprocess_shell)$/.test(
+              c.callee
+            ))
+              arg = c.args[0];
+            else if (/^subprocess\.(?:run|call|check_call|check_output|Popen)$/.test(c.callee) && isTrue(c.kwargs.get("shell")))
+              arg = c.args[0];
           }
           if (!arg || isStaticString(arg, lang) || arg.type === "array" || arg.type === "list") continue;
           const parts2 = unsafeDynamicParts(arg, lang);
@@ -2742,7 +3249,12 @@ var init_code = __esm({
           for (const n of collect(ctx.tree.rootNode, "shell_command_expression"))
             if (!isStaticString(n, lang) && n.namedChildren.some((x) => x && x.type !== "string_content")) {
               const tainted = ctx.tainted(n);
-              out2.push({ node: n, message: "Backtick shell execution with interpolated values.", severity: tainted ? "critical" : "medium", confidence: tainted ? "high" : "medium" });
+              out2.push({
+                node: n,
+                message: "Backtick shell execution with interpolated values.",
+                severity: tainted ? "critical" : "medium",
+                confidence: tainted ? "high" : "medium"
+              });
             }
         }
         return out2;
@@ -2768,13 +3280,17 @@ var init_code = __esm({
         for (const c of ctx.calls) {
           let arg;
           if (isJs(lang)) {
-            if ((c.callee === "eval" || c.callee === "window.eval" || c.callee === "globalThis.eval") && !c.isNew) arg = c.args[0];
+            if ((c.callee === "eval" || c.callee === "window.eval" || c.callee === "globalThis.eval") && !c.isNew)
+              arg = c.args[0];
             else if (c.callee === "Function" || c.callee === "new Function") arg = c.args[c.args.length - 1];
-            else if (/^vm\.(?:runInNewContext|runInThisContext|runInContext|compileFunction)$/.test(c.callee) || c.isNew && /^vm\.Script$/.test(c.callee)) arg = c.args[0];
-            else if (/^(?:setTimeout|setInterval)$/.test(c.callee) && c.args[0] && (c.args[0].type === "template_string" || c.args[0].type === "binary_expression" || c.args[0].type === "string")) arg = c.args[0];
+            else if (/^vm\.(?:runInNewContext|runInThisContext|runInContext|compileFunction)$/.test(c.callee) || c.isNew && /^vm\.Script$/.test(c.callee))
+              arg = c.args[0];
+            else if (/^(?:setTimeout|setInterval)$/.test(c.callee) && c.args[0] && (c.args[0].type === "template_string" || c.args[0].type === "binary_expression" || c.args[0].type === "string"))
+              arg = c.args[0];
           } else if (lang === "php") {
             if (/^(?:assert|create_function)$/.test(c.callee)) arg = c.args[0];
-            else if (/^preg_replace$/.test(c.callee) && /\/[a-zA-Z]*e[a-zA-Z]*['"]$/.test(c.args[0]?.text ?? "")) arg = c.args[1];
+            else if (/^preg_replace$/.test(c.callee) && /\/[a-zA-Z]*e[a-zA-Z]*['"]$/.test(c.args[0]?.text ?? ""))
+              arg = c.args[1];
           } else if (/^(?:eval|exec|compile)$/.test(c.callee)) arg = c.args[0];
           if (!arg || isLiteral(arg, lang)) continue;
           if (/^(?:setTimeout|setInterval)$/.test(c.callee) && isStaticString(arg, lang)) continue;
@@ -2793,7 +3309,12 @@ var init_code = __esm({
             if (first?.type === "function_call_expression") continue;
             if (/^eval\s*\(/.test(n.text) && !/^eval\s*\(\s*['"][^'"$]*['"]\s*\)/.test(n.text)) {
               const tainted = ctx.tainted(n);
-              out2.push({ node: n, message: "PHP `eval()` executes a dynamic string.", severity: tainted ? "critical" : "high", confidence: tainted ? "high" : "medium" });
+              out2.push({
+                node: n,
+                message: "PHP `eval()` executes a dynamic string.",
+                severity: tainted ? "critical" : "high",
+                confidence: tainted ? "high" : "medium"
+              });
             }
           }
         return out2;
@@ -2824,30 +3345,55 @@ var init_code = __esm({
             if (!html || isStaticString(html, lang)) continue;
             if (SANITIZE_CALL.test(html.text)) continue;
             const tainted = ctx.tainted(html);
-            if (!tainted && (/^(?:JSON\.stringify|\w*(?:[jJ]son|Ld|Schema|[sS]erializ)\w*)\(/.test(html.text) || html.type === "identifier" && !unsafeDynamicParts(html, lang).length && isSafePart(html, lang))) continue;
-            out2.push({ node: attr, message: tainted ? "User input is rendered as raw HTML via `dangerouslySetInnerHTML`." : `\`dangerouslySetInnerHTML\` renders \`${compact(html.text).slice(0, 60)}\` without sanitization.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
+            if (!tainted && (/^(?:JSON\.stringify|\w*(?:[jJ]son|Ld|Schema|[sS]erializ)\w*)\(/.test(html.text) || html.type === "identifier" && !unsafeDynamicParts(html, lang).length && isSafePart(html, lang)))
+              continue;
+            out2.push({
+              node: attr,
+              message: tainted ? "User input is rendered as raw HTML via `dangerouslySetInnerHTML`." : `\`dangerouslySetInnerHTML\` renders \`${compact(html.text).slice(0, 60)}\` without sanitization.`,
+              severity: tainted ? "high" : "medium",
+              confidence: tainted ? "high" : "low"
+            });
           }
           walk2(ctx.tree.rootNode, (n) => {
             if (n.type !== "assignment_expression") return;
             const left = n.childForFieldName("left");
             const right = n.childForFieldName("right");
-            if (left?.type !== "member_expression" || !/^(?:innerHTML|outerHTML)$/.test(left.childForFieldName("property")?.text ?? "")) return;
-            if (!right || isStaticString(right, lang) || SANITIZE_CALL.test(right.text) || right.text === "''" || right.text === '""') return;
+            if (left?.type !== "member_expression" || !/^(?:innerHTML|outerHTML)$/.test(left.childForFieldName("property")?.text ?? ""))
+              return;
+            if (!right || isStaticString(right, lang) || SANITIZE_CALL.test(right.text) || right.text === "''" || right.text === '""')
+              return;
             const tainted = ctx.tainted(right);
-            if (!tainted && (right.type === "binary_expression" || right.type === "template_string") && !unsafeDynamicParts(right, lang).length) return;
-            out2.push({ node: n, message: tainted ? "User input is assigned to `innerHTML`." : `Non-constant HTML assigned to \`${left.text}\`.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
+            if (!tainted && (right.type === "binary_expression" || right.type === "template_string") && !unsafeDynamicParts(right, lang).length)
+              return;
+            out2.push({
+              node: n,
+              message: tainted ? "User input is assigned to `innerHTML`." : `Non-constant HTML assigned to \`${left.text}\`.`,
+              severity: tainted ? "high" : "medium",
+              confidence: tainted ? "high" : "low"
+            });
           });
           for (const c of ctx.calls) {
             const arg = c.name === "insertAdjacentHTML" ? c.args[1] : /^document\.(?:write|writeln)$/.test(c.callee) ? c.args[0] : void 0;
             if (!arg || isStaticString(arg, lang) || SANITIZE_CALL.test(arg.text)) continue;
             const tainted = ctx.tainted(arg);
-            out2.push({ node: c.node, message: `\`${c.callee}()\` writes non-constant HTML.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
+            out2.push({
+              node: c.node,
+              message: `\`${c.callee}()\` writes non-constant HTML.`,
+              severity: tainted ? "high" : "medium",
+              confidence: tainted ? "high" : "low"
+            });
           }
         } else if (lang === "php") {
           for (const n of collect(ctx.tree.rootNode, /* @__PURE__ */ new Set(["echo_statement", "print_intrinsic"]))) {
             if (!ctx.tainted(n)) continue;
-            if (/htmlspecialchars|htmlentities|\be\(|strip_tags|json_encode|intval|\(int\)/.test(n.text)) continue;
-            out2.push({ node: n, message: "Request data is echoed into the response without HTML escaping.", severity: "high", confidence: "high" });
+            if (/htmlspecialchars|htmlentities|\be\(|strip_tags|json_encode|intval|\(int\)/.test(n.text))
+              continue;
+            out2.push({
+              node: n,
+              message: "Request data is echoed into the response without HTML escaping.",
+              severity: "high",
+              confidence: "high"
+            });
           }
         } else {
           for (const c of ctx.calls) {
@@ -2855,7 +3401,12 @@ var init_code = __esm({
             const arg = c.args[0];
             if (!arg || isStaticString(arg, lang)) continue;
             const tainted = ctx.tainted(arg);
-            out2.push({ node: c.node, message: `\`${c.callee}()\` marks non-constant content as safe HTML.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
+            out2.push({
+              node: c.node,
+              message: `\`${c.callee}()\` marks non-constant content as safe HTML.`,
+              severity: tainted ? "high" : "medium",
+              confidence: tainted ? "high" : "low"
+            });
           }
         }
         return out2;
@@ -2886,17 +3437,27 @@ var init_code = __esm({
         for (const c of ctx.calls) {
           const re = isJs(lang) ? HTTP_CLIENT_JS : lang === "php" ? HTTP_CLIENT_PHP : HTTP_CLIENT_PY;
           if (!re.test(c.callee)) continue;
-          if (lang === "php" && /->/.test(c.callee) && !/(?:client|guzzle|http)/i.test(c.receiver ?? "")) continue;
+          if (lang === "php" && /->/.test(c.callee) && !/(?:client|guzzle|http)/i.test(c.receiver ?? ""))
+            continue;
           let arg = c.args[0];
-          if (lang === "php" && c.callee === "curl_setopt") arg = /CURLOPT_URL/.test(c.args[1]?.text ?? "") ? c.args[2] : void 0;
+          if (lang === "php" && c.callee === "curl_setopt")
+            arg = /CURLOPT_URL/.test(c.args[1]?.text ?? "") ? c.args[2] : void 0;
           if (!arg || isStaticString(arg, lang) || hostIsFixed(arg, lang)) continue;
           if (!ctx.tainted(arg)) continue;
-          out2.push({ node: c.node, message: `Request target of \`${c.callee}()\` is derived from user input.`, facts: { sink: c.callee } });
+          out2.push({
+            node: c.node,
+            message: `Request target of \`${c.callee}()\` is derived from user input.`,
+            facts: { sink: c.callee }
+          });
         }
         if (lang === "php") {
           for (const c of ctx.calls)
             if (c.callee === "curl_setopt" && /CURLOPT_URL/.test(c.args[1]?.text ?? "") && c.args[2] && !hostIsFixed(c.args[2], lang) && ctx.tainted(c.args[2]))
-              out2.push({ node: c.node, message: "cURL URL is derived from user input.", facts: { sink: "curl_setopt" } });
+              out2.push({
+                node: c.node,
+                message: "cURL URL is derived from user input.",
+                facts: { sink: "curl_setopt" }
+              });
         }
         return out2;
       }
@@ -2925,17 +3486,36 @@ var init_code = __esm({
         for (const c of ctx.calls) {
           const re = isJs(lang) ? FS_SINK_JS : lang === "php" ? FS_SINK_PHP : FS_SINK_PY;
           if (!re.test(c.callee)) continue;
-          if (isJs(lang) && !c.receiver && !/^(?:sendFile|download)$/.test(c.name) && !importsModule(ctx.source, ["fs", "node:fs", "fs/promises", "node:fs/promises", "fs-extra"])) continue;
+          if (isJs(lang) && !c.receiver && !/^(?:sendFile|download)$/.test(c.name) && !importsModule(ctx.source, ["fs", "node:fs", "fs/promises", "node:fs/promises", "fs-extra"]))
+            continue;
           const arg = c.args[0];
           if (!arg || isStaticString(arg, lang)) continue;
           if (!ctx.tainted(arg)) continue;
           if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
           if (pathGuarded(arg, c.node, lang)) continue;
-          out2.push({ node: c.node, message: `Path passed to \`${c.callee}()\` contains user input.`, facts: { sink: c.callee } });
+          out2.push({
+            node: c.node,
+            message: `Path passed to \`${c.callee}()\` contains user input.`,
+            facts: { sink: c.callee }
+          });
         }
         if (lang === "php") {
-          for (const n of collect(ctx.tree.rootNode, /* @__PURE__ */ new Set(["include_expression", "include_once_expression", "require_expression", "require_once_expression"])))
-            if (ctx.tainted(n)) out2.push({ node: n, message: "File inclusion path contains user input (local/remote file inclusion).", severity: "critical", confidence: "high" });
+          for (const n of collect(
+            ctx.tree.rootNode,
+            /* @__PURE__ */ new Set([
+              "include_expression",
+              "include_once_expression",
+              "require_expression",
+              "require_once_expression"
+            ])
+          ))
+            if (ctx.tainted(n))
+              out2.push({
+                node: n,
+                message: "File inclusion path contains user input (local/remote file inclusion).",
+                severity: "critical",
+                confidence: "high"
+              });
         }
         return out2;
       }
@@ -2964,9 +3544,11 @@ var init_code = __esm({
             if (/^(?:res|reply|response|ctx)\.redirect$/.test(c.callee) || c.callee === "redirect" || c.callee === "NextResponse.redirect" || c.callee === "Response.redirect")
               arg = c.args[c.args.length - 1];
           } else if (lang === "php") {
-            if (/^(?:redirect|Redirect::to|Redirect::away|redirect\(\)->(?:to|away))$/.test(c.callee)) arg = c.args[0];
+            if (/^(?:redirect|Redirect::to|Redirect::away|redirect\(\)->(?:to|away))$/.test(c.callee))
+              arg = c.args[0];
             else if (c.callee === "header" && /^['"]Location:/i.test(c.args[0]?.text ?? "")) arg = c.args[0];
-          } else if (/^(?:redirect|HttpResponseRedirect|RedirectResponse|flask\.redirect)$/.test(c.callee)) arg = c.args[0];
+          } else if (/^(?:redirect|HttpResponseRedirect|RedirectResponse|flask\.redirect)$/.test(c.callee))
+            arg = c.args[0];
           if (!arg || isStaticString(arg, lang)) continue;
           if (/^new URL\(\s*['"`]\//.test(arg.text)) continue;
           if (!ctx.tainted(arg) || redirectValidated(arg, c.node) || fixedBase(arg, lang, ctx.tainted)) continue;
@@ -2978,7 +3560,11 @@ var init_code = __esm({
             const l = compact(n.childForFieldName("left")?.text ?? "");
             if (!/^(?:window\.)?location(?:\.href)?$/.test(l)) return;
             const r = n.childForFieldName("right");
-            if (r && !isStaticString(r, lang) && ctx.tainted(r)) out2.push({ node: n, message: "Client-side navigation to a URL taken from the query string/fragment (open redirect, `javascript:` XSS)." });
+            if (r && !isStaticString(r, lang) && ctx.tainted(r))
+              out2.push({
+                node: n,
+                message: "Client-side navigation to a URL taken from the query string/fragment (open redirect, `javascript:` XSS)."
+              });
           });
         return out2;
       }
@@ -3019,14 +3605,32 @@ var init_code = __esm({
             if (/^(?:yaml\.load|yaml\.load_all)$/.test(c.callee)) {
               const loader = c.kwargs.get("Loader") ?? c.args[1];
               if (loader && /Safe|Base|CSafe/.test(loader.text)) continue;
-              out2.push({ node: c.node, message: `\`${c.callee}()\` without \`Loader=yaml.SafeLoader\` can construct arbitrary Python objects.`, severity: "high", confidence: "high", fixer: loader ? null : "py-yaml-safe-load" });
-            } else if (/^(?:pickle|cPickle|_pickle|dill|cloudpickle|marshal|shelve|jsonpickle)\.(?:loads?|decode|Unpickler|open)$/.test(c.callee) || /^pandas\.read_pickle|pd\.read_pickle$/.test(c.callee)) {
+              out2.push({
+                node: c.node,
+                message: `\`${c.callee}()\` without \`Loader=yaml.SafeLoader\` can construct arbitrary Python objects.`,
+                severity: "high",
+                confidence: "high",
+                fixer: loader ? null : "py-yaml-safe-load"
+              });
+            } else if (/^(?:pickle|cPickle|_pickle|dill|cloudpickle|marshal|shelve|jsonpickle)\.(?:loads?|decode|Unpickler|open)$/.test(
+              c.callee
+            ) || /^pandas\.read_pickle|pd\.read_pickle$/.test(c.callee)) {
               if (!arg || isStaticString(arg, lang)) continue;
               const tainted = ctx.tainted(arg);
-              out2.push({ node: c.node, message: tainted ? `User input is unpickled by \`${c.callee}()\`.` : `\`${c.callee}()\` deserializes data that can execute code; ensure the source is fully trusted.`, severity: tainted ? "critical" : "medium", confidence: tainted ? "high" : "medium" });
+              out2.push({
+                node: c.node,
+                message: tainted ? `User input is unpickled by \`${c.callee}()\`.` : `\`${c.callee}()\` deserializes data that can execute code; ensure the source is fully trusted.`,
+                severity: tainted ? "critical" : "medium",
+                confidence: tainted ? "high" : "medium"
+              });
             }
           } else if (isJs(lang) && /^(?:serialize|nodeSerialize|serializer)\.unserialize$/.test(c.callee)) {
-            out2.push({ node: c.node, message: "`node-serialize` `unserialize()` evaluates functions embedded in the payload.", severity: "critical", confidence: "high" });
+            out2.push({
+              node: c.node,
+              message: "`node-serialize` `unserialize()` evaluates functions embedded in the payload.",
+              severity: "critical",
+              confidence: "high"
+            });
           }
         }
         return out2;
@@ -3093,17 +3697,22 @@ var init_code = __esm({
         const WEAK = /^['"`](?:des|des-ede3?(?:-cbc)?|des3|3des|rc4|rc2|bf|blowfish|[\w-]*-ecb|aes-?\d{3}-?ecb)['"`]$/i;
         for (const c of ctx.calls) {
           if (isJs(lang) && /^(?:crypto\.)?(?:createCipher|createDecipher)$/.test(c.callee))
-            out2.push({ node: c.node, message: "`crypto.createCipher()` is deprecated and derives the key and IV insecurely." });
+            out2.push({
+              node: c.node,
+              message: "`crypto.createCipher()` is deprecated and derives the key and IV insecurely."
+            });
           else if (isJs(lang) && /createCipheriv|createDecipheriv/.test(c.name) && WEAK.test(c.args[0]?.text ?? ""))
             out2.push({ node: c.node, message: `Weak cipher ${c.args[0].text} used.` });
           else if (lang === "php" && /^openssl_(?:encrypt|decrypt)$/.test(c.callee) && WEAK.test(c.args[1]?.text ?? ""))
             out2.push({ node: c.node, message: `Weak cipher ${c.args[1].text} used with OpenSSL.` });
-          else if (lang === "php" && /^mcrypt_/.test(c.callee)) out2.push({ node: c.node, message: "`mcrypt` is removed since PHP 7.2 and insecure." });
+          else if (lang === "php" && /^mcrypt_/.test(c.callee))
+            out2.push({ node: c.node, message: "`mcrypt` is removed since PHP 7.2 and insecure." });
           else if (lang === "python" && /(?:^|\.)(?:DES|DES3|ARC4|ARC2|Blowfish)\.new$/.test(c.callee))
             out2.push({ node: c.node, message: `Weak cipher \`${c.callee}\`.` });
           else if (lang === "python" && /\.new$/.test(c.callee) && c.args.some((a) => /MODE_ECB/.test(a.text)))
             out2.push({ node: c.node, message: "AES in ECB mode leaks plaintext structure." });
-          else if (lang === "python" && /^modes\.ECB$/.test(c.callee)) out2.push({ node: c.node, message: "ECB mode leaks plaintext structure." });
+          else if (lang === "python" && /^modes\.ECB$/.test(c.callee))
+            out2.push({ node: c.node, message: "ECB mode leaks plaintext structure." });
         }
         return out2;
       }
@@ -3126,11 +3735,20 @@ var init_code = __esm({
         const out2 = [];
         const lang = ctx.lang;
         for (const c of ctx.calls) {
-          const weak = isJs(lang) ? c.callee === "Math.random" : lang === "php" ? /^(?:rand|mt_rand|uniqid|lcg_value|str_shuffle|array_rand|mt_srand|srand)$/.test(c.callee) : /^random\.(?:random|randint|randrange|choice|choices|getrandbits|sample|shuffle|uniform)$/.test(c.callee);
+          const weak = isJs(lang) ? c.callee === "Math.random" : lang === "php" ? /^(?:rand|mt_rand|uniqid|lcg_value|str_shuffle|array_rand|mt_srand|srand)$/.test(c.callee) : /^random\.(?:random|randint|randrange|choice|choices|getrandbits|sample|shuffle|uniform)$/.test(
+            c.callee
+          );
           if (!weak) continue;
           const purpose = purposeName(c.node, lang);
-          if (!SECRET_PURPOSE.test(purpose) || /(?:color|colour|delay|jitter|retry|backoff|position|animation|index|sample|test|demo|mock|shuffle|order)/i.test(purpose)) continue;
-          out2.push({ node: c.node, message: `\`${c.callee}\` is used to produce \`${purpose}\`.`, facts: { purpose } });
+          if (!SECRET_PURPOSE.test(purpose) || /(?:color|colour|delay|jitter|retry|backoff|position|animation|index|sample|test|demo|mock|shuffle|order)/i.test(
+            purpose
+          ))
+            continue;
+          out2.push({
+            node: c.node,
+            message: `\`${c.callee}\` is used to produce \`${purpose}\`.`,
+            facts: { purpose }
+          });
         }
         return out2;
       }
@@ -3156,32 +3774,53 @@ var init_code = __esm({
         if (isJs(lang)) {
           for (const p of collect(ctx.tree.rootNode, "pair")) {
             const k = p.childForFieldName("key")?.text.replace(/['"]/g, "");
-            if ((k === "rejectUnauthorized" || k === "strictSSL") && isFalse(p.childForFieldName("value"))) out2.push({ node: p, message: `\`${k}: false\` disables certificate validation.` });
+            if ((k === "rejectUnauthorized" || k === "strictSSL") && isFalse(p.childForFieldName("value")))
+              out2.push({ node: p, message: `\`${k}: false\` disables certificate validation.` });
           }
           walk2(ctx.tree.rootNode, (n) => {
             if (n.type === "assignment_expression" && /NODE_TLS_REJECT_UNAUTHORIZED/.test(n.childForFieldName("left")?.text ?? "") && /['"]0['"]|^0$/.test(n.childForFieldName("right")?.text ?? ""))
-              out2.push({ node: n, message: "`NODE_TLS_REJECT_UNAUTHORIZED = 0` disables TLS validation for the whole process.", fixer: null });
+              out2.push({
+                node: n,
+                message: "`NODE_TLS_REJECT_UNAUTHORIZED = 0` disables TLS validation for the whole process.",
+                fixer: null
+              });
           });
         } else if (lang === "php") {
           for (const c of ctx.calls) {
             if (c.callee === "curl_setopt" && /CURLOPT_SSL_VERIFY(?:PEER|HOST)/.test(c.args[1]?.text ?? "") && isFalse(c.args[2]))
               out2.push({ node: c.node, message: `\`${c.args[1].text}\` set to ${c.args[2].text}.` });
-            if (c.name === "withoutVerifying") out2.push({ node: c.node, message: "`Http::withoutVerifying()` disables certificate validation.", fixer: null });
+            if (c.name === "withoutVerifying")
+              out2.push({
+                node: c.node,
+                message: "`Http::withoutVerifying()` disables certificate validation.",
+                fixer: null
+              });
           }
           for (const el of collect(ctx.tree.rootNode, "array_element_initializer")) {
             const kids = el.namedChildren;
-            if (kids.length === 2 && /^['"]verify['"]$|^CURLOPT_SSL_VERIFYPEER$|^RequestOptions::VERIFY$/.test(kids[0].text) && isFalse(kids[1])) out2.push({ node: el, message: `\`${kids[0].text} => false\` disables certificate validation.` });
+            if (kids.length === 2 && /^['"]verify['"]$|^CURLOPT_SSL_VERIFYPEER$|^RequestOptions::VERIFY$/.test(kids[0].text) && isFalse(kids[1]))
+              out2.push({ node: el, message: `\`${kids[0].text} => false\` disables certificate validation.` });
           }
         } else {
           for (const c of ctx.calls) {
             const v = c.kwargs.get("verify");
-            if (v && isFalse(v) && /^(?:requests|httpx|session|client|aiohttp|self\.session|s)\b|\.(?:get|post|put|patch|delete|request|Client|AsyncClient|Session)$/.test(c.callee))
-              out2.push({ node: c.node, message: `\`verify=False\` disables certificate validation in \`${c.callee}()\`.` });
-            if (/^ssl\._create_unverified_context$/.test(c.callee)) out2.push({ node: c.node, message: "Unverified SSL context.", fixer: null });
+            if (v && isFalse(v) && /^(?:requests|httpx|session|client|aiohttp|self\.session|s)\b|\.(?:get|post|put|patch|delete|request|Client|AsyncClient|Session)$/.test(
+              c.callee
+            ))
+              out2.push({
+                node: c.node,
+                message: `\`verify=False\` disables certificate validation in \`${c.callee}()\`.`
+              });
+            if (/^ssl\._create_unverified_context$/.test(c.callee))
+              out2.push({ node: c.node, message: "Unverified SSL context.", fixer: null });
           }
           walk2(ctx.tree.rootNode, (n) => {
             if (n.type === "assignment" && /\.verify_mode$/.test(n.childForFieldName("left")?.text ?? "") && /CERT_NONE/.test(n.childForFieldName("right")?.text ?? ""))
-              out2.push({ node: n, message: "`verify_mode = CERT_NONE` disables certificate validation.", fixer: null });
+              out2.push({
+                node: n,
+                message: "`verify_mode = CERT_NONE` disables certificate validation.",
+                fixer: null
+              });
           });
         }
         return out2;
@@ -3205,11 +3844,17 @@ var init_code = __esm({
         const out2 = [];
         const lang = ctx.lang;
         for (const c of ctx.calls) {
-          if (!/^(?:verify|decode|jwtVerify|jwtDecode|verifyJwt|decodeJwt|register|use)$/.test(c.name) && !/(?:jwt|JWT|jose)/.test(c.callee)) continue;
+          if (!/^(?:verify|decode|jwtVerify|jwtDecode|verifyJwt|decodeJwt|register|use)$/.test(c.name) && !/(?:jwt|JWT|jose)/.test(c.callee))
+            continue;
           const txt = c.args.map((a) => a.text).join(",") + [...c.kwargs.values()].map((v) => v.parent?.text ?? "").join(",");
-          if (/algorithms\s*[:=]\s*\[?[^\]]*['"]none['"]/i.test(txt)) out2.push({ node: c.node, message: "JWT verification allows the `none` algorithm." });
+          if (/algorithms\s*[:=]\s*\[?[^\]]*['"]none['"]/i.test(txt))
+            out2.push({ node: c.node, message: "JWT verification allows the `none` algorithm." });
           else if (isJs(lang) && c.name === "verify" && /jwt|jsonwebtoken/i.test(c.receiver ?? "") && /ignoreExpiration\s*:\s*true/.test(txt))
-            out2.push({ node: c.node, message: "`ignoreExpiration: true` accepts expired tokens.", severity: "medium" });
+            out2.push({
+              node: c.node,
+              message: "`ignoreExpiration: true` accepts expired tokens.",
+              severity: "medium"
+            });
           else if (lang === "python" && /^jwt\.decode$/.test(c.callee) && (/["']verify_signature["']\s*:\s*False/.test(txt) || isFalse(c.kwargs.get("verify"))))
             out2.push({ node: c.node, message: "PyJWT `decode` with signature verification disabled." });
           else if (lang === "php" && /^JWT::decode$/.test(c.callee) && c.args.length < 2)
@@ -3238,19 +3883,28 @@ var init_code = __esm({
         const lang = ctx.lang;
         if (isJs(lang)) {
           for (const c of ctx.calls) {
-            if (!/^(?:cors|enableCors|app\.enableCors|fastifyCors|register)$/.test(c.callee) && c.name !== "enableCors") continue;
+            if (!/^(?:cors|enableCors|app\.enableCors|fastifyCors|register)$/.test(c.callee) && c.name !== "enableCors")
+              continue;
             for (const a of c.args) {
               if (a.type !== "object") continue;
               const origin = pairValue(a, "origin");
               const creds = pairValue(a, "credentials");
               if (!origin || !isTrue(creds)) continue;
-              if (/^['"`]\*['"`]$/.test(origin.text) || isTrue(origin) || /\(\s*origin\s*,\s*(?:callback|cb)\s*\)\s*=>\s*(?:callback|cb)\(\s*null\s*,\s*true\s*\)/.test(origin.text))
-                out2.push({ node: a, message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`.` });
+              if (/^['"`]\*['"`]$/.test(origin.text) || isTrue(origin) || /\(\s*origin\s*,\s*(?:callback|cb)\s*\)\s*=>\s*(?:callback|cb)\(\s*null\s*,\s*true\s*\)/.test(
+                origin.text
+              ))
+                out2.push({
+                  node: a,
+                  message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`.`
+                });
             }
           }
           for (const c of ctx.calls)
             if (/^(?:res|response|reply)\.(?:setHeader|header|set)$/.test(c.callee) && /Access-Control-Allow-Origin/i.test(c.args[0]?.text ?? "") && c.args[1] && /headers\.origin|get\(['"]origin['"]\)/i.test(c.args[1].text) && /Access-Control-Allow-Credentials/i.test(ctx.source))
-              out2.push({ node: c.node, message: "The request `Origin` header is reflected into `Access-Control-Allow-Origin` while credentials are allowed." });
+              out2.push({
+                node: c.node,
+                message: "The request `Origin` header is reflected into `Access-Control-Allow-Origin` while credentials are allowed."
+              });
         } else if (lang === "php") {
           if (/(?:^|\/)config\/cors\.php$/.test(ctx.file.path) && /['"]allowed_origins['"]\s*=>\s*\[\s*['"]\*['"]\s*\]/.test(ctx.source) && /['"]supports_credentials['"]\s*=>\s*true/.test(ctx.source)) {
             const line = ctx.source.split("\n").findIndex((l) => /supports_credentials/.test(l)) + 1;
@@ -3261,7 +3915,8 @@ var init_code = __esm({
             if (/^(?:CORS|CORSMiddleware)$/.test(c.callee) || c.args.some((a) => /CORSMiddleware/.test(a.text))) {
               const origins = c.kwargs.get("origins") ?? c.kwargs.get("allow_origins") ?? c.kwargs.get("resources");
               const creds = c.kwargs.get("supports_credentials") ?? c.kwargs.get("allow_credentials");
-              if (origins && /['"]\*['"]/.test(origins.text) && isTrue(creds)) out2.push({ node: c.node, message: "CORS allows `*` origins with credentials." });
+              if (origins && /['"]\*['"]/.test(origins.text) && isTrue(creds))
+                out2.push({ node: c.node, message: "CORS allows `*` origins with credentials." });
             }
           if (/CORS_(?:ORIGIN_)?ALLOW_ALL(?:_ORIGINS)?\s*=\s*True/.test(ctx.source) && /CORS_ALLOW_CREDENTIALS\s*=\s*True/.test(ctx.source)) {
             const line = ctx.source.split("\n").findIndex((l) => /CORS_(?:ORIGIN_)?ALLOW_ALL/.test(l)) + 1;
@@ -3297,10 +3952,15 @@ var init_code = __esm({
             if (isJs(lang) && a.type === "object") raw = pairValue(a, "data") ?? pairValue(a, "$set");
             if (!raw) continue;
             const t2 = compact(raw.text);
-            const whole = isJs(lang) ? /^(?:req|request|ctx\.request)\.body$|^await(?:req|request)\.json\(\)$/.test(t2) : lang === "php" ? /^(?:\$(?:this->)?request->all\(\)|request\(\)->all\(\)|Request::all\(\)|\$_(?:POST|REQUEST|GET))$/.test(t2) : /^\*\*(?:self\.)?request\.(?:data|POST|GET|json|form)(?:\.dict\(\))?$/.test(t2);
+            const whole = isJs(lang) ? /^(?:req|request|ctx\.request)\.body$|^await(?:req|request)\.json\(\)$/.test(t2) : lang === "php" ? /^(?:\$(?:this->)?request->all\(\)|request\(\)->all\(\)|Request::all\(\)|\$_(?:POST|REQUEST|GET))$/.test(
+              t2
+            ) : /^\*\*(?:self\.)?request\.(?:data|POST|GET|json|form)(?:\.dict\(\))?$/.test(t2);
             if (whole) {
               if (isJs(lang) && c.name === "assign" && c.args[0] === a) continue;
-              out2.push({ node: c.node, message: `The whole request payload (\`${t2.slice(0, 40)}\`) is written by \`${c.callee}()\`.` });
+              out2.push({
+                node: c.node,
+                message: `The whole request payload (\`${t2.slice(0, 40)}\`) is written by \`${c.callee}()\`.`
+              });
               break;
             }
           }
@@ -3308,13 +3968,19 @@ var init_code = __esm({
         if (lang === "python") {
           for (const c of ctx.calls)
             if (/\.objects\.(?:create|update|update_or_create|get_or_create)$|^\w+$/.test(c.callee) && c.node.text.match(/\*\*(?:self\.)?request\.(?:data|POST|GET|json)\b/)) {
-              if (!out2.some((h) => h.node?.id === c.node.id)) out2.push({ node: c.node, message: "Request data is unpacked into model fields with `**`." });
+              if (!out2.some((h) => h.node?.id === c.node.id))
+                out2.push({ node: c.node, message: "Request data is unpacked into model fields with `**`." });
             }
         }
         if (lang === "php") {
           for (const prop of collect(ctx.tree.rootNode, "property_declaration"))
             if (/\$guarded\s*=\s*\[\s*\]/.test(prop.text) && !/(?:^|\/)tests?\//i.test(ctx.file.path))
-              out2.push({ node: prop, message: "Model sets `$guarded = []`, disabling mass-assignment protection for every attribute.", severity: "medium", confidence: "medium" });
+              out2.push({
+                node: prop,
+                message: "Model sets `$guarded = []`, disabling mass-assignment protection for every attribute.",
+                severity: "medium",
+                confidence: "medium"
+              });
         }
         return out2;
       }
@@ -3339,7 +4005,8 @@ var init_code = __esm({
         const literal = (n) => !!n && isStaticString(n, lang) && (stringValue(n, lang)?.length ?? 0) >= 6;
         for (const c of ctx.calls) {
           if (isJs(lang)) {
-            if (/^(?:jwt|jsonwebtoken|JWT)\.(?:sign|verify)$/.test(c.callee) && literal(c.args[1])) out2.push({ node: c.args[1], message: `JWT key passed to \`${c.callee}()\` is a string literal.` });
+            if (/^(?:jwt|jsonwebtoken|JWT)\.(?:sign|verify)$/.test(c.callee) && literal(c.args[1]))
+              out2.push({ node: c.args[1], message: `JWT key passed to \`${c.callee}()\` is a string literal.` });
             if (/^(?:session|expressSession|cookieSession|cookieParser)$/.test(c.callee)) {
               const obj = objectArg(c, 0);
               const s = obj ? pairValue(obj, "secret") ?? pairValue(obj, "keys") : c.callee === "cookieParser" ? c.args[0] : void 0;
@@ -3348,8 +4015,10 @@ var init_code = __esm({
             }
             if (/^(?:new\s+)?TextEncoder\(\)\.encode$/.test(c.callee) && literal(c.args[0]) && /secret|jwt|key/i.test(purposeName(c.node, lang)))
               out2.push({ node: c.args[0], message: "JWT secret encoded from a string literal." });
-          } else if (lang === "python" && /^jwt\.(?:encode|decode)$/.test(c.callee) && literal(c.args[1])) out2.push({ node: c.args[1], message: `JWT key passed to \`${c.callee}()\` is a string literal.` });
-          else if (lang === "php" && /^JWT::(?:encode|decode)$/.test(c.callee) && literal(c.args[1])) out2.push({ node: c.args[1], message: "JWT key is a string literal." });
+          } else if (lang === "python" && /^jwt\.(?:encode|decode)$/.test(c.callee) && literal(c.args[1]))
+            out2.push({ node: c.args[1], message: `JWT key passed to \`${c.callee}()\` is a string literal.` });
+          else if (lang === "php" && /^JWT::(?:encode|decode)$/.test(c.callee) && literal(c.args[1]))
+            out2.push({ node: c.args[1], message: "JWT key is a string literal." });
         }
         if (lang === "python")
           walk2(ctx.tree.rootNode, (n) => {
@@ -3382,17 +4051,24 @@ var init_code = __esm({
           if (!/(?:^|\/)config\/app\.php$/.test(ctx.file.path)) return out2;
           for (const el of collect(ctx.tree.rootNode, "array_element_initializer")) {
             const kids = el.namedChildren;
-            if (kids.length === 2 && /^['"]debug['"]$/.test(kids[0].text) && isTrue(kids[1])) out2.push({ node: el, message: "`'debug' => true` is hard-coded in config/app.php." });
+            if (kids.length === 2 && /^['"]debug['"]$/.test(kids[0].text) && isTrue(kids[1]))
+              out2.push({ node: el, message: "`'debug' => true` is hard-coded in config/app.php." });
           }
         } else {
-          const settingsLike = /(?:^|\/)(?:settings|config)(?:\/(?:base|prod|production|common))?\.py$|(?:^|\/)settings\/(?:base|prod|production|common)\.py$/.test(ctx.file.path);
+          const settingsLike = /(?:^|\/)(?:settings|config)(?:\/(?:base|prod|production|common))?\.py$|(?:^|\/)settings\/(?:base|prod|production|common)\.py$/.test(
+            ctx.file.path
+          );
           walk2(ctx.tree.rootNode, (n) => {
             if (settingsLike && n.type === "assignment" && n.childForFieldName("left")?.text === "DEBUG" && isTrue(n.childForFieldName("right")) && n.parent?.type === "expression_statement" && n.parent.parent?.type === "module")
               out2.push({ node: n, message: "`DEBUG = True` in a settings module." });
           });
           for (const c of ctx.calls)
             if (/(?:^|\.)run$/.test(c.callee) && /^(?:app|application|server)\.run$/.test(c.callee) && isTrue(c.kwargs.get("debug")))
-              out2.push({ node: c.node, message: "`app.run(debug=True)` enables the Werkzeug debugger (remote code execution if reachable).", fixer: "py-flask-debug-off" });
+              out2.push({
+                node: c.node,
+                message: "`app.run(debug=True)` enables the Werkzeug debugger (remote code execution if reachable).",
+                fixer: "py-flask-debug-off"
+              });
         }
         return out2;
       }
@@ -3418,15 +4094,26 @@ var init_code = __esm({
             if (/^@csrf_exempt\b/.test(d.text)) {
               const fn = d.parent?.childForFieldName("definition");
               const name2 = fn?.childForFieldName("name")?.text ?? "";
-              if (/webhook|callback|stripe|hook/i.test(name2) && /signature|construct_event|hmac/i.test(fn?.text ?? "")) continue;
+              if (/webhook|callback|stripe|hook/i.test(name2) && /signature|construct_event|hmac/i.test(fn?.text ?? ""))
+                continue;
               out2.push({ node: d, message: `View \`${name2 || "anonymous"}\` is exempt from CSRF protection.` });
             }
-          if (/WTF_CSRF_ENABLED\s*=\s*False/.test(ctx.source) && !ctx.file.isTest) out2.push({ line: ctx.source.split("\n").findIndex((l) => /WTF_CSRF_ENABLED/.test(l)) + 1, message: "Flask-WTF CSRF protection disabled globally." });
+          if (/WTF_CSRF_ENABLED\s*=\s*False/.test(ctx.source) && !ctx.file.isTest)
+            out2.push({
+              line: ctx.source.split("\n").findIndex((l) => /WTF_CSRF_ENABLED/.test(l)) + 1,
+              message: "Flask-WTF CSRF protection disabled globally."
+            });
         } else {
           for (const prop of collect(ctx.tree.rootNode, "property_declaration"))
-            if (/\$except\s*=\s*\[[^\]]*['"]\*['"]/.test(prop.text)) out2.push({ node: prop, message: "CSRF middleware excludes every route (`*`).", severity: "high" });
+            if (/\$except\s*=\s*\[[^\]]*['"]\*['"]/.test(prop.text))
+              out2.push({ node: prop, message: "CSRF middleware excludes every route (`*`).", severity: "high" });
           for (const c of ctx.calls)
-            if (c.name === "validateCsrfTokens" && /except\s*:\s*\[[^\]]*['"]\*['"]/.test(c.node.text)) out2.push({ node: c.node, message: "CSRF validation excludes every route (`*`).", severity: "high" });
+            if (c.name === "validateCsrfTokens" && /except\s*:\s*\[[^\]]*['"]\*['"]/.test(c.node.text))
+              out2.push({
+                node: c.node,
+                message: "CSRF validation excludes every route (`*`).",
+                severity: "high"
+              });
         }
         return out2;
       }
@@ -3455,7 +4142,8 @@ var init_code = __esm({
             out2.push({ node: c.node, message: "lxml `XMLParser(resolve_entities=True)`." });
           else if (ctx.lang === "python" && c.name === "setFeature" && /feature_external_ges|feature_external_pes/.test(t2) && isTrue(c.args[1]))
             out2.push({ node: c.node, message: "SAX parser enables external entities." });
-          else if (isJs(ctx.lang) && /parseXml(?:String)?$/.test(c.callee) && /noent\s*:\s*true/.test(t2)) out2.push({ node: c.node, message: "libxmljs parses with `noent: true`." });
+          else if (isJs(ctx.lang) && /parseXml(?:String)?$/.test(c.callee) && /noent\s*:\s*true/.test(t2))
+            out2.push({ node: c.node, message: "libxmljs parses with `noent: true`." });
         }
         return out2;
       }
@@ -3482,7 +4170,8 @@ var init_code = __esm({
           if (!isRe) continue;
           const arg = c.args[0];
           if (!arg || isStaticString(arg, ctx.lang) || /escape|preg_quote/i.test(arg.text)) continue;
-          if (ctx.tainted(arg)) out2.push({ node: c.node, message: `Pattern passed to \`${c.callee}\` contains user input.` });
+          if (ctx.tainted(arg))
+            out2.push({ node: c.node, message: `Pattern passed to \`${c.callee}\` contains user input.` });
         }
         return out2;
       }
@@ -3505,16 +4194,30 @@ var init_code = __esm({
         const out2 = [];
         const lang = ctx.lang;
         for (const c of ctx.calls) {
-          if (!/^(?:find|findOne|findOneAndUpdate|findOneAndDelete|updateOne|updateMany|deleteOne|deleteMany|countDocuments|find_one|delete_one|delete_many|update_one|update_many|count_documents)$/.test(c.name)) continue;
+          if (!/^(?:find|findOne|findOneAndUpdate|findOneAndDelete|updateOne|updateMany|deleteOne|deleteMany|countDocuments|find_one|delete_one|delete_many|update_one|update_many|count_documents)$/.test(
+            c.name
+          ))
+            continue;
           const filter = c.args[0];
           if (!filter) continue;
           if (/\$where/.test(filter.text) && !isStaticString(pairValue(filter, "$where") ?? pairValue(filter, "'$where'") ?? filter, lang)) {
-            out2.push({ node: c.node, message: "`$where` with a dynamic expression.", severity: "high", confidence: "medium" });
+            out2.push({
+              node: c.node,
+              message: "`$where` with a dynamic expression.",
+              severity: "high",
+              confidence: "medium"
+            });
             continue;
           }
           const direct = isJs(lang) ? /^(?:req|request)\.(?:body|query)$/.test(compact(filter.text)) : /^request\.(?:json|get_json\(\)|args|form)$/.test(compact(filter.text));
-          const rawValues = pairs(filter).filter((p) => /^(?:req|request)\.(?:body|query)\.\w+$|^request\.(?:json|args|form)\[/.test(compact(p.value.text)));
-          if (direct || rawValues.length) out2.push({ node: c.node, message: direct ? "The request object is used as a query filter." : `Filter value \`${compact(rawValues[0].value.text)}\` is used without type coercion.` });
+          const rawValues = pairs(filter).filter(
+            (p) => /^(?:req|request)\.(?:body|query)\.\w+$|^request\.(?:json|args|form)\[/.test(compact(p.value.text))
+          );
+          if (direct || rawValues.length)
+            out2.push({
+              node: c.node,
+              message: direct ? "The request object is used as a query filter." : `Filter value \`${compact(rawValues[0].value.text)}\` is used without type coercion.`
+            });
         }
         return out2;
       }
@@ -3536,11 +4239,16 @@ var init_code = __esm({
       check(ctx) {
         const out2 = [];
         for (const c of ctx.calls) {
-          const sink = ctx.lang === "python" ? /^(?:render_template_string|flask\.render_template_string|jinja2\.Template|Template|Environment\(\)\.from_string|env\.from_string|mako\.template\.Template)$/.test(c.callee) : ctx.lang === "php" ? /^(?:Blade::render|\$twig->createTemplate|.+->createTemplate)$/.test(c.callee) : /^(?:ejs\.render|ejs\.compile|pug\.render|pug\.compile|Handlebars\.compile|handlebars\.compile|nunjucks\.renderString|_\.template|lodash\.template|Mustache\.render|doT\.template)$/.test(c.callee);
+          const sink = ctx.lang === "python" ? /^(?:render_template_string|flask\.render_template_string|jinja2\.Template|Template|Environment\(\)\.from_string|env\.from_string|mako\.template\.Template)$/.test(
+            c.callee
+          ) : ctx.lang === "php" ? /^(?:Blade::render|\$twig->createTemplate|.+->createTemplate)$/.test(c.callee) : /^(?:ejs\.render|ejs\.compile|pug\.render|pug\.compile|Handlebars\.compile|handlebars\.compile|nunjucks\.renderString|_\.template|lodash\.template|Mustache\.render|doT\.template)$/.test(
+            c.callee
+          );
           if (!sink) continue;
           const arg = c.args[0];
           if (!arg || isStaticString(arg, ctx.lang)) continue;
-          if (ctx.tainted(arg)) out2.push({ node: c.node, message: `Template source passed to \`${c.callee}\` contains user input.` });
+          if (ctx.tainted(arg))
+            out2.push({ node: c.node, message: `Template source passed to \`${c.callee}\` contains user input.` });
         }
         return out2;
       }
@@ -3570,16 +4278,22 @@ var init_code = __esm({
             if (isStaticString(a, lang)) continue;
             const ids2 = [];
             walk2(a, (n) => {
-              if (n.type === "identifier" || n.type === "property_identifier" || n.type === "variable_name" || n.type === "name" || n.type === "shorthand_property_identifier") ids2.push(n.text.replace(/^\$/, ""));
+              if (n.type === "identifier" || n.type === "property_identifier" || n.type === "variable_name" || n.type === "name" || n.type === "shorthand_property_identifier")
+                ids2.push(n.text.replace(/^\$/, ""));
               if (n.type === "string" || n.type === "template_string" || n.type === "encapsed_string") {
                 if (n.type === "template_string" || n.type === "encapsed_string") return;
                 return false;
               }
             });
-            const hit = ids2.find((id) => SENSITIVE.test(id) && !/(?:length|count|exists|valid|reset|changed|expires|hash|has|is)/i.test(id));
+            const hit = ids2.find(
+              (id) => SENSITIVE.test(id) && !/(?:length|count|exists|valid|reset|changed|expires|hash|has|is)/i.test(id)
+            );
             const allInput = lang === "php" && /\$request->all\(\)|request\(\)->all\(\)/.test(a.text);
             if (hit || allInput) {
-              out2.push({ node: c.node, message: hit ? `\`${hit}\` is included in a log statement.` : "The full request payload (including passwords) is logged." });
+              out2.push({
+                node: c.node,
+                message: hit ? `\`${hit}\` is included in a log statement.` : "The full request payload (including passwords) is logged."
+              });
               break;
             }
           }
@@ -3606,16 +4320,20 @@ var init_code = __esm({
         if (isJs(ctx.lang)) {
           for (const p of collect(ctx.tree.rootNode, "pair")) {
             const k = p.childForFieldName("key")?.text.replace(/['"]/g, "");
-            if ((k === "httpOnly" || k === "httponly") && isFalse(p.childForFieldName("value"))) out2.push({ node: p, message: "Cookie sets `httpOnly: false`." });
+            if ((k === "httpOnly" || k === "httponly") && isFalse(p.childForFieldName("value")))
+              out2.push({ node: p, message: "Cookie sets `httpOnly: false`." });
           }
         } else if (ctx.lang === "php" && /(?:^|\/)config\/session\.php$/.test(ctx.file.path)) {
           for (const el of collect(ctx.tree.rootNode, "array_element_initializer")) {
             const kids = el.namedChildren;
-            if (kids.length === 2 && /^['"]http_only['"]$/.test(kids[0].text) && isFalse(kids[1])) out2.push({ node: el, message: "Session cookie `'http_only' => false`." });
+            if (kids.length === 2 && /^['"]http_only['"]$/.test(kids[0].text) && isFalse(kids[1]))
+              out2.push({ node: el, message: "Session cookie `'http_only' => false`." });
           }
         } else if (ctx.lang === "python") {
           walk2(ctx.tree.rootNode, (n) => {
-            if (n.type === "assignment" && /^(?:SESSION_COOKIE_HTTPONLY|CSRF_COOKIE_HTTPONLY)$/.test(n.childForFieldName("left")?.text ?? "") && isFalse(n.childForFieldName("right")) && /SESSION_COOKIE_HTTPONLY/.test(n.text))
+            if (n.type === "assignment" && /^(?:SESSION_COOKIE_HTTPONLY|CSRF_COOKIE_HTTPONLY)$/.test(
+              n.childForFieldName("left")?.text ?? ""
+            ) && isFalse(n.childForFieldName("right")) && /SESSION_COOKIE_HTTPONLY/.test(n.text))
               out2.push({ node: n, message: "`SESSION_COOKIE_HTTPONLY = False`." });
           });
         }
@@ -3639,10 +4357,14 @@ var init_code = __esm({
       check(ctx) {
         const out2 = [];
         for (const c of ctx.calls) {
-          if (!/^(?:fs\.)?(?:chmod|chmodSync|mkdir|mkdirSync|writeFile|writeFileSync)$|^os\.(?:chmod|mkdir|makedirs)$|^(?:chmod|mkdir)$/.test(c.callee)) continue;
+          if (!/^(?:fs\.)?(?:chmod|chmodSync|mkdir|mkdirSync|writeFile|writeFileSync)$|^os\.(?:chmod|mkdir|makedirs)$|^(?:chmod|mkdir)$/.test(
+            c.callee
+          ))
+            continue;
           const modeArg = c.args.find((a) => /^(?:0o?777|0o?666|511|438)$/.test(a.text.trim())) ?? c.kwargs.get("mode");
           const objMode = c.args.find((a) => a.type === "object" && /mode\s*:\s*0o?(?:777|666)/.test(a.text));
-          if (modeArg && /^(?:0o?777|0o?666|511|438)$/.test(modeArg.text.trim()) || objMode) out2.push({ node: c.node, message: `\`${c.callee}\` uses world-writable mode.` });
+          if (modeArg && /^(?:0o?777|0o?666|511|438)$/.test(modeArg.text.trim()) || objMode)
+            out2.push({ node: c.node, message: `\`${c.callee}\` uses world-writable mode.` });
         }
         return out2;
       }
@@ -3670,7 +4392,9 @@ var init_code = __esm({
           const kids = n.namedChildren.filter((x) => !!x);
           if (kids.length !== 2) continue;
           const [a, b] = kids;
-          const secretName = (x) => /(?:signature|hmac|digest|api_?key|apiKey|webhook_?secret|secret|token)$/i.test(compact(x.text).split(/[.>\]['"$]/).filter(Boolean).pop() ?? "");
+          const secretName = (x) => /(?:signature|hmac|digest|api_?key|apiKey|webhook_?secret|secret|token)$/i.test(
+            compact(x.text).split(/[.>\]['"$]/).filter(Boolean).pop() ?? ""
+          );
           const oneSecret = secretName(a) || secretName(b);
           const oneInput = ctx.tainted(a) || ctx.tainted(b) || /headers?\[|headers?\.get\(|->header\(|getHeader|HTTP_X_/i.test(n.text);
           if (!oneSecret || !oneInput) continue;
@@ -3694,7 +4418,10 @@ var init_code = __esm({
       recommendation: "Use `Buffer.from(value)` for data or `Buffer.alloc(size)` for zero-filled buffers.",
       verification: "Run the code path and unit tests; `node --pending-deprecation` must print no DEP0005 warning.",
       check(ctx) {
-        return ctx.calls.filter((c) => c.isNew && c.callee === "Buffer").map((c) => ({ node: c.node, message: "`new Buffer()` is deprecated; use `Buffer.from()` or `Buffer.alloc()`." }));
+        return ctx.calls.filter((c) => c.isNew && c.callee === "Buffer").map((c) => ({
+          node: c.node,
+          message: "`new Buffer()` is deprecated; use `Buffer.from()` or `Buffer.alloc()`."
+        }));
       }
     };
     securityCodeRules = [
@@ -11086,7 +11813,12 @@ function loadWorkflow(ctx) {
         if ((0, import_yaml.isSeq)(stepsNode))
           for (const s of stepsNode.items) {
             const js = s.toJSON?.() ?? {};
-            steps.push({ uses: typeof js.uses === "string" ? js.uses : void 0, run: typeof js.run === "string" ? js.run : void 0, with: js.with, line: lineOf(s, lc) });
+            steps.push({
+              uses: typeof js.uses === "string" ? js.uses : void 0,
+              run: typeof js.run === "string" ? js.run : void 0,
+              with: js.with,
+              line: lineOf(s, lc)
+            });
           }
         const uses = jobData.uses;
         if (typeof uses === "string") steps.push({ uses, line: lineOf(pair.key, lc) });
@@ -11156,7 +11888,8 @@ var init_files2 = __esm({
               const value = p.group === 0 ? m[0] : m[p.group];
               if (!value) continue;
               if (p.minEntropy && shannonEntropy(value) < p.minEntropy) continue;
-              if (p.id === "db-url-password" && (isPlaceholder(value) || /^\$\{|^%|^<|password|secret|pass$|root$|postgres$|^user$|^admin$|^test/i.test(value))) continue;
+              if (p.id === "db-url-password" && (isPlaceholder(value) || /^\$\{|^%|^<|password|secret|pass$|root$|postgres$|^user$|^admin$|^test/i.test(value)))
+                continue;
               if (p.id === "jwt" && ctx.file.isTest) continue;
               matched = true;
               out2.push({
@@ -11178,9 +11911,13 @@ var init_files2 = __esm({
             const value = m[2];
             if (isPlaceholder(value) || shannonEntropy(value) < 3.5 || value.length < 10) continue;
             if (/^(?:https?:|\/|\.\/|[\w.-]+\.(?:js|ts|php|py|json|html|png|svg)$)/.test(value)) continue;
-            if (/(?:_?(?:field|label|name|key_?name|header|param|input|placeholder|route|path|url|type|id|hint|message|regex|pattern|policy|reset|confirm|min|max|length|rule)s?)$/i.test(name2)) continue;
+            if (/(?:_?(?:field|label|name|key_?name|header|param|input|placeholder|route|path|url|type|id|hint|message|regex|pattern|policy|reset|confirm|min|max|length|rule)s?)$/i.test(
+              name2
+            ))
+              continue;
             if (/\$\{|\{\{|%\(|\bprocess\.env\b|\benv\(|getenv|os\.environ/.test(value)) continue;
-            if (/\.py$/.test(ctx.file.path) && /^(?:SECRET_KEY|app\.secret_key|JWT_SECRET(?:_KEY)?)$/.test(name2)) continue;
+            if (/\.py$/.test(ctx.file.path) && /^(?:SECRET_KEY|app\.secret_key|JWT_SECRET(?:_KEY)?)$/.test(name2))
+              continue;
             out2.push({
               line: i2 + 1,
               column: (m.index ?? 0) + 1,
@@ -11221,11 +11958,18 @@ var init_files2 = __esm({
           UNTRUSTED_CONTEXT.lastIndex = 0;
           for (const m of s.run.matchAll(UNTRUSTED_CONTEXT)) {
             const expr = m[1];
-            if (expr.startsWith("inputs.") && !wf.triggers.includes("workflow_dispatch") && !wf.triggers.includes("workflow_call")) continue;
+            if (expr.startsWith("inputs.") && !wf.triggers.includes("workflow_dispatch") && !wf.triggers.includes("workflow_call"))
+              continue;
             const line = findLine(ctx.lines, new RegExp(m[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), s.line - 1);
             if (seen.has(`${line}:${expr}`)) continue;
             seen.add(`${line}:${expr}`);
-            out2.push({ line, message: `\`${m[0]}\` is expanded inside a \`run:\` script.`, severity: expr.startsWith("inputs.") ? "medium" : "high", confidence: expr.startsWith("inputs.") ? "medium" : "high", facts: { expression: expr } });
+            out2.push({
+              line,
+              message: `\`${m[0]}\` is expanded inside a \`run:\` script.`,
+              severity: expr.startsWith("inputs.") ? "medium" : "high",
+              confidence: expr.startsWith("inputs.") ? "medium" : "high",
+              facts: { expression: expr }
+            });
           }
         }
         return out2;
@@ -11247,13 +11991,17 @@ var init_files2 = __esm({
       appliesTo: (f) => f.kind === "workflow",
       check(ctx) {
         const wf = loadWorkflow(ctx);
-        if (!wf || !(wf.triggers.includes("pull_request_target") || wf.triggers.includes("workflow_run"))) return [];
+        if (!wf || !(wf.triggers.includes("pull_request_target") || wf.triggers.includes("workflow_run")))
+          return [];
         const out2 = [];
         for (const s of wf.steps) {
           if (!s.uses?.startsWith("actions/checkout")) continue;
           const ref = String(s.with?.ref ?? "") + String(s.with?.repository ?? "");
           if (/github\.event\.pull_request\.head|github\.head_ref|github\.event\.workflow_run\.head/.test(ref))
-            out2.push({ line: s.line, message: `Checks out \`${ref}\` in a \`${wf.triggers.find((t2) => t2 === "pull_request_target" || t2 === "workflow_run")}\` workflow.` });
+            out2.push({
+              line: s.line,
+              message: `Checks out \`${ref}\` in a \`${wf.triggers.find((t2) => t2 === "pull_request_target" || t2 === "workflow_run")}\` workflow.`
+            });
         }
         return out2;
       }
@@ -11286,10 +12034,19 @@ var init_files2 = __esm({
             firstParty.push(s.uses);
             continue;
           }
-          out2.push({ line: s.line, message: `\`${s.uses}\` is pinned to a mutable ref.`, facts: { action: name2, ref } });
+          out2.push({
+            line: s.line,
+            message: `\`${s.uses}\` is pinned to a mutable ref.`,
+            facts: { action: name2, ref }
+          });
         }
         if (firstParty.length)
-          out2.push({ line: findLine(ctx.lines, /uses:\s*(?:actions|github)\//), message: `GitHub-owned actions use mutable tags: ${[...new Set(firstParty)].join(", ")}.`, severity: "low", anchor: `first-party:${[...new Set(firstParty)].sort().join(",")}` });
+          out2.push({
+            line: findLine(ctx.lines, /uses:\s*(?:actions|github)\//),
+            message: `GitHub-owned actions use mutable tags: ${[...new Set(firstParty)].join(", ")}.`,
+            severity: "low",
+            anchor: `first-party:${[...new Set(firstParty)].sort().join(",")}`
+          });
         return out2;
       }
     };
@@ -11313,11 +12070,26 @@ var init_files2 = __esm({
         const wf = loadWorkflow(ctx);
         if (!wf) return [];
         const top = wf.data.permissions;
-        if (top === "write-all") return [{ line: findLine(ctx.lines, /^permissions:/), message: "`permissions: write-all` grants every scope to the workflow token.", severity: "high", fixer: null }];
+        if (top === "write-all")
+          return [
+            {
+              line: findLine(ctx.lines, /^permissions:/),
+              message: "`permissions: write-all` grants every scope to the workflow token.",
+              severity: "high",
+              fixer: null
+            }
+          ];
         if (top !== void 0) return [];
         if (wf.jobs.length && wf.jobs.every((j) => j.data.permissions !== void 0)) return [];
         const needsWrite = WRITES_NEEDED.test(ctx.text);
-        return [{ line: findLine(ctx.lines, /^on:|^"on":|^'on':/), message: "No `permissions:` block; the token gets the repository default scopes.", fixer: needsWrite ? null : "gha-permissions-read", facts: { autoFixable: !needsWrite } }];
+        return [
+          {
+            line: findLine(ctx.lines, /^on:|^"on":|^'on':/),
+            message: "No `permissions:` block; the token gets the repository default scopes.",
+            fixer: needsWrite ? null : "gha-permissions-read",
+            facts: { autoFixable: !needsWrite }
+          }
+        ];
       }
     };
     ghaTimeout = {
@@ -11336,9 +12108,17 @@ var init_files2 = __esm({
       check(ctx) {
         const wf = loadWorkflow(ctx);
         if (!wf) return [];
-        const missing = wf.jobs.filter((j) => j.data["timeout-minutes"] === void 0 && typeof j.data.uses !== "string");
+        const missing = wf.jobs.filter(
+          (j) => j.data["timeout-minutes"] === void 0 && typeof j.data.uses !== "string"
+        );
         if (!missing.length) return [];
-        return [{ line: missing[0].line, message: `Jobs without \`timeout-minutes\`: ${missing.map((j) => j.id).join(", ")}.`, anchor: `jobs:${missing.map((j) => j.id).join(",")}` }];
+        return [
+          {
+            line: missing[0].line,
+            message: `Jobs without \`timeout-minutes\`: ${missing.map((j) => j.id).join(", ")}.`,
+            anchor: `jobs:${missing.map((j) => j.id).join(",")}`
+          }
+        ];
       }
     };
     dockerRoot = {
@@ -11363,8 +12143,10 @@ var init_files2 = __esm({
         if (/^scratch\b|distroless|chainguard|nonroot|rootless/i.test(from.args)) return [];
         const users = ins.slice(lastFrom).filter((x) => x.op === "USER");
         const last = users[users.length - 1];
-        if (!last) return [{ line: from.line, message: `Final stage \`FROM ${from.args}\` has no \`USER\` instruction.` }];
-        if (/^(?:root|0)(?::|$)/.test(last.args)) return [{ line: last.line, message: "The final `USER` is root." }];
+        if (!last)
+          return [{ line: from.line, message: `Final stage \`FROM ${from.args}\` has no \`USER\` instruction.` }];
+        if (/^(?:root|0)(?::|$)/.test(last.args))
+          return [{ line: last.line, message: "The final `USER` is root." }];
         return [];
       }
     };
@@ -11384,14 +12166,18 @@ var init_files2 = __esm({
       appliesTo: (f) => f.kind === "dockerfile",
       check(ctx) {
         const ins = dockerInstructions(ctx.text);
-        const stages = new Set(ins.filter((x) => x.op === "FROM").map((x) => /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase()).filter(Boolean));
+        const stages = new Set(
+          ins.filter((x) => x.op === "FROM").map((x) => /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase()).filter(Boolean)
+        );
         const out2 = [];
         for (const x of ins) {
           if (x.op !== "FROM") continue;
           const image = x.args.replace(/--platform=\S+\s+/, "").split(/\s+/)[0];
-          if (image === "scratch" || stages.has(image.toLowerCase()) || image.includes("$") || image.includes("@sha256:")) continue;
+          if (image === "scratch" || stages.has(image.toLowerCase()) || image.includes("$") || image.includes("@sha256:"))
+            continue;
           const tag = image.includes(":") && !/:\d+\//.test(image) ? image.split(":").pop() : void 0;
-          if (!tag || tag === "latest") out2.push({ line: x.line, message: `\`FROM ${image}\` is not pinned to a version.` });
+          if (!tag || tag === "latest")
+            out2.push({ line: x.line, message: `\`FROM ${image}\` is not pinned to a version.` });
         }
         return out2;
       }
@@ -11413,8 +12199,14 @@ var init_files2 = __esm({
       check(ctx) {
         const out2 = [];
         for (const x of dockerInstructions(ctx.text)) {
-          if (x.op === "RUN" && /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b/.test(x.args)) out2.push({ line: x.line, message: "Downloads a script and pipes it into a shell." });
-          if (x.op === "ADD" && /https?:\/\//.test(x.args) && !/--checksum=/.test(x.args)) out2.push({ line: x.line, message: "`ADD` fetches a remote URL without `--checksum`.", severity: "low" });
+          if (x.op === "RUN" && /\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b/.test(x.args))
+            out2.push({ line: x.line, message: "Downloads a script and pipes it into a shell." });
+          if (x.op === "ADD" && /https?:\/\//.test(x.args) && !/--checksum=/.test(x.args))
+            out2.push({
+              line: x.line,
+              message: "`ADD` fetches a remote URL without `--checksum`.",
+              severity: "low"
+            });
         }
         return out2;
       }
@@ -11440,9 +12232,13 @@ var init_files2 = __esm({
           for (const m of x.args.matchAll(/([A-Za-z_][A-Za-z0-9_]*)\s*[= ]\s*("[^"]*"|'[^']*'|\S+)/g)) {
             const name2 = m[1];
             const value = m[2].replace(/^['"]|['"]$/g, "");
-            if (!/(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|CREDENTIALS?)$/i.test(name2)) continue;
+            if (!/(?:PASSWORD|PASSWD|SECRET|TOKEN|API_?KEY|PRIVATE_?KEY|ACCESS_?KEY|CREDENTIALS?)$/i.test(name2))
+              continue;
             if (!value || value.startsWith("$") || isPlaceholder(value)) continue;
-            out2.push({ line: x.line, message: `\`${x.op} ${name2}\` has a literal value (${maskSecret(value)}).` });
+            out2.push({
+              line: x.line,
+              message: `\`${x.op} ${name2}\` has a literal value (${maskSecret(value)}).`
+            });
           }
         }
         return out2;
@@ -11466,11 +12262,16 @@ var init_files2 = __esm({
         for (const f of ctx.files.byKind("dockerfile")) {
           const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
           const ignore = dir ? `${dir}/.dockerignore` : ".dockerignore";
-          if (ctx.files.has(ignore) || ctx.files.readAny(ignore) !== void 0 || ctx.files.readAny(".dockerignore") !== void 0) continue;
+          if (ctx.files.has(ignore) || ctx.files.readAny(ignore) !== void 0 || ctx.files.readAny(".dockerignore") !== void 0)
+            continue;
           if (ctx.files.has(`${f.path}.dockerignore`)) continue;
           for (const x of dockerInstructions(ctx.files.read(f.path) ?? ""))
             if ((x.op === "COPY" || x.op === "ADD") && /(?:^|\s)\.\/?\s+\S+$/.test(x.args.replace(/--\S+\s+/g, "")) && !/--from=/.test(x.args)) {
-              out2.push({ file: f.path, line: x.line, message: `\`${x.op} ${x.args}\` copies the entire build context and no \`.dockerignore\` exists.` });
+              out2.push({
+                file: f.path,
+                line: x.line,
+                message: `\`${x.op} ${x.args}\` copies the entire build context and no \`.dockerignore\` exists.`
+              });
               break;
             }
         }
@@ -11503,17 +12304,41 @@ var init_files2 = __esm({
         for (const [name2, svc] of Object.entries(y?.services ?? {})) {
           if (!svc || typeof svc !== "object") continue;
           const at = (re) => findLine(ctx.lines, re, Math.max(0, findLine(ctx.lines, new RegExp(`^\\s+${name2}:`)) - 1));
-          if (svc.privileged === true) out2.push({ line: at(/privileged:\s*true/), message: `Service \`${name2}\` runs privileged.`, anchor: `${name2}:privileged` });
-          const vols = Array.isArray(svc.volumes) ? svc.volumes.map((v) => typeof v === "string" ? v : String(v?.source ?? "")) : [];
-          if (vols.some((v) => v.includes("/var/run/docker.sock"))) out2.push({ line: at(/docker\.sock/), message: `Service \`${name2}\` mounts the Docker socket.`, anchor: `${name2}:docker.sock` });
-          if (svc.network_mode === "host") out2.push({ line: at(/network_mode:\s*host/), message: `Service \`${name2}\` uses host networking.`, severity: "low", anchor: `${name2}:host-net` });
+          if (svc.privileged === true)
+            out2.push({
+              line: at(/privileged:\s*true/),
+              message: `Service \`${name2}\` runs privileged.`,
+              anchor: `${name2}:privileged`
+            });
+          const vols = Array.isArray(svc.volumes) ? svc.volumes.map(
+            (v) => typeof v === "string" ? v : String(v?.source ?? "")
+          ) : [];
+          if (vols.some((v) => v.includes("/var/run/docker.sock")))
+            out2.push({
+              line: at(/docker\.sock/),
+              message: `Service \`${name2}\` mounts the Docker socket.`,
+              anchor: `${name2}:docker.sock`
+            });
+          if (svc.network_mode === "host")
+            out2.push({
+              line: at(/network_mode:\s*host/),
+              message: `Service \`${name2}\` uses host networking.`,
+              severity: "low",
+              anchor: `${name2}:host-net`
+            });
           const ports = Array.isArray(svc.ports) ? svc.ports.map(String) : [];
           for (const p of ports) {
             const parts2 = p.replace(/\/(?:tcp|udp)$/, "").split(":");
             const container = parts2[parts2.length - 1];
             const hostIp = parts2.length === 3 ? parts2[0] : void 0;
             if (DB_PORTS.test(container) && (!hostIp || hostIp === "0.0.0.0"))
-              out2.push({ line: at(new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))), message: `Service \`${name2}\` publishes port ${container} on all interfaces.`, severity: "low", confidence: "medium", anchor: `${name2}:port:${p}` });
+              out2.push({
+                line: at(new RegExp(p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))),
+                message: `Service \`${name2}\` publishes port ${container} on all interfaces.`,
+                severity: "low",
+                confidence: "medium",
+                anchor: `${name2}:port:${p}`
+              });
           }
         }
         return out2;
@@ -11540,7 +12365,12 @@ var init_files2 = __esm({
           if (/^\.env(?:\.[\w.-]+)?$/i.test(b) && !isEnvTemplate(f.path) && !/\.(?:test|testing|ci)$/i.test(b))
             out2.push({ file: f.path, message: `\`${f.path}\` is tracked by git.`, anchor: f.path });
           else if (/\.(?:p12|pfx|jks|keystore|ppk)$|^id_(?:rsa|dsa|ecdsa|ed25519)$/i.test(b))
-            out2.push({ file: f.path, message: `Key material \`${f.path}\` is tracked by git.`, anchor: f.path, confidence: "medium" });
+            out2.push({
+              file: f.path,
+              message: `Key material \`${f.path}\` is tracked by git.`,
+              anchor: f.path,
+              confidence: "medium"
+            });
         }
         return out2;
       }
@@ -11561,7 +12391,12 @@ var init_files2 = __esm({
       verification: "`git check-ignore <file>` prints the path.",
       check(ctx) {
         if (!ctx.files.gitRepo) return [];
-        return ctx.files.sensitiveUnread.filter((s) => s.ignored === false).map((s) => ({ file: void 0, message: `\`${s.path}\` is not ignored by git.`, anchor: s.path, facts: { path: s.path } }));
+        return ctx.files.sensitiveUnread.filter((s) => s.ignored === false).map((s) => ({
+          file: void 0,
+          message: `\`${s.path}\` is not ignored by git.`,
+          anchor: s.path,
+          facts: { path: s.path }
+        }));
       }
     };
     NEXT_PUBLIC = /^(?:NEXT_PUBLIC_|VITE_|EXPO_PUBLIC_|REACT_APP_|NUXT_PUBLIC_|PUBLIC_|GATSBY_)/;
@@ -11582,13 +12417,23 @@ var init_files2 = __esm({
         const out2 = [];
         const names = /* @__PURE__ */ new Map();
         for (const v of ctx.profile.envVars) names.set(v.name, v.usedIn[0] ?? "");
-        for (const t2 of ctx.profile.envTemplates) for (const m of (ctx.files.read(t2) ?? "").matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=/gm)) if (!names.has(m[1])) names.set(m[1], t2);
+        for (const t2 of ctx.profile.envTemplates)
+          for (const m of (ctx.files.read(t2) ?? "").matchAll(/^\s*([A-Z][A-Z0-9_]*)\s*=/gm))
+            if (!names.has(m[1])) names.set(m[1], t2);
         for (const [name2, file] of names) {
           if (!NEXT_PUBLIC.test(name2)) continue;
           const rest = name2.replace(NEXT_PUBLIC, "");
-          if (!/(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE|SERVICE_KEY|ADMIN_KEY|_SK$|SECRET_KEY|WEBHOOK_SECRET|DB_URL|DATABASE_URL)/.test(rest)) continue;
+          if (!/(?:SECRET|PRIVATE|PASSWORD|SERVICE_ROLE|SERVICE_KEY|ADMIN_KEY|_SK$|SECRET_KEY|WEBHOOK_SECRET|DB_URL|DATABASE_URL)/.test(
+            rest
+          ))
+            continue;
           if (/PUBLISHABLE|PUBLIC_KEY|ANON/.test(rest)) continue;
-          out2.push({ file: file || void 0, message: `\`${name2}\` is exposed to the browser bundle.`, anchor: name2, facts: { variable: name2 } });
+          out2.push({
+            file: file || void 0,
+            message: `\`${name2}\` is exposed to the browser bundle.`,
+            anchor: name2,
+            facts: { variable: name2 }
+          });
         }
         return out2;
       }
@@ -11615,12 +12460,23 @@ var init_files2 = __esm({
           const l = ctx.lines[i2];
           if (ctx.file.path.endsWith(".blade.php")) {
             for (const m of l.matchAll(/\{!!\s*([\s\S]*?)\s*!!\}/g))
-              if (!SAFE_BLADE.test(m[1]) && !LITERAL_TERNARY.test(m[1])) out2.push({ line: i2 + 1, column: (m.index ?? 0) + 1, message: `Blade prints \`{!! ${m[1].slice(0, 50)} !!}\` without escaping.`, confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "low", severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "medium" });
+              if (!SAFE_BLADE.test(m[1]) && !LITERAL_TERNARY.test(m[1]))
+                out2.push({
+                  line: i2 + 1,
+                  column: (m.index ?? 0) + 1,
+                  message: `Blade prints \`{!! ${m[1].slice(0, 50)} !!}\` without escaping.`,
+                  confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "low",
+                  severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "medium"
+                });
           } else if (/\.vue$/.test(ctx.file.path)) {
-            for (const m of l.matchAll(/\sv-html\s*=\s*"([^"]+)"/g)) if (!/sanitize|purify|DOMPurify/i.test(m[1])) out2.push({ line: i2 + 1, message: `\`v-html="${m[1].slice(0, 50)}"\` renders raw HTML.` });
+            for (const m of l.matchAll(/\sv-html\s*=\s*"([^"]+)"/g))
+              if (!/sanitize|purify|DOMPurify/i.test(m[1]))
+                out2.push({ line: i2 + 1, message: `\`v-html="${m[1].slice(0, 50)}"\` renders raw HTML.` });
           } else if (/\.(?:html|jinja2?|j2|djhtml)$/.test(ctx.file.path)) {
-            for (const m of l.matchAll(/\{\{\s*([^}|]+)\|\s*safe\s*\}\}/g)) out2.push({ line: i2 + 1, message: `\`{{ ${m[1].trim()}|safe }}\` disables escaping.` });
-            if (/\{%\s*autoescape\s+(?:off|false)\s*%\}/.test(l)) out2.push({ line: i2 + 1, message: "Autoescaping is turned off for a template block." });
+            for (const m of l.matchAll(/\{\{\s*([^}|]+)\|\s*safe\s*\}\}/g))
+              out2.push({ line: i2 + 1, message: `\`{{ ${m[1].trim()}|safe }}\` disables escaping.` });
+            if (/\{%\s*autoescape\s+(?:off|false)\s*%\}/.test(l))
+              out2.push({ line: i2 + 1, message: "Autoescaping is turned off for a template block." });
           }
         }
         return out2;
@@ -11643,7 +12499,9 @@ var init_files2 = __esm({
       check(ctx) {
         const out2 = [];
         ctx.lines.forEach((l, i2) => {
-          const m = /^\s*((?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*["']?(?:true|1|True|on|yes)["']?)(?:\s|#|$)/.exec(l);
+          const m = /^\s*((?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*["']?(?:true|1|True|on|yes)["']?)(?:\s|#|$)/.exec(
+            l
+          );
           if (m) out2.push({ line: i2 + 1, message: `\`${m[1]}\` in a production environment template.` });
         });
         return out2;
@@ -11664,8 +12522,17 @@ var init_files2 = __esm({
       check(ctx) {
         const out2 = [];
         ctx.lines.forEach((l, i2) => {
-          if (/ignoreBuildErrors\s*:\s*true/.test(l)) out2.push({ line: i2 + 1, message: "`typescript.ignoreBuildErrors: true` lets builds pass with type errors." });
-          if (/ignoreDuringBuilds\s*:\s*true/.test(l)) out2.push({ line: i2 + 1, message: "`eslint.ignoreDuringBuilds: true` skips lint during builds.", severity: "low" });
+          if (/ignoreBuildErrors\s*:\s*true/.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: "`typescript.ignoreBuildErrors: true` lets builds pass with type errors."
+            });
+          if (/ignoreDuringBuilds\s*:\s*true/.test(l))
+            out2.push({
+              line: i2 + 1,
+              message: "`eslint.ignoreDuringBuilds: true` skips lint during builds.",
+              severity: "low"
+            });
         });
         return out2;
       }
@@ -11686,7 +12553,12 @@ var init_files2 = __esm({
       laravelEnvDebug,
       nextConfigRisks
     ];
-    securityProjectRules = [dockerCopyAll, envCommitted, envNotIgnored, publicEnvSecret];
+    securityProjectRules = [
+      dockerCopyAll,
+      envCommitted,
+      envNotIgnored,
+      publicEnvSecret
+    ];
   }
 });
 
@@ -11710,7 +12582,9 @@ function isWorkspaceMember(ctx, m) {
   let dir = memberDir;
   while (dir !== ".") {
     dir = dirOf(dir);
-    const lock = ctx.profile.lockfiles.find((l) => dirOf(l.file) === dir && LOCK_FOR[b]?.test(l.file.split("/").pop()));
+    const lock = ctx.profile.lockfiles.find(
+      (l) => dirOf(l.file) === dir && LOCK_FOR[b]?.test(l.file.split("/").pop())
+    );
     if (lock) {
       const rel = dir === "." ? memberDir : memberDir.slice(dir.length + 1);
       const globs = workspaceGlobs(ctx, dir, b);
@@ -11730,7 +12604,9 @@ function eolMatch(key, version) {
   const entry = EOL[key];
   if (!entry) return void 0;
   const [maj, min] = version.split(".");
-  return entry.eol.find((e) => e.version.includes(".") ? e.version === `${maj}.${min ?? "0"}` : e.version === maj);
+  return entry.eol.find(
+    (e) => e.version.includes(".") ? e.version === `${maj}.${min ?? "0"}` : e.version === maj
+  );
 }
 var LOCK_FOR, missingLockfile, lockfileDrift, multipleLockfiles, nonRegistry, installScripts, unpinned, EOL_AS_OF, EOL, runtimeEol, supplyChainRules;
 var init_supply_chain = __esm({
@@ -11771,11 +12647,22 @@ var init_supply_chain = __esm({
           const runtimeDeps = m.deps.filter((d) => !d.dev && d.source !== "workspace" && d.spec !== "sdk");
           if (!runtimeDeps.length) continue;
           const dir = dirOf(m.file);
-          const hasLock = ctx.profile.lockfiles.some((l) => dirOf(l.file) === dir && lockRe.test(l.file.split("/").pop())) || ctx.files.files.some((f) => dirOf(f.path) === dir && lockRe.test(f.path.split("/").pop()) && f.path !== m.file);
+          const hasLock = ctx.profile.lockfiles.some((l) => dirOf(l.file) === dir && lockRe.test(l.file.split("/").pop())) || ctx.files.files.some(
+            (f) => dirOf(f.path) === dir && lockRe.test(f.path.split("/").pop()) && f.path !== m.file
+          );
           if (hasLock || isWorkspaceMember(ctx, m)) continue;
-          if (b === "package.json" && m.private !== true && m.version && (m.extra.main || m.extra.bin) && !ctx.profile.technologies.some((t2) => t2.unit === dir && ["fullstack", "backend", "frontend"].includes(t2.kind))) continue;
-          if (b === "pyproject.toml" && ctx.files.files.some((f) => dirOf(f.path) === dir && /requirements.*\.txt$/.test(f.path))) continue;
-          out2.push({ file: m.file, line: 1, message: `\`${m.file}\` declares ${runtimeDeps.length} runtime dependencies but no lockfile is committed.`, anchor: m.file });
+          if (b === "package.json" && m.private !== true && m.version && (m.extra.main || m.extra.bin) && !ctx.profile.technologies.some(
+            (t2) => t2.unit === dir && ["fullstack", "backend", "frontend"].includes(t2.kind)
+          ))
+            continue;
+          if (b === "pyproject.toml" && ctx.files.files.some((f) => dirOf(f.path) === dir && /requirements.*\.txt$/.test(f.path)))
+            continue;
+          out2.push({
+            file: m.file,
+            line: 1,
+            message: `\`${m.file}\` declares ${runtimeDeps.length} runtime dependencies but no lockfile is committed.`,
+            anchor: m.file
+          });
         }
         return out2;
       }
@@ -11799,25 +12686,47 @@ var init_supply_chain = __esm({
           const dir = dirOf(m.file);
           const b = m.file.split("/").pop();
           if (b === "package.json") {
-            const lock = ctx.profile.lockfiles.find((l) => dirOf(l.file) === dir && /package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml/.test(l.file));
+            const lock = ctx.profile.lockfiles.find(
+              (l) => dirOf(l.file) === dir && /package-lock\.json|npm-shrinkwrap\.json|pnpm-lock\.yaml/.test(l.file)
+            );
             if (!lock?.rootDeps || lock.error) continue;
-            const missing = m.deps.filter((d) => d.source !== "workspace" && !lock.rootDeps.has(d.name) && !m.deps.some((x) => x.name === d.name && x !== d && lock.rootDeps.has(x.name)));
+            const missing = m.deps.filter(
+              (d) => d.source !== "workspace" && !lock.rootDeps.has(d.name) && !m.deps.some((x) => x.name === d.name && x !== d && lock.rootDeps.has(x.name))
+            );
             const declared = m.deps.filter((d) => d.source !== "workspace");
             const realMissing = missing.filter((d) => !(d.dev === false && /peer/.test(d.spec)));
             if (realMissing.length && realMissing.length < declared.length)
-              out2.push({ file: lock.file, message: `${realMissing.length} dependencies in \`${m.file}\` are missing from \`${lock.file}\`: ${realMissing.slice(0, 8).map((d) => d.name).join(", ")}${realMissing.length > 8 ? ", \u2026" : ""}.`, anchor: `${lock.file}:${realMissing.map((d) => d.name).sort().join(",")}` });
+              out2.push({
+                file: lock.file,
+                message: `${realMissing.length} dependencies in \`${m.file}\` are missing from \`${lock.file}\`: ${realMissing.slice(0, 8).map((d) => d.name).join(", ")}${realMissing.length > 8 ? ", \u2026" : ""}.`,
+                anchor: `${lock.file}:${realMissing.map((d) => d.name).sort().join(",")}`
+              });
           } else if (b === "composer.json") {
-            const lock = ctx.profile.lockfiles.find((l) => l.file === (dir === "." ? "composer.lock" : `${dir}/composer.lock`));
+            const lock = ctx.profile.lockfiles.find(
+              (l) => l.file === (dir === "." ? "composer.lock" : `${dir}/composer.lock`)
+            );
             if (!lock || lock.error) continue;
             const names = new Set(lock.packages.map((p) => p.name.toLowerCase()));
             const missing = m.deps.filter((d) => !names.has(d.name.toLowerCase()));
-            if (missing.length) out2.push({ file: lock.file, message: `${missing.length} packages required in \`${m.file}\` are missing from \`${lock.file}\`: ${missing.slice(0, 8).map((d) => d.name).join(", ")}.`, anchor: `${lock.file}:${missing.map((d) => d.name).sort().join(",")}` });
+            if (missing.length)
+              out2.push({
+                file: lock.file,
+                message: `${missing.length} packages required in \`${m.file}\` are missing from \`${lock.file}\`: ${missing.slice(0, 8).map((d) => d.name).join(", ")}.`,
+                anchor: `${lock.file}:${missing.map((d) => d.name).sort().join(",")}`
+              });
           } else if (b === "pubspec.yaml") {
-            const lock = ctx.profile.lockfiles.find((l) => l.file === (dir === "." ? "pubspec.lock" : `${dir}/pubspec.lock`));
+            const lock = ctx.profile.lockfiles.find(
+              (l) => l.file === (dir === "." ? "pubspec.lock" : `${dir}/pubspec.lock`)
+            );
             if (!lock || lock.error) continue;
             const names = new Set(lock.packages.map((p) => p.name));
             const missing = m.deps.filter((d) => d.spec !== "sdk" && d.source !== "path" && !names.has(d.name));
-            if (missing.length) out2.push({ file: lock.file, message: `${missing.length} packages in \`${m.file}\` are missing from \`${lock.file}\`: ${missing.slice(0, 8).map((d) => d.name).join(", ")}.`, anchor: `${lock.file}:${missing.map((d) => d.name).sort().join(",")}` });
+            if (missing.length)
+              out2.push({
+                file: lock.file,
+                message: `${missing.length} packages in \`${m.file}\` are missing from \`${lock.file}\`: ${missing.slice(0, 8).map((d) => d.name).join(", ")}.`,
+                anchor: `${lock.file}:${missing.map((d) => d.name).sort().join(",")}`
+              });
           }
         }
         return out2;
@@ -11838,7 +12747,8 @@ var init_supply_chain = __esm({
       check(ctx) {
         const byDir = /* @__PURE__ */ new Map();
         for (const f of ctx.files.byKind("lockfile"))
-          if (/(?:^|\/)(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/.test(f.path)) byDir.set(dirOf(f.path), [...byDir.get(dirOf(f.path)) ?? [], f.path]);
+          if (/(?:^|\/)(?:package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/.test(f.path))
+            byDir.set(dirOf(f.path), [...byDir.get(dirOf(f.path)) ?? [], f.path]);
         return [...byDir.values()].filter((l) => l.length > 1).map((l) => ({ file: l[0], message: `Conflicting lockfiles: ${l.join(", ")}.`, anchor: l.join(",") }));
       }
     };
@@ -11864,12 +12774,23 @@ var init_supply_chain = __esm({
             const insecure = /^http:\/\//.test(d.spec);
             if (pinned && !insecure) continue;
             const line = (ctx.files.read(m.file) ?? "").split("\n").findIndex((l) => l.includes(d.name)) + 1 || 1;
-            out2.push({ file: m.file, line, message: `\`${d.name}\` comes from ${insecure ? "an insecure HTTP URL" : d.source === "git" ? "a git ref that is not a commit SHA" : "a tarball URL"} (${d.spec.replace(/\/\/[^@/]+@/, "//***@").slice(0, 80)}).`, severity: insecure ? "high" : "medium", anchor: `${m.file}:${d.name}` });
+            out2.push({
+              file: m.file,
+              line,
+              message: `\`${d.name}\` comes from ${insecure ? "an insecure HTTP URL" : d.source === "git" ? "a git ref that is not a commit SHA" : "a tarball URL"} (${d.spec.replace(/\/\/[^@/]+@/, "//***@").slice(0, 80)}).`,
+              severity: insecure ? "high" : "medium",
+              anchor: `${m.file}:${d.name}`
+            });
           }
         for (const l of ctx.profile.lockfiles)
           for (const p of l.packages)
             if (p.nonRegistry && /^http:\/\//.test(p.nonRegistry))
-              out2.push({ file: l.file, message: `\`${p.name}@${p.version}\` resolves over plain HTTP.`, severity: "high", anchor: `${l.file}:${p.name}` });
+              out2.push({
+                file: l.file,
+                message: `\`${p.name}@${p.version}\` resolves over plain HTTP.`,
+                severity: "high",
+                anchor: `${l.file}:${p.name}`
+              });
         return out2;
       }
     };
@@ -11893,7 +12814,12 @@ var init_supply_chain = __esm({
         for (const l of ctx.profile.lockfiles) {
           const pkgs = [...new Set(l.packages.filter((p) => p.hasInstallScript).map((p) => p.name))];
           if (!pkgs.length) continue;
-          out2.push({ file: l.file, message: `${pkgs.length} packages run install scripts: ${pkgs.slice(0, 12).join(", ")}${pkgs.length > 12 ? ", \u2026" : ""}.`, anchor: `${l.file}:${pkgs.sort().join(",")}`, facts: { count: pkgs.length } });
+          out2.push({
+            file: l.file,
+            message: `${pkgs.length} packages run install scripts: ${pkgs.slice(0, 12).join(", ")}${pkgs.length > 12 ? ", \u2026" : ""}.`,
+            anchor: `${l.file}:${pkgs.sort().join(",")}`,
+            facts: { count: pkgs.length }
+          });
         }
         return out2;
       }
@@ -11916,18 +12842,39 @@ var init_supply_chain = __esm({
         for (const m of ctx.profile.manifests) {
           if (m.ecosystem === "npm" || m.ecosystem === "Packagist") {
             const any = m.deps.filter((d) => /^(?:\*|latest|x|)$/.test(d.spec.trim()) && d.source === "registry");
-            if (any.length) out2.push({ file: m.file, message: `Unconstrained versions: ${any.map((d) => `${d.name}@"${d.spec}"`).join(", ")}.`, anchor: `${m.file}:${any.map((d) => d.name).join(",")}` });
+            if (any.length)
+              out2.push({
+                file: m.file,
+                message: `Unconstrained versions: ${any.map((d) => `${d.name}@"${d.spec}"`).join(", ")}.`,
+                anchor: `${m.file}:${any.map((d) => d.name).join(",")}`
+              });
           }
           if (m.ecosystem === "Packagist" && m.extra["minimum-stability"] === "dev" && m.extra["prefer-stable"] !== true)
-            out2.push({ file: m.file, message: "`minimum-stability: dev` without `prefer-stable: true` installs development versions.", severity: "low", anchor: `${m.file}:minimum-stability` });
+            out2.push({
+              file: m.file,
+              message: "`minimum-stability: dev` without `prefer-stable: true` installs development versions.",
+              severity: "low",
+              anchor: `${m.file}:minimum-stability`
+            });
           if (m.ecosystem === "PyPI" && /requirements/.test(m.file)) {
             const dir = dirOf(m.file);
-            const locked = ctx.profile.lockfiles.some((l) => dirOf(l.file) === dir && l.ecosystem === "PyPI" && l.file !== m.file);
+            const locked = ctx.profile.lockfiles.some(
+              (l) => dirOf(l.file) === dir && l.ecosystem === "PyPI" && l.file !== m.file
+            );
             const bare = m.deps.filter((d) => !d.spec && d.source === "registry");
             if (bare.length && !locked && !m.deps.every((d) => !d.spec))
-              out2.push({ file: m.file, message: `${bare.length} requirements have no version: ${bare.slice(0, 10).map((d) => d.name).join(", ")}.`, severity: "low", anchor: `${m.file}:${bare.map((d) => d.name).join(",")}` });
+              out2.push({
+                file: m.file,
+                message: `${bare.length} requirements have no version: ${bare.slice(0, 10).map((d) => d.name).join(", ")}.`,
+                severity: "low",
+                anchor: `${m.file}:${bare.map((d) => d.name).join(",")}`
+              });
             else if (bare.length && !locked && m.deps.every((d) => !d.spec) && m.deps.length > 2)
-              out2.push({ file: m.file, message: `No requirement in \`${m.file}\` has a version constraint and no lockfile exists.`, anchor: `${m.file}:all` });
+              out2.push({
+                file: m.file,
+                message: `No requirement in \`${m.file}\` has a version constraint and no lockfile exists.`,
+                anchor: `${m.file}:all`
+              });
           }
         }
         return out2;
@@ -12039,25 +12986,63 @@ var init_supply_chain = __esm({
         }
         for (const l of ctx.profile.lockfiles.filter((x) => !isTestPath(x.file))) {
           const lv = l.packages.find((p) => p.name === "laravel/framework");
-          if (lv) report("laravel", lv.version.split(".")[0], l.file, `laravel/framework ${lv.version}`, "laravel/framework");
+          if (lv)
+            report(
+              "laravel",
+              lv.version.split(".")[0],
+              l.file,
+              `laravel/framework ${lv.version}`,
+              "laravel/framework"
+            );
           const dj = l.packages.find((p) => p.name === "django");
           if (dj) report("django", lowestMajor(dj.version), l.file, `django ${dj.version}`, dj.version);
         }
         for (const f of ctx.files.files.filter((x) => !x.isTest)) {
           const b = f.path.split("/").pop();
-          if (b === ".nvmrc" || b === ".node-version") report("node", lowestMajor(ctx.files.read(f.path) ?? ""), f.path, (ctx.files.read(f.path) ?? "").trim());
-          if (b === ".python-version") report("python", lowestMajor(ctx.files.read(f.path) ?? ""), f.path, (ctx.files.read(f.path) ?? "").trim());
-          if (b === ".ruby-version") report("ruby", lowestMajor(ctx.files.read(f.path) ?? ""), f.path, (ctx.files.read(f.path) ?? "").trim());
+          if (b === ".nvmrc" || b === ".node-version")
+            report(
+              "node",
+              lowestMajor(ctx.files.read(f.path) ?? ""),
+              f.path,
+              (ctx.files.read(f.path) ?? "").trim()
+            );
+          if (b === ".python-version")
+            report(
+              "python",
+              lowestMajor(ctx.files.read(f.path) ?? ""),
+              f.path,
+              (ctx.files.read(f.path) ?? "").trim()
+            );
+          if (b === ".ruby-version")
+            report(
+              "ruby",
+              lowestMajor(ctx.files.read(f.path) ?? ""),
+              f.path,
+              (ctx.files.read(f.path) ?? "").trim()
+            );
           if (f.kind === "dockerfile")
-            for (const m of (ctx.files.read(f.path) ?? "").matchAll(/^\s*FROM\s+(?:--platform=\S+\s+)?(?:[\w.-]+\/)?(node|php|python|ruby):(\d+(?:\.\d+)?)/gim))
+            for (const m of (ctx.files.read(f.path) ?? "").matchAll(
+              /^\s*FROM\s+(?:--platform=\S+\s+)?(?:[\w.-]+\/)?(node|php|python|ruby):(\d+(?:\.\d+)?)/gim
+            ))
               report(m[1].toLowerCase(), m[2], f.path, m[0]);
           if (f.kind === "workflow")
-            for (const m of (ctx.files.read(f.path) ?? "").matchAll(/(node|php|python|ruby)-version:\s*['"]?(\d+(?:\.\d+)?)/g)) report(m[1], m[2], f.path, m[0]);
+            for (const m of (ctx.files.read(f.path) ?? "").matchAll(
+              /(node|php|python|ruby)-version:\s*['"]?(\d+(?:\.\d+)?)/g
+            ))
+              report(m[1], m[2], f.path, m[0]);
         }
         return out2;
       }
     };
-    supplyChainRules = [missingLockfile, lockfileDrift, multipleLockfiles, nonRegistry, installScripts, unpinned, runtimeEol];
+    supplyChainRules = [
+      missingLockfile,
+      lockfileDrift,
+      multipleLockfiles,
+      nonRegistry,
+      installScripts,
+      unpinned,
+      runtimeEol
+    ];
   }
 });
 
@@ -12107,7 +13092,15 @@ var init_rules = __esm({
 
 // src/core/workspace.ts
 import { randomBytes } from "node:crypto";
-import { existsSync as existsSync7, mkdirSync, readdirSync as readdirSync2, readFileSync as readFileSync5, renameSync, statSync as statSync3, writeFileSync } from "node:fs";
+import {
+  existsSync as existsSync7,
+  mkdirSync,
+  readdirSync as readdirSync2,
+  readFileSync as readFileSync5,
+  renameSync,
+  statSync as statSync3,
+  writeFileSync
+} from "node:fs";
 import { dirname as dirname2, join as join7, resolve as resolve2 } from "node:path";
 function atomicWrite(file, content) {
   mkdirSync(dirname2(file), { recursive: true });
@@ -12131,7 +13124,9 @@ var init_workspace = __esm({
         if (!existsSync7(gi)) writeFileSync(gi, "# Relivaro run data \u2014 never commit.\n*\n");
       }
       path(...parts2) {
-        for (const p of parts2) if (p.includes("..") || /^[\\/]/.test(p)) throw new RelivaroError("PATH_OUTSIDE_ROOT", `Invalid workspace path segment: ${p}`);
+        for (const p of parts2)
+          if (p.includes("..") || /^[\\/]/.test(p))
+            throw new RelivaroError("PATH_OUTSIDE_ROOT", `Invalid workspace path segment: ${p}`);
         return join7(this.dir, ...parts2);
       }
       newRunId(prefix = "") {
@@ -12164,11 +13159,14 @@ var init_workspace = __esm({
       listRuns() {
         const dir = this.path("runs");
         if (!existsSync7(dir)) return [];
-        return readdirSync2(dir).filter((d) => existsSync7(join7(dir, d, "run.json"))).sort((a, b) => statSync3(join7(dir, a, "run.json")).mtimeMs - statSync3(join7(dir, b, "run.json")).mtimeMs || a.localeCompare(b));
+        return readdirSync2(dir).filter((d) => existsSync7(join7(dir, d, "run.json"))).sort(
+          (a, b) => statSync3(join7(dir, a, "run.json")).mtimeMs - statSync3(join7(dir, b, "run.json")).mtimeMs || a.localeCompare(b)
+        );
       }
       resolveRun(idOrAlias) {
         const runs = this.listRuns();
-        if (!runs.length) throw new RelivaroError("NOT_FOUND", `No runs in ${this.dir}`, "Run `relivaro audit` first.");
+        if (!runs.length)
+          throw new RelivaroError("NOT_FOUND", `No runs in ${this.dir}`, "Run `relivaro audit` first.");
         if (idOrAlias === "latest" || idOrAlias === "last") return runs[runs.length - 1];
         if (idOrAlias === "previous" || idOrAlias === "prev") {
           if (runs.length < 2) throw new RelivaroError("NOT_FOUND", "There is no previous run.");
@@ -12176,7 +13174,8 @@ var init_workspace = __esm({
         }
         const matches = runs.filter((r) => r === idOrAlias || r.startsWith(idOrAlias) || r.endsWith(idOrAlias));
         if (matches.length === 1) return matches[0];
-        if (matches.length > 1) throw new RelivaroError("USAGE", `Run id "${idOrAlias}" is ambiguous: ${matches.join(", ")}`);
+        if (matches.length > 1)
+          throw new RelivaroError("USAGE", `Run id "${idOrAlias}" is ambiguous: ${matches.join(", ")}`);
         throw new RelivaroError("NOT_FOUND", `Run not found: ${idOrAlias}`);
       }
     };
@@ -12194,17 +13193,27 @@ __export(osv_exports, {
 });
 import { existsSync as existsSync8, readFileSync as readFileSync6, statSync as statSync4 } from "node:fs";
 async function postJson(fetchImpl, url, body2) {
-  const res = await fetchImpl(url, { method: "POST", headers: { "content-type": "application/json", "user-agent": "relivaro" }, body: JSON.stringify(body2), signal: AbortSignal.timeout(3e4) });
+  const res = await fetchImpl(url, {
+    method: "POST",
+    headers: { "content-type": "application/json", "user-agent": "relivaro" },
+    body: JSON.stringify(body2),
+    signal: AbortSignal.timeout(3e4)
+  });
   if (!res.ok) throw new RelivaroError("NETWORK_FAILED", `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
 async function getJson(fetchImpl, url) {
-  const res = await fetchImpl(url, { headers: { "user-agent": "relivaro" }, signal: AbortSignal.timeout(3e4) });
+  const res = await fetchImpl(url, {
+    headers: { "user-agent": "relivaro" },
+    signal: AbortSignal.timeout(3e4)
+  });
   if (!res.ok) throw new RelivaroError("NETWORK_FAILED", `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
 function cvss3Score(vector) {
-  const m = Object.fromEntries(vector.split("/").slice(1).map((p) => p.split(":")));
+  const m = Object.fromEntries(
+    vector.split("/").slice(1).map((p) => p.split(":"))
+  );
   const AV = { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }[m.AV];
   const AC = { L: 0.77, H: 0.44 }[m.AC];
   const UI = { N: 0.85, R: 0.62 }[m.UI];
@@ -12261,7 +13270,8 @@ async function queryOsv(lockfiles, opts = {}) {
   let cache2 = {};
   if (opts.cacheFile && existsSync8(opts.cacheFile)) {
     try {
-      if (Date.now() - statSync4(opts.cacheFile).mtimeMs < 24 * 36e5) cache2 = JSON.parse(readFileSync6(opts.cacheFile, "utf8"));
+      if (Date.now() - statSync4(opts.cacheFile).mtimeMs < 24 * 36e5)
+        cache2 = JSON.parse(readFileSync6(opts.cacheFile, "utf8"));
     } catch {
       cache2 = {};
     }
@@ -12270,7 +13280,12 @@ async function queryOsv(lockfiles, opts = {}) {
   for (let i2 = 0; i2 < entries.length; i2 += BATCH) {
     const slice = entries.slice(i2, i2 + BATCH);
     opts.onProgress?.(`OSV: querying ${i2 + slice.length}/${entries.length} packages`);
-    const body2 = { queries: slice.map((e) => ({ package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem }, version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === "Go" ? "v" : "") })) };
+    const body2 = {
+      queries: slice.map((e) => ({
+        package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem },
+        version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === "Go" ? "v" : "")
+      }))
+    };
     try {
       const res = await postJson(fetchImpl, `${API2}/querybatch`, body2);
       (res.results ?? []).forEach((r, j) => {
@@ -12319,14 +13334,22 @@ async function queryOsv(lockfiles, opts = {}) {
       const fixed = fixedVersions(v, e.pkg.name);
       const aliases = (v.aliases ?? []).filter((a) => a.startsWith("CVE-")).slice(0, 2);
       const dev = e.pkg.dev === true;
-      if (dev && severity !== "info") severity = severity === "critical" ? "high" : severity === "high" ? "medium" : "low";
+      if (dev && severity !== "info")
+        severity = severity === "critical" ? "high" : severity === "high" ? "medium" : "low";
       const file = [...e.files][0];
       result2.hits.push({
         file,
         message: `${e.pkg.name}@${e.pkg.version}${dev ? " (dev)" : ""}: ${v.id}${aliases.length ? ` (${aliases.join(", ")})` : ""} \u2014 ${(v.summary ?? "see advisory").slice(0, 140)}.${fixed.length ? ` Fixed in ${fixed.slice(0, 3).join(", ")}.` : " No fixed version published."}`,
         severity,
         anchor: `${e.pkg.ecosystem}:${e.pkg.name}@${e.pkg.version}:${v.id}`,
-        facts: { package: e.pkg.name, version: e.pkg.version, ecosystem: e.pkg.ecosystem, advisory: v.id, fixed: fixed.join(", ") || null, dev }
+        facts: {
+          package: e.pkg.name,
+          version: e.pkg.version,
+          ecosystem: e.pkg.ecosystem,
+          advisory: v.id,
+          fixed: fixed.join(", ") || null,
+          dev
+        }
       });
     }
   });
@@ -13193,7 +14216,14 @@ function npmLock(file, text) {
         if (!p.version || !name2) continue;
         const resolved = p.resolved ?? "";
         const nonRegistry2 = resolved && !/^https:\/\/registry\.(?:npmjs\.org|yarnpkg\.com)\//.test(resolved) ? resolved.replace(/\/\/[^@/]+@/, "//") : void 0;
-        info2.packages.push({ name: name2, version: p.version, ecosystem: "npm", dev: !!p.dev, hasInstallScript: !!p.hasInstallScript, nonRegistry: nonRegistry2 });
+        info2.packages.push({
+          name: name2,
+          version: p.version,
+          ecosystem: "npm",
+          dev: !!p.dev,
+          hasInstallScript: !!p.hasInstallScript,
+          nonRegistry: nonRegistry2
+        });
       }
     } else if (j.dependencies) {
       const visit = (deps) => {
@@ -13217,7 +14247,8 @@ function pnpmLock(file, text) {
     const root = /* @__PURE__ */ new Set();
     const importers = y.importers ?? { ".": y };
     for (const imp of Object.values(importers))
-      for (const f of ["dependencies", "devDependencies", "optionalDependencies"]) for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+      for (const f of ["dependencies", "devDependencies", "optionalDependencies"])
+        for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
     info2.rootDeps = root;
     for (const [key, p] of Object.entries(y.packages ?? {})) {
       const k = key.replace(/^\//, "").replace(/\(.*$/, "");
@@ -13233,7 +14264,13 @@ function pnpmLock(file, text) {
         version = k.slice(slash + 1);
       }
       if (!name2 || !version || !/^\d/.test(version)) continue;
-      info2.packages.push({ name: name2, version, ecosystem: "npm", dev: p?.dev === true, hasInstallScript: p?.requiresBuild === true });
+      info2.packages.push({
+        name: name2,
+        version,
+        ecosystem: "npm",
+        dev: p?.dev === true,
+        hasInstallScript: p?.requiresBuild === true
+      });
     }
   } catch (e) {
     info2.error = e.message;
@@ -13265,7 +14302,12 @@ function composerLock(file, text) {
     ])
       for (const p of list)
         if (p?.name && p.version)
-          info2.packages.push({ name: p.name, version: String(p.version).replace(/^v/, ""), ecosystem: "Packagist", dev });
+          info2.packages.push({
+            name: p.name,
+            version: String(p.version).replace(/^v/, ""),
+            ecosystem: "Packagist",
+            dev
+          });
   } catch (e) {
     info2.error = e.message;
   }
@@ -13277,7 +14319,12 @@ function tomlPackages(file, text, ecosystem) {
     const t2 = parse2(text);
     for (const p of t2.package ?? [])
       if (p.name && p.version)
-        info2.packages.push({ name: ecosystem === "PyPI" ? p.name.toLowerCase() : p.name, version: p.version, ecosystem, dev: p.category === "dev" });
+        info2.packages.push({
+          name: ecosystem === "PyPI" ? p.name.toLowerCase() : p.name,
+          version: p.version,
+          ecosystem,
+          dev: p.category === "dev"
+        });
   } catch (e) {
     info2.error = e.message;
   }
@@ -13292,7 +14339,13 @@ function pipfileLock(file, text) {
       ["develop", true]
     ])
       for (const [name2, p] of Object.entries(j[section] ?? {}))
-        if (p.version) info2.packages.push({ name: name2.toLowerCase(), version: p.version.replace(/^==/, ""), ecosystem: "PyPI", dev });
+        if (p.version)
+          info2.packages.push({
+            name: name2.toLowerCase(),
+            version: p.version.replace(/^==/, ""),
+            ecosystem: "PyPI",
+            dev
+          });
   } catch (e) {
     info2.error = e.message;
   }
@@ -13302,7 +14355,8 @@ function pinnedRequirements(file, text) {
   const info2 = { file, ecosystem: "PyPI", packages: [] };
   for (const l of text.split(/\r?\n/)) {
     const m = /^\s*([A-Za-z0-9][A-Za-z0-9._-]*)(?:\[[^\]]*\])?\s*==\s*([^\s;#]+)/.exec(l);
-    if (m) info2.packages.push({ name: m[1].toLowerCase().replace(/_/g, "-"), version: m[2], ecosystem: "PyPI" });
+    if (m)
+      info2.packages.push({ name: m[1].toLowerCase().replace(/_/g, "-"), version: m[2], ecosystem: "PyPI" });
   }
   return info2;
 }
@@ -13322,7 +14376,8 @@ function goSum(file, text) {
 function gemfileLock(file, text) {
   const info2 = { file, ecosystem: "RubyGems", packages: [] };
   const specs = /\n\s{2}specs:\n([\s\S]*?)(?:\n\S|$)/.exec(text)?.[1] ?? "";
-  for (const m of specs.matchAll(/^ {4}([\w.-]+) \(([^)]+)\)$/gm)) info2.packages.push({ name: m[1], version: m[2], ecosystem: "RubyGems" });
+  for (const m of specs.matchAll(/^ {4}([\w.-]+) \(([^)]+)\)$/gm))
+    info2.packages.push({ name: m[1], version: m[2], ecosystem: "RubyGems" });
   return info2;
 }
 function pubspecLock(file, text) {
@@ -13331,7 +14386,13 @@ function pubspecLock(file, text) {
     const y = (0, import_yaml2.parse)(text) ?? {};
     for (const [name2, p] of Object.entries(y.packages ?? {}))
       if (p.version && p.source !== "sdk")
-        info2.packages.push({ name: name2, version: p.version, ecosystem: "Pub", dev: p.dependency === "direct dev", nonRegistry: p.source === "git" || p.source === "path" ? p.source : void 0 });
+        info2.packages.push({
+          name: name2,
+          version: p.version,
+          ecosystem: "Pub",
+          dev: p.dependency === "direct dev",
+          nonRegistry: p.source === "git" || p.source === "path" ? p.source : void 0
+        });
   } catch (e) {
     info2.error = e.message;
   }
@@ -13405,15 +14466,19 @@ function parsePackageJson(file, text) {
       }
     }
     if (j.scripts && typeof j.scripts === "object") {
-      for (const [k, v] of Object.entries(j.scripts)) if (typeof v === "string") m.scripts[k] = v;
+      for (const [k, v] of Object.entries(j.scripts))
+        if (typeof v === "string") m.scripts[k] = v;
     }
     if (j.engines && typeof j.engines === "object") {
-      for (const [k, v] of Object.entries(j.engines)) if (typeof v === "string") m.runtime[k] = v;
+      for (const [k, v] of Object.entries(j.engines))
+        if (typeof v === "string") m.runtime[k] = v;
     }
     const ws = j.workspaces;
     if (Array.isArray(ws)) m.workspaces = ws.filter((x) => typeof x === "string");
     else if (ws && typeof ws === "object" && Array.isArray(ws.packages))
-      m.workspaces = ws.packages.filter((x) => typeof x === "string");
+      m.workspaces = ws.packages.filter(
+        (x) => typeof x === "string"
+      );
     if (typeof j.packageManager === "string") m.packageManager = j.packageManager;
     m.extra.type = j.type;
     m.extra.bin = j.bin;
@@ -13437,7 +14502,8 @@ function parseComposerJson(file, text) {
         for (const [name2, spec] of Object.entries(d)) {
           if (typeof spec !== "string") continue;
           if (name2 === "php") m.runtime.php = spec;
-          else if (!name2.startsWith("ext-") && !name2.startsWith("lib-")) m.deps.push({ name: name2, spec, dev, source: "registry" });
+          else if (!name2.startsWith("ext-") && !name2.startsWith("lib-"))
+            m.deps.push({ name: name2, spec, dev, source: "registry" });
         }
     }
     if (j.scripts && typeof j.scripts === "object")
@@ -13446,7 +14512,9 @@ function parseComposerJson(file, text) {
     m.extra["minimum-stability"] = j["minimum-stability"];
     m.extra["prefer-stable"] = j["prefer-stable"];
     const repos = Array.isArray(j.repositories) ? j.repositories : [];
-    m.extra.vcsRepositories = repos.filter((r) => r && typeof r === "object" && /vcs|git|path/.test(String(r.type))).length;
+    m.extra.vcsRepositories = repos.filter(
+      (r) => r && typeof r === "object" && /vcs|git|path/.test(String(r.type))
+    ).length;
   } catch (e) {
     m.error = e.message;
   }
@@ -13455,7 +14523,8 @@ function parseComposerJson(file, text) {
 function pep508(line) {
   const s = line.replace(/\s+#.*$/, "").trim();
   if (!s || s.startsWith("#") || s.startsWith("-")) return null;
-  if (/^(?:git\+|https?:\/\/)/.test(s)) return { name: s.replace(/.*#egg=/, ""), spec: s, source: /^git/.test(s) ? "git" : "url" };
+  if (/^(?:git\+|https?:\/\/)/.test(s))
+    return { name: s.replace(/.*#egg=/, ""), spec: s, source: /^git/.test(s) ? "git" : "url" };
   const m = /^([A-Za-z0-9][A-Za-z0-9._-]*)(\[[^\]]*\])?\s*(.*)$/.exec(s);
   if (!m) return null;
   const rest = m[3] ?? "";
@@ -13483,10 +14552,13 @@ function parsePyproject(file, text) {
       const r = pep508(d);
       if (r) m.deps.push({ name: r.name, spec: r.spec, dev: false, source: r.source });
     }
-    for (const [group, list] of Object.entries(p["optional-dependencies"] ?? {}))
+    for (const [group, list] of Object.entries(
+      p["optional-dependencies"] ?? {}
+    ))
       for (const d of list) {
         const r = pep508(d);
-        if (r) m.deps.push({ name: r.name, spec: r.spec, dev: /dev|test|lint/i.test(group), source: r.source });
+        if (r)
+          m.deps.push({ name: r.name, spec: r.spec, dev: /dev|test|lint/i.test(group), source: r.source });
       }
     for (const [, list] of Object.entries(t2["dependency-groups"] ?? {}))
       for (const d of list) {
@@ -13510,10 +14582,13 @@ function parsePyproject(file, text) {
       };
       addPoetry(poetry.dependencies, false);
       addPoetry(poetry["dev-dependencies"], true);
-      for (const g of Object.values(poetry.group ?? {}))
+      for (const g of Object.values(
+        poetry.group ?? {}
+      ))
         addPoetry(g.dependencies, true);
     }
-    if (t2.project?.scripts) for (const [k, v] of Object.entries(t2.project.scripts)) m.scripts[k] = v;
+    if (t2.project?.scripts)
+      for (const [k, v] of Object.entries(t2.project.scripts)) m.scripts[k] = v;
     m.extra.tools = Object.keys(t2.tool ?? {});
   } catch (e) {
     m.error = e.message;
@@ -13529,7 +14604,8 @@ function parseGoMod(file, text) {
     const mm = /^\s*([^\s/][^\s]*)\s+(v[^\s]+)(\s*\/\/\s*indirect)?/.exec(l);
     if (mm) m.deps.push({ name: mm[1], spec: mm[2], dev: false, source: "registry" });
   };
-  for (const block of text.matchAll(/^require\s*\(([\s\S]*?)^\)/gm)) for (const l of block[1].split("\n")) add(l);
+  for (const block of text.matchAll(/^require\s*\(([\s\S]*?)^\)/gm))
+    for (const l of block[1].split("\n")) add(l);
   for (const single of text.matchAll(/^require\s+([^\s(]\S*\s+v\S+)/gm)) add(single[1]);
   return m;
 }
@@ -13565,7 +14641,12 @@ function parseGemfile(file, text) {
     const g = /^\s*gem\s+['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?(.*)$/.exec(l);
     if (g) {
       const rest = g[3] ?? "";
-      m.deps.push({ name: g[1], spec: g[2] ?? "", dev: devDepth > 0, source: /git(?:hub)?:/.test(rest) ? "git" : /path:/.test(rest) ? "path" : "registry" });
+      m.deps.push({
+        name: g[1],
+        spec: g[2] ?? "",
+        dev: devDepth > 0,
+        source: /git(?:hub)?:/.test(rest) ? "git" : /path:/.test(rest) ? "path" : "registry"
+      });
     }
     const rb = /^\s*ruby\s+['"]([^'"]+)['"]/.exec(l);
     if (rb) m.runtime.ruby = rb[1];
@@ -13587,7 +14668,12 @@ function parsePubspec(file, text) {
       for (const [name2, spec] of Object.entries(y[field] ?? {})) {
         const isSdk = typeof spec === "object" && spec !== null && "sdk" in spec;
         const source = typeof spec === "object" && spec && "git" in spec ? "git" : typeof spec === "object" && spec && "path" in spec ? "path" : "registry";
-        m.deps.push({ name: name2, spec: isSdk ? "sdk" : typeof spec === "string" ? spec : spec == null ? "any" : JSON.stringify(spec), dev, source });
+        m.deps.push({
+          name: name2,
+          spec: isSdk ? "sdk" : typeof spec === "string" ? spec : spec == null ? "any" : JSON.stringify(spec),
+          dev,
+          source
+        });
       }
   } catch (e) {
     m.error = e.message;
@@ -13598,18 +14684,35 @@ function parseGradle(file, text) {
   const m = empty(file, "Maven");
   for (const mm of text.matchAll(/id\s*\(?\s*["']([\w.-]+)["']\s*\)?(?:\s+version\s+["']([^"']+)["'])?/g))
     m.deps.push({ name: mm[1], spec: mm[2] ?? "", dev: false, source: "registry" });
-  for (const mm of text.matchAll(/apply\s+plugin:\s*["']([\w.-]+)["']/g)) m.deps.push({ name: mm[1], spec: "", dev: false });
-  for (const mm of text.matchAll(/(implementation|api|compileOnly|runtimeOnly|testImplementation|androidTestImplementation|kapt|ksp)\s*\(?\s*["']([\w.-]+):([\w.-]+):?([^"']*)["']/g))
-    m.deps.push({ name: `${mm[2]}:${mm[3]}`, spec: mm[4] ?? "", dev: /test/i.test(mm[1]), source: "registry" });
+  for (const mm of text.matchAll(/apply\s+plugin:\s*["']([\w.-]+)["']/g))
+    m.deps.push({ name: mm[1], spec: "", dev: false });
+  for (const mm of text.matchAll(
+    /(implementation|api|compileOnly|runtimeOnly|testImplementation|androidTestImplementation|kapt|ksp)\s*\(?\s*["']([\w.-]+):([\w.-]+):?([^"']*)["']/g
+  ))
+    m.deps.push({
+      name: `${mm[2]}:${mm[3]}`,
+      spec: mm[4] ?? "",
+      dev: /test/i.test(mm[1]),
+      source: "registry"
+    });
   return m;
 }
 function parsePomXml(file, text) {
   const m = empty(file, "Maven");
   m.name = /<artifactId>([^<]+)<\/artifactId>/.exec(text)?.[1];
-  const parent = /<parent>[\s\S]*?<groupId>([^<]+)<\/groupId>[\s\S]*?<artifactId>([^<]+)<\/artifactId>[\s\S]*?<\/parent>/.exec(text);
+  const parent = /<parent>[\s\S]*?<groupId>([^<]+)<\/groupId>[\s\S]*?<artifactId>([^<]+)<\/artifactId>[\s\S]*?<\/parent>/.exec(
+    text
+  );
   if (parent) m.deps.push({ name: `${parent[1]}:${parent[2]}`, spec: "", dev: false, source: "registry" });
-  for (const d of text.matchAll(/<dependency>\s*<groupId>([^<]+)<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>(?:\s*<version>([^<]+)<\/version>)?([\s\S]*?)<\/dependency>/g))
-    m.deps.push({ name: `${d[1]}:${d[2]}`, spec: d[3] ?? "", dev: /<scope>test<\/scope>/.test(d[4] ?? ""), source: "registry" });
+  for (const d of text.matchAll(
+    /<dependency>\s*<groupId>([^<]+)<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>(?:\s*<version>([^<]+)<\/version>)?([\s\S]*?)<\/dependency>/g
+  ))
+    m.deps.push({
+      name: `${d[1]}:${d[2]}`,
+      spec: d[3] ?? "",
+      dev: /<scope>test<\/scope>/.test(d[4] ?? ""),
+      source: "registry"
+    });
   const java = /<java\.version>([^<]+)</.exec(text)?.[1];
   if (java) m.runtime.java = java;
   return m;
@@ -13628,14 +14731,16 @@ function parseManifest(file, text) {
   if (b === "pom.xml") return parsePomXml(file, text);
   if (b === "Podfile") {
     const m = empty(file, "CocoaPods");
-    for (const mm of text.matchAll(/^\s*pod\s+['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?/gm)) m.deps.push({ name: mm[1], spec: mm[2] ?? "", dev: false });
+    for (const mm of text.matchAll(/^\s*pod\s+['"]([^'"]+)['"](?:\s*,\s*['"]([^'"]+)['"])?/gm))
+      m.deps.push({ name: mm[1], spec: mm[2] ?? "", dev: false });
     const ios = /platform\s+:ios,\s*['"]([^'"]+)['"]/.exec(text)?.[1];
     if (ios) m.runtime.ios = ios;
     return m;
   }
   if (b === "Package.swift") {
     const m = empty(file, "SwiftPM");
-    for (const mm of text.matchAll(/\.package\(\s*url:\s*"([^"]+)"/g)) m.deps.push({ name: mm[1], spec: "", dev: false, source: "git" });
+    for (const mm of text.matchAll(/\.package\(\s*url:\s*"([^"]+)"/g))
+      m.deps.push({ name: mm[1], spec: "", dev: false, source: "git" });
     return m;
   }
   return null;
@@ -13930,7 +15035,7 @@ var init_catalog = __esm({
       rails: t("Ruby on Rails", "fullstack"),
       sinatra: t("Sinatra", "backend"),
       sidekiq: t("Sidekiq", "queue"),
-      "good_job": t("GoodJob", "queue"),
+      good_job: t("GoodJob", "queue"),
       devise: t("Devise", "auth"),
       pg: t("PostgreSQL", "database"),
       mysql2: t("MySQL", "database"),
@@ -14008,7 +15113,10 @@ var init_catalog = __esm({
       { re: /^memcached/, tech: t("Memcached", "cache") },
       { re: /^rabbitmq/, tech: t("RabbitMQ", "queue") },
       { re: /^(?:confluentinc\/cp-kafka|bitnami\/kafka|apache\/kafka)/, tech: t("Kafka", "queue") },
-      { re: /^(?:elasticsearch|docker\.elastic\.co\/elasticsearch|opensearchproject)/, tech: t("Elasticsearch/OpenSearch", "database") },
+      {
+        re: /^(?:elasticsearch|docker\.elastic\.co\/elasticsearch|opensearchproject)/,
+        tech: t("Elasticsearch/OpenSearch", "database")
+      },
       { re: /^(?:getmeili\/meilisearch)/, tech: t("Meilisearch", "database") },
       { re: /^(?:minio\/minio)/, tech: t("MinIO (S3)", "integration") },
       { re: /^(?:mailhog|axllent\/mailpit)/, tech: t("Mail catcher", "integration") },
@@ -14061,14 +15169,21 @@ function discover(files) {
     if (m.ecosystem === "PyPI" && /requirements/.test(m.file) && m.deps.length && m.deps.every((d) => d.spec.startsWith("==")))
       lockfiles.push(pinnedRequirements(m.file, files.read(m.file) ?? ""));
   const xcodeProjects = files.files.filter((f) => /\.xcodeproj\/project\.pbxproj$/.test(f.path)).map((f) => f.path.replace(/\/[^/]+\.xcodeproj\/project\.pbxproj$/, "") || ".");
-  const unitPaths = /* @__PURE__ */ new Set([...manifests.map((m) => dirOf2(m.file)), ...xcodeProjects.map((p) => p === "" ? "." : p)]);
+  const unitPaths = /* @__PURE__ */ new Set([
+    ...manifests.map((m) => dirOf2(m.file)),
+    ...xcodeProjects.map((p) => p === "" ? "." : p)
+  ]);
   if (unitPaths.size === 0) unitPaths.add(".");
   for (const p of [...unitPaths]) {
     const parent = dirOf2(p);
-    if (/(?:^|\/)(?:android|ios|macos|linux|windows|web)(?:\/app)?$/.test(p) && unitPaths.has(parent.replace(/\/android$|\/ios$/, "") || ".")) unitPaths.delete(p);
+    if (/(?:^|\/)(?:android|ios|macos|linux|windows|web)(?:\/app)?$/.test(p) && unitPaths.has(parent.replace(/\/android$|\/ios$/, "") || "."))
+      unitPaths.delete(p);
     if (/(?:^|\/)android\/app$/.test(p) || /(?:^|\/)android$/.test(p)) {
       const flutterRoot = p.replace(/\/android(?:\/app)?$/, "") || ".";
-      if (unitPaths.has(flutterRoot) && manifests.some((m) => m.file === (flutterRoot === "." ? "pubspec.yaml" : `${flutterRoot}/pubspec.yaml`))) unitPaths.delete(p);
+      if (unitPaths.has(flutterRoot) && manifests.some(
+        (m) => m.file === (flutterRoot === "." ? "pubspec.yaml" : `${flutterRoot}/pubspec.yaml`)
+      ))
+        unitPaths.delete(p);
     }
   }
   const technologies = [];
@@ -14104,16 +15219,20 @@ function discover(files) {
       const lf = unit.lockfiles.map((l) => l.split("/").pop());
       unit.packageManager = lf.includes("pnpm-lock.yaml") ? "pnpm" : lf.includes("yarn.lock") ? "yarn" : lf.some((l) => l?.startsWith("bun.")) ? "bun" : "npm";
     }
-    if (xcodeProjects.includes(path) || path === "." && xcodeProjects.includes("")) addTech({ name: "iOS (Xcode)", kind: "mobile", unit: path, evidence: "xcodeproj" });
+    if (xcodeProjects.includes(path) || path === "." && xcodeProjects.includes(""))
+      addTech({ name: "iOS (Xcode)", kind: "mobile", unit: path, evidence: "xcodeproj" });
     return unit;
   });
   const unitFor = (p) => {
     let best = units[0];
-    for (const u of units) if (within(u.path, p) && u.path.length >= best.path.length && (u.path !== "." || best.path === ".")) best = u;
+    for (const u of units)
+      if (within(u.path, p) && u.path.length >= best.path.length && (u.path !== "." || best.path === "."))
+        best = u;
     return best;
   };
   for (const f of files.files) {
-    if (f.kind !== "source" || !/\.(?:[cm]?[jt]sx?|php|py|go|rb|java|kt|swift|dart|rs|cs|vue|svelte)$/.test(f.path)) continue;
+    if (f.kind !== "source" || !/\.(?:[cm]?[jt]sx?|php|py|go|rb|java|kt|swift|dart|rs|cs|vue|svelte)$/.test(f.path))
+      continue;
     const u = unitFor(f.path);
     if (f.isTest) u.testFiles++;
     else u.sourceFiles++;
@@ -14121,14 +15240,24 @@ function discover(files) {
   if (files.has("artisan")) addTech({ name: "Laravel", kind: "fullstack", unit: ".", evidence: "artisan" });
   for (const f of files.files) {
     const b = f.path.split("/").pop();
-    if (b === "manage.py") addTech({ name: "Django", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
-    if (/^next\.config\.[cm]?[jt]s$/.test(b)) addTech({ name: "Next.js", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
-    if (b === "artisan" && f.path !== "artisan") addTech({ name: "Laravel", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
+    if (b === "manage.py")
+      addTech({ name: "Django", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
+    if (/^next\.config\.[cm]?[jt]s$/.test(b))
+      addTech({ name: "Next.js", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
+    if (b === "artisan" && f.path !== "artisan")
+      addTech({ name: "Laravel", kind: "fullstack", unit: unitFor(f.path).path, evidence: f.path });
   }
   for (const u of units) {
     const techs = technologies.filter((t2) => t2.unit === u.path);
-    u.frameworks = [...new Set(techs.filter((t2) => ["frontend", "backend", "fullstack", "mobile", "desktop"].includes(t2.kind)).map((t2) => t2.name))];
-    u.kind = unitKind(techs.map((t2) => t2.kind), manifests.filter((m) => dirOf2(m.file) === u.path));
+    u.frameworks = [
+      ...new Set(
+        techs.filter((t2) => ["frontend", "backend", "fullstack", "mobile", "desktop"].includes(t2.kind)).map((t2) => t2.name)
+      )
+    ];
+    u.kind = unitKind(
+      techs.map((t2) => t2.kind),
+      manifests.filter((m) => dirOf2(m.file) === u.path)
+    );
   }
   const ci = [];
   for (const f of files.files) {
@@ -14148,7 +15277,9 @@ function discover(files) {
       system,
       file: f.path,
       runsTests: /\b(?:test|pytest|phpunit|pest|vitest|jest|mocha|go test|cargo test|flutter test|rspec)\b/.test(text),
-      runsLint: /\b(?:lint|eslint|biome|phpstan|psalm|ruff|flake8|mypy|pint|rubocop|analyze|tsc|typecheck)\b/.test(text),
+      runsLint: /\b(?:lint|eslint|biome|phpstan|psalm|ruff|flake8|mypy|pint|rubocop|analyze|tsc|typecheck)\b/.test(
+        text
+      ),
       runsBuild: /\b(?:build|compile|bundle|assemble)\b/.test(text)
     });
   }
@@ -14200,20 +15331,37 @@ function discover(files) {
       }
     if (f.kind === "config" && /\.ya?ml$/.test(f.path) && /(?:^|\/)(?:k8s|kubernetes|deploy|manifests|helm)\//.test(f.path) && !deploy.some((d) => d.kind === "Kubernetes")) {
       const text = files.read(f.path) ?? "";
-      if (/^kind:\s*(?:Deployment|StatefulSet|Service|Ingress)\b/m.test(text) && /^apiVersion:/m.test(text)) deploy.push({ kind: "Kubernetes", file: f.path });
+      if (/^kind:\s*(?:Deployment|StatefulSet|Service|Ingress)\b/m.test(text) && /^apiVersion:/m.test(text))
+        deploy.push({ kind: "Kubernetes", file: f.path });
     }
   }
   const testFrameworks = [...new Set(technologies.filter((t2) => t2.kind === "testing").map((t2) => t2.name))];
-  if (files.files.some((f) => /(?:^|\/)phpunit\.xml(?:\.dist)?$/.test(f.path)) && !testFrameworks.includes("PHPUnit")) testFrameworks.push("PHPUnit");
-  if (files.files.some((f) => /(?:^|\/)(?:pytest\.ini|conftest\.py)$/.test(f.path)) && !testFrameworks.includes("pytest")) testFrameworks.push("pytest");
+  if (files.files.some((f) => /(?:^|\/)phpunit\.xml(?:\.dist)?$/.test(f.path)) && !testFrameworks.includes("PHPUnit"))
+    testFrameworks.push("PHPUnit");
+  if (files.files.some((f) => /(?:^|\/)(?:pytest\.ini|conftest\.py)$/.test(f.path)) && !testFrameworks.includes("pytest"))
+    testFrameworks.push("pytest");
   if (files.files.some((f) => f.path.endsWith("_test.go"))) testFrameworks.push("go test");
-  const e2e = files.files.filter((f) => /(?:^|\/)(?:playwright\.config\.[cm]?[jt]s|cypress\.config\.[cm]?[jt]s|integration_test\/|tests\/Browser\/|e2e\/)/.test(f.path)).map((f) => f.path).slice(0, 10);
-  const coverageReports = files.files.filter((f) => /(?:^|\/)(?:lcov\.info|clover\.xml|cobertura(?:-coverage)?\.xml|coverage\.xml|coverage-final\.json|coverage-summary\.json)$/.test(f.path)).map((f) => f.path);
+  const e2e = files.files.filter(
+    (f) => /(?:^|\/)(?:playwright\.config\.[cm]?[jt]s|cypress\.config\.[cm]?[jt]s|integration_test\/|tests\/Browser\/|e2e\/)/.test(
+      f.path
+    )
+  ).map((f) => f.path).slice(0, 10);
+  const coverageReports = files.files.filter(
+    (f) => /(?:^|\/)(?:lcov\.info|clover\.xml|cobertura(?:-coverage)?\.xml|coverage\.xml|coverage-final\.json|coverage-summary\.json)$/.test(
+      f.path
+    )
+  ).map((f) => f.path);
   const routeFiles = [];
   let routes = 0;
   const ROUTE_RE = [
-    [/(?:^|\/)routes\/[^/]+\.php$/, /\bRoute::(?:get|post|put|patch|delete|options|any|match|resource|apiResource|view|redirect)\s*\(/g],
-    [/\.(?:[cm]?[jt]s)$/, /\b(?:app|router|server|api|fastify)\.(?:get|post|put|patch|delete|all|route)\s*\(\s*['"`]\//g],
+    [
+      /(?:^|\/)routes\/[^/]+\.php$/,
+      /\bRoute::(?:get|post|put|patch|delete|options|any|match|resource|apiResource|view|redirect)\s*\(/g
+    ],
+    [
+      /\.(?:[cm]?[jt]s)$/,
+      /\b(?:app|router|server|api|fastify)\.(?:get|post|put|patch|delete|all|route)\s*\(\s*['"`]\//g
+    ],
     [/(?:^|\/)urls\.py$/, /\b(?:re_)?path\s*\(/g],
     [/\.py$/, /@\w+\.(?:route|get|post|put|patch|delete|api_route)\s*\(/g]
   ];
@@ -14239,11 +15387,19 @@ function discover(files) {
   const graphql = files.files.filter((f) => /\.(?:graphql|gql)$/.test(f.path) || /(?:^|\/)schema\.graphql/.test(f.path)).map((f) => f.path).slice(0, 20);
   const envTemplates = files.files.filter((f) => isEnvTemplate(f.path)).map((f) => f.path);
   const documented = /* @__PURE__ */ new Set();
-  for (const t2 of envTemplates) for (const m of (files.read(t2) ?? "").matchAll(/^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/gm)) documented.add(m[1]);
-  for (const c of compose) for (const m of (files.read(c) ?? "").matchAll(/\$\{([A-Z][A-Z0-9_]*)/g)) documented.add(m[1]);
-  for (const c of compose) for (const m of (files.read(c) ?? "").matchAll(/^\s+-?\s*([A-Z][A-Z0-9_]{2,})\s*[:=]/gm)) documented.add(m[1]);
+  for (const t2 of envTemplates)
+    for (const m of (files.read(t2) ?? "").matchAll(/^\s*(?:export\s+)?([A-Z][A-Z0-9_]*)\s*=/gm))
+      documented.add(m[1]);
+  for (const c of compose)
+    for (const m of (files.read(c) ?? "").matchAll(/\$\{([A-Z][A-Z0-9_]*)/g)) documented.add(m[1]);
+  for (const c of compose)
+    for (const m of (files.read(c) ?? "").matchAll(/^\s+-?\s*([A-Z][A-Z0-9_]{2,})\s*[:=]/gm))
+      documented.add(m[1]);
   const readme = files.files.find((f) => /^readme(?:\.\w+)?$/i.test(f.path));
-  const docText = [readme?.path, ...files.files.filter((f) => /^docs\/.*\.md$/i.test(f.path)).map((f) => f.path).slice(0, 50)].filter((p) => !!p).map((p) => files.read(p) ?? "").join("\n");
+  const docText = [
+    readme?.path,
+    ...files.files.filter((f) => /^docs\/.*\.md$/i.test(f.path)).map((f) => f.path).slice(0, 50)
+  ].filter((p) => !!p).map((p) => files.read(p) ?? "").join("\n");
   for (const m of docText.matchAll(/\b([A-Z][A-Z0-9]*_[A-Z0-9_]+)\b/g)) documented.add(m[1]);
   const envVars = collectEnvVars(files, documented);
   const docs = {
@@ -14310,7 +15466,8 @@ function unitKind(kinds, ms) {
 function collectEnvVars(files, documented) {
   const vars = /* @__PURE__ */ new Map();
   for (const f of files.files) {
-    if (f.isTest || f.kind !== "source" && f.kind !== "template" && f.kind !== "migration" && !(f.kind === "config" && f.path.endsWith(".php"))) continue;
+    if (f.isTest || f.kind !== "source" && f.kind !== "template" && f.kind !== "migration" && !(f.kind === "config" && f.path.endsWith(".php")))
+      continue;
     for (const p of ENV_PATTERNS) {
       if (!p.ext.test(f.path)) continue;
       const text = files.read(f.path);
@@ -14394,14 +15551,23 @@ var init_discover = __esm({
     };
     ENV_PATTERNS = [
       // JS/TS: process.env.X, process.env['X'], import.meta.env.X; optional when followed by ?? or ||.
-      { re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g, ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/ },
+      {
+        re: /\b(?:process\.env|import\.meta\.env)(?:\.([A-Z_][A-Z0-9_]*)|\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\])(\s*(?:\?\?|\|\|))?/g,
+        ext: /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/
+      },
       // PHP: env('X'), env('X', default), getenv('X')
       { re: /\b(?:env|getenv)\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?/g, ext: /\.php$/ },
       // Python: os.environ['X'], os.environ.get('X', d), os.getenv('X', d)
-      { re: /\bos\.(?:environ\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|environ\.get\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?|getenv\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g, ext: /\.py$/ },
+      {
+        re: /\bos\.(?:environ\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|environ\.get\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?|getenv\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g,
+        ext: /\.py$/
+      },
       // Go, Ruby, Dart
       { re: /\bos\.(?:Getenv|LookupEnv)\(\s*"([A-Z_][A-Z0-9_]*)"/g, ext: /\.go$/ },
-      { re: /\bENV(?:\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|\.fetch\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g, ext: /\.rb$/ },
+      {
+        re: /\bENV(?:\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]|\.fetch\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?)/g,
+        ext: /\.rb$/
+      },
       { re: /\bString\.fromEnvironment\(\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*(,)?/g, ext: /\.dart$/ }
     ];
     AMBIENT_ENV = /^(?:NODE_ENV|CI|HOME|PATH|PWD|USER|SHELL|TERM|TZ|LANG|PORT|HOST|HOSTNAME|DEBUG|VERCEL|VERCEL_ENV|VERCEL_URL|NEXT_RUNTIME|NEXT_PHASE|npm_\w+|GITHUB_\w+|RUNNER_\w+|APP_ENV|APP_DEBUG|LOG_LEVEL|TMPDIR|PYTHONPATH|VIRTUAL_ENV|RELIVARO\w*)$/;
@@ -18550,19 +19716,22 @@ function nodeAt(root, f, types) {
     if (n.endPosition.row < line || n.startPosition.row > line + 1) return false;
     if (n.startPosition.row === line && match(n)) {
       if (col >= 0 && n.startPosition.column !== col && best && best.startPosition.column === col) return;
-      if (!best || col >= 0 && n.startPosition.column === col && best.startPosition.column !== col || n.endIndex - n.startIndex < best.endIndex - best.startIndex) best = n;
+      if (!best || col >= 0 && n.startPosition.column === col && best.startPosition.column !== col || n.endIndex - n.startIndex < best.endIndex - best.startIndex)
+        best = n;
     }
   });
   return best;
 }
 function splice(text, start2, end, insert) {
   const buf = Buffer.from(text, "utf8");
-  return Buffer.concat([buf.subarray(0, start2), Buffer.from(insert, "utf8"), buf.subarray(end)]).toString("utf8");
+  return Buffer.concat([buf.subarray(0, start2), Buffer.from(insert, "utf8"), buf.subarray(end)]).toString(
+    "utf8"
+  );
 }
 function removeStatement(text, stmt, lang) {
   const buf = Buffer.from(text, "utf8");
   let s = stmt.startIndex;
-  let e = stmt.endIndex;
+  const e = stmt.endIndex;
   while (s > 0 && (buf[s - 1] === 32 || buf[s - 1] === 9)) s--;
   const lineStart = s === 0 || buf[s - 1] === 10;
   let k = e;
@@ -18570,13 +19739,15 @@ function removeStatement(text, stmt, lang) {
   const lineEnd = k >= buf.length || buf[k] === 10 || buf[k] === 13;
   if (lang === "python") {
     const block = stmt.parent;
-    if (block?.type === "block" && block.namedChildren.filter((x) => x && x.type !== "comment").length === 1) return splice(text, stmt.startIndex, stmt.endIndex, "pass");
+    if (block?.type === "block" && block.namedChildren.filter((x) => x && x.type !== "comment").length === 1)
+      return splice(text, stmt.startIndex, stmt.endIndex, "pass");
   }
   if (lineStart && lineEnd) {
     if (buf[k] === 13) k++;
     if (buf[k] === 10) k++;
     return splice(text, s, k, "");
   }
+  if (lineStart) return splice(text, stmt.startIndex, k, "");
   return splice(text, stmt.startIndex, e, "");
 }
 var CALLS = {
@@ -18595,7 +19766,11 @@ var FIXERS = [
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "call" && /^requests\./.test(n.childForFieldName("function")?.text ?? ""));
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "call" && /^requests\./.test(n.childForFieldName("function")?.text ?? "")
+      );
       const args2 = call?.childForFieldName("arguments");
       if (!call || !args2 || /\btimeout\s*=/.test(args2.text) || args2.namedChildren.length === 0) return null;
       const close = args2.endIndex - 1;
@@ -18612,10 +19787,19 @@ var FIXERS = [
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "call" && /^yaml\.load(?:_all)?$/.test(n.childForFieldName("function")?.text ?? ""));
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "call" && /^yaml\.load(?:_all)?$/.test(n.childForFieldName("function")?.text ?? "")
+      );
       const fn = call?.childForFieldName("function");
       if (!call || !fn || call.childForFieldName("arguments").namedChildren.length !== 1) return null;
-      return splice(text, fn.startIndex, fn.endIndex, fn.text === "yaml.load" ? "yaml.safe_load" : "yaml.safe_load_all");
+      return splice(
+        text,
+        fn.startIndex,
+        fn.endIndex,
+        fn.text === "yaml.load" ? "yaml.safe_load" : "yaml.safe_load_all"
+      );
     }
   },
   {
@@ -18628,7 +19812,12 @@ var FIXERS = [
       if (!t2) return null;
       const ex = nodeAt(t2.tree.rootNode, finding, /* @__PURE__ */ new Set(["except_clause"]));
       if (!ex || !/^except\s*:/.test(ex.text)) return null;
-      return splice(text, ex.startIndex, ex.startIndex + Buffer.byteLength(/^except\s*:/.exec(ex.text)[0]), "except Exception:");
+      return splice(
+        text,
+        ex.startIndex,
+        ex.startIndex + Buffer.byteLength(/^except\s*:/.exec(ex.text)[0]),
+        "except Exception:"
+      );
     }
   },
   {
@@ -18639,7 +19828,11 @@ var FIXERS = [
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const stmt = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "expression_statement" && /^(?:breakpoint|i?pdb\.set_trace|pudb\.set_trace)\(\)$/.test(n.text.trim()));
+      const stmt = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "expression_statement" && /^(?:breakpoint|i?pdb\.set_trace|pudb\.set_trace)\(\)$/.test(n.text.trim())
+      );
       return stmt ? removeStatement(text, stmt, "python") : null;
     }
   },
@@ -18651,9 +19844,15 @@ var FIXERS = [
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "call" && /\.run$/.test(n.childForFieldName("function")?.text ?? ""));
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "call" && /\.run$/.test(n.childForFieldName("function")?.text ?? "")
+      );
       if (!call) return null;
-      const kw = collect(call, "keyword_argument").find((k) => k.childForFieldName("name")?.text === "debug" && k.childForFieldName("value")?.text === "True");
+      const kw = collect(call, "keyword_argument").find(
+        (k) => k.childForFieldName("name")?.text === "debug" && k.childForFieldName("value")?.text === "True"
+      );
       const v = kw?.childForFieldName("value");
       if (!v) return null;
       let out2 = splice(text, v.startIndex, v.endIndex, 'os.environ.get("FLASK_DEBUG") == "1"');
@@ -18670,7 +19869,11 @@ ${out2}`;
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "call" && n.childForFieldName("function")?.text === "len");
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "call" && n.childForFieldName("function")?.text === "len"
+      );
       const arg = call?.childForFieldName("arguments")?.namedChildren[0];
       if (!call || !arg || !/\.objects\./.test(arg.text)) return null;
       return splice(text, call.startIndex, call.endIndex, `${arg.text}.count()`);
@@ -18684,9 +19887,14 @@ ${out2}`;
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "function_call_expression" && /^\\?unserialize$/.test(n.childForFieldName("function")?.text ?? ""));
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "function_call_expression" && /^\\?unserialize$/.test(n.childForFieldName("function")?.text ?? "")
+      );
       const args2 = call?.childForFieldName("arguments");
-      if (!call || !args2 || args2.namedChildren.filter((x) => x?.type === "argument").length !== 1) return null;
+      if (!call || !args2 || args2.namedChildren.filter((x) => x?.type === "argument").length !== 1)
+        return null;
       return splice(text, args2.endIndex - 1, args2.endIndex - 1, ", ['allowed_classes' => false]");
     }
   },
@@ -18698,7 +19906,11 @@ ${out2}`;
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const stmt = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "expression_statement" && /^\\?(?:dd|dump|var_dump|print_r|var_export|ray|ddd)\s*\(/.test(n.text.trim()));
+      const stmt = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "expression_statement" && /^\\?(?:dd|dump|var_dump|print_r|var_export|ray|ddd)\s*\(/.test(n.text.trim())
+      );
       return stmt ? removeStatement(text, stmt, "php") : null;
     }
   },
@@ -18710,7 +19922,11 @@ ${out2}`;
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const call = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "member_call_expression" && n.childForFieldName("name")?.text === "count");
+      const call = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "member_call_expression" && n.childForFieldName("name")?.text === "count"
+      );
       const inner = call?.childForFieldName("object");
       if (!call || !inner) return null;
       const info2 = callInfo(inner, "php");
@@ -18719,7 +19935,13 @@ ${out2}`;
         const base = inner.childForFieldName("object");
         return splice(text, call.startIndex, call.endIndex, `${base.text}->count()`);
       }
-      if (info2.name === "all" && inner.type === "scoped_call_expression") return splice(text, call.startIndex, call.endIndex, `${inner.childForFieldName("scope").text}::count()`);
+      if (info2.name === "all" && inner.type === "scoped_call_expression")
+        return splice(
+          text,
+          call.startIndex,
+          call.endIndex,
+          `${inner.childForFieldName("scope").text}::count()`
+        );
       return null;
     }
   },
@@ -18743,7 +19965,11 @@ ${out2}`;
     async apply({ path, text, finding }) {
       const t2 = await treeFor(path, text);
       if (!t2) return null;
-      const member = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "member_expression" && n.childForFieldName("property")?.text === "only" && /^(?:it|test|describe|context|suite|specify)$/.test(n.childForFieldName("object")?.text ?? ""));
+      const member = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "member_expression" && n.childForFieldName("property")?.text === "only" && /^(?:it|test|describe|context|suite|specify)$/.test(n.childForFieldName("object")?.text ?? "")
+      );
       if (!member) return null;
       const obj = member.childForFieldName("object");
       return splice(text, obj.endIndex, member.endIndex, "");
@@ -18760,12 +19986,18 @@ ${out2}`;
       const lang = t2.lang;
       if (lang === "python") {
         const call = nodeAt(t2.tree.rootNode, finding, CALLS.python);
-        const kw = call && collect(call, "keyword_argument").find((k) => k.childForFieldName("name")?.text === "verify" && k.childForFieldName("value")?.text === "False");
+        const kw = call && collect(call, "keyword_argument").find(
+          (k) => k.childForFieldName("name")?.text === "verify" && k.childForFieldName("value")?.text === "False"
+        );
         const v2 = kw?.childForFieldName("value");
         return v2 ? splice(text, v2.startIndex, v2.endIndex, "True") : null;
       }
       if (lang === "php") {
-        const n = nodeAt(t2.tree.rootNode, finding, (x) => x.type === "function_call_expression" || x.type === "array_element_initializer");
+        const n = nodeAt(
+          t2.tree.rootNode,
+          finding,
+          (x) => x.type === "function_call_expression" || x.type === "array_element_initializer"
+        );
         if (!n) return null;
         if (n.type === "array_element_initializer") {
           const v3 = n.namedChildren[1];
@@ -18777,7 +20009,11 @@ ${out2}`;
         if (!v2 || !/^(?:false|0)$/i.test(v2.text)) return null;
         return splice(text, v2.startIndex, v2.endIndex, /VERIFYHOST/.test(opt) ? "2" : "true");
       }
-      const pair = nodeAt(t2.tree.rootNode, finding, (n) => n.type === "pair" && /^['"]?(?:rejectUnauthorized|strictSSL)['"]?$/.test(n.childForFieldName("key")?.text ?? ""));
+      const pair = nodeAt(
+        t2.tree.rootNode,
+        finding,
+        (n) => n.type === "pair" && /^['"]?(?:rejectUnauthorized|strictSSL)['"]?$/.test(n.childForFieldName("key")?.text ?? "")
+      );
       const v = pair?.childForFieldName("value");
       return v && v.text === "false" ? splice(text, v.startIndex, v.endIndex, "true") : null;
     }
@@ -18822,8 +20058,17 @@ init_rules();
 // src/cli/args.ts
 init_errors();
 var GLOBAL_OPTIONS = [
-  { name: "json", type: "boolean", description: "Print machine-readable JSON to stdout (errors as JSON on stderr)." },
-  { name: "quiet", type: "boolean", short: "q", description: "Only print the essential result (no progress)." },
+  {
+    name: "json",
+    type: "boolean",
+    description: "Print machine-readable JSON to stdout (errors as JSON on stderr)."
+  },
+  {
+    name: "quiet",
+    type: "boolean",
+    short: "q",
+    description: "Only print the essential result (no progress)."
+  },
   { name: "no-color", type: "boolean", description: "Disable colored output (also honours NO_COLOR)." },
   { name: "help", type: "boolean", short: "h", description: "Show help for the command." }
 ];
@@ -18851,7 +20096,12 @@ function parseArgs(argv, spec) {
         opts[name2.slice(3)] = false;
         continue;
       }
-      if (!spec2) throw new RelivaroError("USAGE", `Unknown option --${name2} for "${spec.name}".`, `Run \`relivaro ${spec.name} --help\`.`);
+      if (!spec2)
+        throw new RelivaroError(
+          "USAGE",
+          `Unknown option --${name2} for "${spec.name}".`,
+          `Run \`relivaro ${spec.name} --help\`.`
+        );
     } else if (/^-[a-zA-Z]$/.test(a)) {
       spec2 = byShort.get(a.slice(1));
       if (!spec2) throw new RelivaroError("USAGE", `Unknown option ${a} for "${spec.name}".`);
@@ -18860,25 +20110,40 @@ function parseArgs(argv, spec) {
       continue;
     }
     if (spec2.type === "boolean") {
-      if (inline !== void 0 && !/^(?:true|false|1|0)$/.test(inline)) throw new RelivaroError("USAGE", `--${spec2.name} is a flag and takes no value.`);
+      if (inline !== void 0 && !/^(?:true|false|1|0)$/.test(inline))
+        throw new RelivaroError("USAGE", `--${spec2.name} is a flag and takes no value.`);
       opts[spec2.name] = inline === void 0 ? true : /^(?:true|1)$/.test(inline);
       continue;
     }
     const value = inline ?? argv[++i2];
-    if (value === void 0 || inline === void 0 && value.startsWith("--")) throw new RelivaroError("USAGE", `--${spec2.name} requires a value${spec2.value ? ` ${spec2.value}` : ""}.`);
+    if (value === void 0 || inline === void 0 && value.startsWith("--"))
+      throw new RelivaroError(
+        "USAGE",
+        `--${spec2.name} requires a value${spec2.value ? ` ${spec2.value}` : ""}.`
+      );
     if (spec2.type === "number") {
       const n = Number(value);
-      if (!Number.isFinite(n)) throw new RelivaroError("USAGE", `--${spec2.name} expects a number, got "${value}".`);
+      if (!Number.isFinite(n))
+        throw new RelivaroError("USAGE", `--${spec2.name} expects a number, got "${value}".`);
       opts[spec2.name] = n;
     } else if (spec2.type === "list") {
       const prev = Array.isArray(opts[spec2.name]) && opts[spec2.name] !== spec2.default ? opts[spec2.name] : [];
       const items = value.split(",").map((x) => x.trim()).filter(Boolean);
       if (spec2.choices) {
-        for (const it of items) if (!spec2.choices.includes(it)) throw new RelivaroError("USAGE", `--${spec2.name}: "${it}" is not one of ${spec2.choices.join(", ")}.`);
+        for (const it of items)
+          if (!spec2.choices.includes(it))
+            throw new RelivaroError(
+              "USAGE",
+              `--${spec2.name}: "${it}" is not one of ${spec2.choices.join(", ")}.`
+            );
       }
       opts[spec2.name] = [...prev, ...items];
     } else {
-      if (spec2.choices && !spec2.choices.includes(value)) throw new RelivaroError("USAGE", `--${spec2.name} must be one of ${spec2.choices.join(", ")} (got "${value}").`);
+      if (spec2.choices && !spec2.choices.includes(value))
+        throw new RelivaroError(
+          "USAGE",
+          `--${spec2.name} must be one of ${spec2.choices.join(", ")} (got "${value}").`
+        );
       opts[spec2.name] = value;
     }
   }
@@ -18892,7 +20157,9 @@ function helpText(spec) {
     lines.push("Options:");
     for (const o of opts) {
       const flag = `${o.short ? `-${o.short}, ` : "    "}--${o.name}${o.type === "boolean" ? "" : ` ${o.value ?? `<${o.type}>`}`}`;
-      lines.push(`  ${flag.padEnd(34)} ${o.description}${o.default !== void 0 && o.type !== "boolean" ? ` (default: ${o.default})` : ""}`);
+      lines.push(
+        `  ${flag.padEnd(34)} ${o.description}${o.default !== void 0 && o.type !== "boolean" ? ` (default: ${o.default})` : ""}`
+      );
     }
     lines.push("");
   }
@@ -18984,7 +20251,10 @@ function parseCobertura(text, root, unit) {
     const lines = [...m[2].matchAll(/<line\s[^>]*?hits="(\d+)"/g)];
     const file = norm(root, unit, source && !m[1].startsWith("/") ? `${source}/${m[1]}` : m[1]);
     const prev = out2.get(file) ?? { covered: 0, total: 0 };
-    out2.set(file, { total: prev.total + lines.length, covered: prev.covered + lines.filter((l) => Number(l[1]) > 0).length });
+    out2.set(file, {
+      total: prev.total + lines.length,
+      covered: prev.covered + lines.filter((l) => Number(l[1]) > 0).length
+    });
   }
   return out2;
 }
@@ -18993,7 +20263,8 @@ function parseIstanbul(text, root, unit, summary) {
   const j = JSON.parse(text);
   for (const [file, v] of Object.entries(j)) {
     if (file === "total") continue;
-    if (summary) out2.set(norm(root, unit, file), { covered: v.lines?.covered ?? 0, total: v.lines?.total ?? 0 });
+    if (summary)
+      out2.set(norm(root, unit, file), { covered: v.lines?.covered ?? 0, total: v.lines?.total ?? 0 });
     else {
       const counts = Object.values(v.s ?? {});
       out2.set(norm(root, unit, file), { covered: counts.filter((c) => c > 0).length, total: counts.length });
@@ -19003,13 +20274,16 @@ function parseIstanbul(text, root, unit, summary) {
 }
 function readCoverage(files, profile) {
   const reports = [];
-  const newestSource = Math.max(0, ...files.files.filter((f) => f.kind === "source" && !f.isTest).slice(0, 5e3).map((f) => {
-    try {
-      return statSync2(join3(files.root, f.path)).mtimeMs;
-    } catch {
-      return 0;
-    }
-  }));
+  const newestSource = Math.max(
+    0,
+    ...files.files.filter((f) => f.kind === "source" && !f.isTest).slice(0, 5e3).map((f) => {
+      try {
+        return statSync2(join3(files.root, f.path)).mtimeMs;
+      } catch {
+        return 0;
+      }
+    })
+  );
   for (const u of profile.units) {
     for (const c of CANDIDATES) {
       const rel = u.path === "." ? c : `${u.path}/${c}`;
@@ -19027,9 +20301,12 @@ function readCoverage(files, profile) {
       let map;
       try {
         if (c.endsWith("lcov.info")) [format, map] = ["lcov", parseLcov(text, files.root, u.path)];
-        else if (c.endsWith("coverage-summary.json")) [format, map] = ["istanbul-summary", parseIstanbul(text, files.root, u.path, true)];
-        else if (c.endsWith("coverage-final.json")) [format, map] = ["istanbul-final", parseIstanbul(text, files.root, u.path, false)];
-        else if (/<coverage[^>]*line-rate=/.test(text)) [format, map] = ["cobertura", parseCobertura(text, files.root, u.path)];
+        else if (c.endsWith("coverage-summary.json"))
+          [format, map] = ["istanbul-summary", parseIstanbul(text, files.root, u.path, true)];
+        else if (c.endsWith("coverage-final.json"))
+          [format, map] = ["istanbul-final", parseIstanbul(text, files.root, u.path, false)];
+        else if (/<coverage[^>]*line-rate=/.test(text))
+          [format, map] = ["cobertura", parseCobertura(text, files.root, u.path)];
         else [format, map] = ["clover", parseClover(text, files.root, u.path)];
       } catch {
         continue;
@@ -19041,7 +20318,14 @@ function readCoverage(files, profile) {
         covered += v.covered;
         total += v.total;
       }
-      reports.push({ file: rel, format, generatedAt: new Date(st.mtimeMs).toISOString(), stale: newestSource > st.mtimeMs, lines: { covered, total, pct: total ? Math.round(covered / total * 1e3) / 10 : 0 }, files: map });
+      reports.push({
+        file: rel,
+        format,
+        generatedAt: new Date(st.mtimeMs).toISOString(),
+        stale: newestSource > st.mtimeMs,
+        lines: { covered, total, pct: total ? Math.round(covered / total * 1e3) / 10 : 0 },
+        files: map
+      });
       break;
     }
   }
@@ -19053,14 +20337,20 @@ function testGaps(files, findings, complexity2, coverage) {
   }
   const testText = tests.slice(0, 3e3).map((t2) => files.read(t2.path) ?? "").join("\n");
   const covered = /* @__PURE__ */ new Map();
-  for (const r of coverage) for (const [f, v] of r.files) covered.set(f, v.total ? v.covered / v.total * 100 : 0);
+  for (const r of coverage)
+    for (const [f, v] of r.files) covered.set(f, v.total ? v.covered / v.total * 100 : 0);
   const gaps = [];
   for (const f of files.files) {
     if (f.isTest || f.kind !== "source" || !f.language) continue;
-    if (/(?:^|\/)(?:config|migrations?|database\/(?:seeders|factories)|routes|types?|resources\/lang|public|scripts?)\/|\.d\.ts$|(?:^|\/)(?:index|main)\.[cm]?[jt]sx?$|\.config\.[cm]?[jt]s$/.test(f.path)) continue;
+    if (/(?:^|\/)(?:config|migrations?|database\/(?:seeders|factories)|routes|types?|resources\/lang|public|scripts?)\/|\.d\.ts$|(?:^|\/)(?:index|main)\.[cm]?[jt]sx?$|\.config\.[cm]?[jt]s$/.test(
+      f.path
+    ))
+      continue;
     const stem = f.path.split("/").pop().replace(/\.[^.]+$/, "");
     if (stem.length < 3) continue;
-    const referenced = new RegExp(`[/'"\\\\]${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\.[cm]?[jt]sx?)?['"]|\\b${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(testText);
+    const referenced = new RegExp(
+      `[/'"\\\\]${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?:\\.[cm]?[jt]sx?)?['"]|\\b${stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`
+    ).test(testText);
     const pct = covered.get(f.path);
     if (pct !== void 0 && pct > 0 || pct === void 0 && referenced) continue;
     const fileFindings = findings.filter((x) => x.location?.file === f.path && x.status === "open");
@@ -19076,7 +20366,9 @@ function testGaps(files, findings, complexity2, coverage) {
       risk += Math.min(cc / 5, 10);
       reasons.push(`max complexity ${cc}`);
     }
-    if (/(?:controller|service|handler|route|api|action|job|middleware|policy|repository|model|payment|auth|billing|checkout|order|webhook)/i.test(f.path)) {
+    if (/(?:controller|service|handler|route|api|action|job|middleware|policy|repository|model|payment|auth|billing|checkout|order|webhook)/i.test(
+      f.path
+    )) {
       risk += 3;
       reasons.push("business/request-handling code");
     }
@@ -19091,7 +20383,6 @@ function testGaps(files, findings, complexity2, coverage) {
 }
 
 // src/checks/exec.ts
-init_rules();
 import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
 import { join as join5 } from "node:path";
 
@@ -19222,7 +20513,7 @@ function whichSync(cmd, pathEnv = process.env.PATH ?? process.env.Path ?? "") {
   }
   return null;
 }
-function runCommand(argv, opts) {
+async function runCommand(argv, opts) {
   if (!opts.allowExec)
     throw new RelivaroError(
       "EXEC_NOT_ALLOWED",
@@ -19319,13 +20610,21 @@ function tail(s, n = 40) {
 }
 
 // src/checks/exec.ts
+init_rules();
 var NPM_DEFAULT_TEST = /no test specified/;
 function hasDir(root, unit, d) {
   return existsSync5(join5(root, unit === "." ? "" : unit, d)) || existsSync5(join5(root, d));
 }
 function localBin(root, unit, bin) {
   for (const base of [join5(root, unit === "." ? "" : unit), root]) {
-    for (const p of [join5(base, "node_modules", ".bin", bin), join5(base, "node_modules", ".bin", `${bin}.cmd`), join5(base, "vendor", "bin", bin), join5(base, ".venv", "bin", bin), join5(base, "venv", "bin", bin), join5(base, ".venv", "Scripts", `${bin}.exe`)])
+    for (const p of [
+      join5(base, "node_modules", ".bin", bin),
+      join5(base, "node_modules", ".bin", `${bin}.cmd`),
+      join5(base, "vendor", "bin", bin),
+      join5(base, ".venv", "bin", bin),
+      join5(base, "venv", "bin", bin),
+      join5(base, ".venv", "Scripts", `${bin}.exe`)
+    ])
       if (existsSync5(p)) return p;
   }
   return null;
@@ -19343,7 +20642,13 @@ function planChecks(files, profile, config, kinds) {
     if (kinds.includes(c.kind) && !out2.some((x) => x.kind === c.kind && x.unit === c.unit)) out2.push(c);
   };
   for (const [kind, cmd] of Object.entries(config.commands))
-    add({ kind, unit: ".", argv: splitCommand(cmd), cwd: root, parser: kind === "test" ? "tests" : kind === "typecheck" && /\btsc\b/.test(cmd) ? "tsc" : "generic" });
+    add({
+      kind,
+      unit: ".",
+      argv: splitCommand(cmd),
+      cwd: root,
+      parser: kind === "test" ? "tests" : kind === "typecheck" && /\btsc\b/.test(cmd) ? "tsc" : "generic"
+    });
   for (const u of profile.units) {
     const cwd = join5(root, u.path === "." ? "" : u.path);
     const eco = new Set(u.ecosystems);
@@ -19352,22 +20657,74 @@ function planChecks(files, profile, config, kinds) {
     if (eco.has("PyPI")) planPython(u, root, cwd, add);
     if (eco.has("Go")) {
       const go = whichSync("go");
-      add({ kind: "test", unit: u.path, argv: ["go", "test", "./..."], cwd, parser: "tests", skipReason: go ? void 0 : "Go toolchain not found on PATH" });
-      add({ kind: "lint", unit: u.path, argv: ["go", "vet", "./..."], cwd, parser: "generic", skipReason: go ? void 0 : "Go toolchain not found on PATH" });
-      add({ kind: "build", unit: u.path, argv: ["go", "build", "./..."], cwd, parser: "generic", skipReason: go ? void 0 : "Go toolchain not found on PATH" });
+      add({
+        kind: "test",
+        unit: u.path,
+        argv: ["go", "test", "./..."],
+        cwd,
+        parser: "tests",
+        skipReason: go ? void 0 : "Go toolchain not found on PATH"
+      });
+      add({
+        kind: "lint",
+        unit: u.path,
+        argv: ["go", "vet", "./..."],
+        cwd,
+        parser: "generic",
+        skipReason: go ? void 0 : "Go toolchain not found on PATH"
+      });
+      add({
+        kind: "build",
+        unit: u.path,
+        argv: ["go", "build", "./..."],
+        cwd,
+        parser: "generic",
+        skipReason: go ? void 0 : "Go toolchain not found on PATH"
+      });
     }
     if (eco.has("crates.io")) {
       const cargo = whichSync("cargo");
-      add({ kind: "test", unit: u.path, argv: ["cargo", "test"], cwd, parser: "tests", skipReason: cargo ? void 0 : "cargo not found on PATH" });
-      add({ kind: "build", unit: u.path, argv: ["cargo", "build"], cwd, parser: "generic", skipReason: cargo ? void 0 : "cargo not found on PATH" });
+      add({
+        kind: "test",
+        unit: u.path,
+        argv: ["cargo", "test"],
+        cwd,
+        parser: "tests",
+        skipReason: cargo ? void 0 : "cargo not found on PATH"
+      });
+      add({
+        kind: "build",
+        unit: u.path,
+        argv: ["cargo", "build"],
+        cwd,
+        parser: "generic",
+        skipReason: cargo ? void 0 : "cargo not found on PATH"
+      });
     }
     if (eco.has("Pub")) {
       const flutter = u.frameworks.includes("Flutter");
       const bin = flutter ? "flutter" : "dart";
       const found = whichSync(bin);
-      const hasTests = files.files.some((f) => f.path.startsWith(u.path === "." ? "test/" : `${u.path}/test/`) && f.path.endsWith("_test.dart"));
-      if (hasTests) add({ kind: "test", unit: u.path, argv: [bin, "test"], cwd, parser: "tests", skipReason: found ? void 0 : `${bin} not found on PATH` });
-      add({ kind: "lint", unit: u.path, argv: [bin, "analyze"], cwd, parser: "generic", skipReason: found ? void 0 : `${bin} not found on PATH` });
+      const hasTests = files.files.some(
+        (f) => f.path.startsWith(u.path === "." ? "test/" : `${u.path}/test/`) && f.path.endsWith("_test.dart")
+      );
+      if (hasTests)
+        add({
+          kind: "test",
+          unit: u.path,
+          argv: [bin, "test"],
+          cwd,
+          parser: "tests",
+          skipReason: found ? void 0 : `${bin} not found on PATH`
+        });
+      add({
+        kind: "lint",
+        unit: u.path,
+        argv: [bin, "analyze"],
+        cwd,
+        parser: "generic",
+        skipReason: found ? void 0 : `${bin} not found on PATH`
+      });
     }
   }
   return out2;
@@ -19378,16 +20735,55 @@ function planNode(u, root, cwd, add, files) {
   const skip = installed ? void 0 : `dependencies are not installed (run \`${pm === "npm" ? "npm ci" : `${pm} install --frozen-lockfile`}\` first; Relivaro never installs dependencies)`;
   const pmMissing = whichSync(pm) ? void 0 : `${pm} not found on PATH`;
   const s = u.scripts;
-  if (s.test && !NPM_DEFAULT_TEST.test(s.test)) add({ kind: "test", unit: u.path, argv: pm === "npm" ? ["npm", "test", "--silent"] : [pm, "test"], cwd, parser: "tests", skipReason: skip ?? pmMissing });
-  if (s.build) add({ kind: "build", unit: u.path, argv: npmRun(pm, "build"), cwd, parser: "generic", skipReason: skip ?? pmMissing });
+  if (s.test && !NPM_DEFAULT_TEST.test(s.test))
+    add({
+      kind: "test",
+      unit: u.path,
+      argv: pm === "npm" ? ["npm", "test", "--silent"] : [pm, "test"],
+      cwd,
+      parser: "tests",
+      skipReason: skip ?? pmMissing
+    });
+  if (s.build)
+    add({
+      kind: "build",
+      unit: u.path,
+      argv: npmRun(pm, "build"),
+      cwd,
+      parser: "generic",
+      skipReason: skip ?? pmMissing
+    });
   const tc = ["typecheck", "type-check", "check-types", "types", "tsc"].find((k) => s[k]);
-  if (tc) add({ kind: "typecheck", unit: u.path, argv: npmRun(pm, tc), cwd, parser: /\btsc\b/.test(s[tc]) ? "tsc" : "generic", skipReason: skip ?? pmMissing });
+  if (tc)
+    add({
+      kind: "typecheck",
+      unit: u.path,
+      argv: npmRun(pm, tc),
+      cwd,
+      parser: /\btsc\b/.test(s[tc]) ? "tsc" : "generic",
+      skipReason: skip ?? pmMissing
+    });
   else if (files.has(u.path === "." ? "tsconfig.json" : `${u.path}/tsconfig.json`)) {
     const tsc = localBin(root, u.path, "tsc");
-    add({ kind: "typecheck", unit: u.path, argv: tsc ? [tsc, "--noEmit", "--pretty", "false"] : ["tsc", "--noEmit"], cwd, parser: "tsc", skipReason: tsc ? void 0 : skip ?? "TypeScript compiler not installed locally" });
+    add({
+      kind: "typecheck",
+      unit: u.path,
+      argv: tsc ? [tsc, "--noEmit", "--pretty", "false"] : ["tsc", "--noEmit"],
+      cwd,
+      parser: "tsc",
+      skipReason: tsc ? void 0 : skip ?? "TypeScript compiler not installed locally"
+    });
   }
   const lint = ["lint", "lint:check", "check"].find((k) => s[k] && !/--fix|--write/.test(s[k]));
-  if (lint) add({ kind: "lint", unit: u.path, argv: npmRun(pm, lint), cwd, parser: "generic", skipReason: skip ?? pmMissing });
+  if (lint)
+    add({
+      kind: "lint",
+      unit: u.path,
+      argv: npmRun(pm, lint),
+      cwd,
+      parser: "generic",
+      skipReason: skip ?? pmMissing
+    });
 }
 function planPhp(u, root, cwd, add) {
   const vendor = hasDir(root, u.path, "vendor");
@@ -19395,22 +20791,64 @@ function planPhp(u, root, cwd, add) {
   const skip = !php ? "php not found on PATH" : !vendor ? "dependencies are not installed (run `composer install` first; Relivaro never installs dependencies)" : void 0;
   const pest = localBin(root, u.path, "pest");
   const phpunit = localBin(root, u.path, "phpunit");
-  if (existsSync5(join5(cwd, "artisan")) && (pest || phpunit)) add({ kind: "test", unit: u.path, argv: ["php", "artisan", "test"], cwd, parser: "tests", skipReason: skip });
-  else if (pest) add({ kind: "test", unit: u.path, argv: ["php", pest], cwd, parser: "tests", skipReason: skip });
-  else if (phpunit) add({ kind: "test", unit: u.path, argv: ["php", phpunit], cwd, parser: "tests", skipReason: skip });
-  else if (existsSync5(join5(cwd, "phpunit.xml")) || existsSync5(join5(cwd, "phpunit.xml.dist"))) add({ kind: "test", unit: u.path, argv: ["vendor/bin/phpunit"], cwd, parser: "tests", skipReason: skip ?? "vendor/bin/phpunit not found" });
+  if (existsSync5(join5(cwd, "artisan")) && (pest || phpunit))
+    add({
+      kind: "test",
+      unit: u.path,
+      argv: ["php", "artisan", "test"],
+      cwd,
+      parser: "tests",
+      skipReason: skip
+    });
+  else if (pest)
+    add({ kind: "test", unit: u.path, argv: ["php", pest], cwd, parser: "tests", skipReason: skip });
+  else if (phpunit)
+    add({ kind: "test", unit: u.path, argv: ["php", phpunit], cwd, parser: "tests", skipReason: skip });
+  else if (existsSync5(join5(cwd, "phpunit.xml")) || existsSync5(join5(cwd, "phpunit.xml.dist")))
+    add({
+      kind: "test",
+      unit: u.path,
+      argv: ["vendor/bin/phpunit"],
+      cwd,
+      parser: "tests",
+      skipReason: skip ?? "vendor/bin/phpunit not found"
+    });
   const phpstan = localBin(root, u.path, "phpstan");
   if (phpstan && ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"].some((f) => existsSync5(join5(cwd, f))))
-    add({ kind: "typecheck", unit: u.path, argv: ["php", phpstan, "analyse", "--no-progress", "--error-format=json", "--memory-limit=1G"], cwd, parser: "phpstan", skipReason: skip });
+    add({
+      kind: "typecheck",
+      unit: u.path,
+      argv: ["php", phpstan, "analyse", "--no-progress", "--error-format=json", "--memory-limit=1G"],
+      cwd,
+      parser: "phpstan",
+      skipReason: skip
+    });
   const pint = localBin(root, u.path, "pint");
-  if (pint) add({ kind: "lint", unit: u.path, argv: ["php", pint, "--test"], cwd, parser: "generic", skipReason: skip });
+  if (pint)
+    add({
+      kind: "lint",
+      unit: u.path,
+      argv: ["php", pint, "--test"],
+      cwd,
+      parser: "generic",
+      skipReason: skip
+    });
 }
 function planPython(u, root, cwd, add) {
   const pytest = localBin(root, u.path, "pytest") ?? whichSync("pytest");
   const hasTests = existsSync5(join5(cwd, "tests")) || existsSync5(join5(cwd, "test")) || existsSync5(join5(cwd, "pytest.ini")) || existsSync5(join5(cwd, "conftest.py"));
-  if (hasTests) add({ kind: "test", unit: u.path, argv: [pytest ?? "pytest", "-q", "-p", "no:cacheprovider"], cwd, parser: "tests", skipReason: pytest ? void 0 : "pytest not found (activate the virtualenv or install dev dependencies)" });
+  if (hasTests)
+    add({
+      kind: "test",
+      unit: u.path,
+      argv: [pytest ?? "pytest", "-q", "-p", "no:cacheprovider"],
+      cwd,
+      parser: "tests",
+      skipReason: pytest ? void 0 : "pytest not found (activate the virtualenv or install dev dependencies)"
+    });
   const mypy = localBin(root, u.path, "mypy");
-  if (mypy && (existsSync5(join5(cwd, "mypy.ini")) || /\[tool\.mypy\]/.test(safeRead(join5(cwd, "pyproject.toml"))))) add({ kind: "typecheck", unit: u.path, argv: [mypy, "."], cwd, parser: "generic" });
+  if (mypy && (existsSync5(join5(cwd, "mypy.ini")) || /\[tool\.mypy\]/.test(safeRead(join5(cwd, "pyproject.toml")))))
+    add({ kind: "typecheck", unit: u.path, argv: [mypy, "."], cwd, parser: "generic" });
   const ruff = localBin(root, u.path, "ruff");
   if (ruff) add({ kind: "lint", unit: u.path, argv: [ruff, "check", "."], cwd, parser: "generic" });
 }
@@ -19437,7 +20875,13 @@ function parseTestSummary(output) {
     const passed = num(/Tests\s+(?:[^\n]*?)(\d+) passed/);
     const failed = num(/Tests\s+(\d+) failed/);
     const skipped = num(/Tests\s+[^\n]*?(\d+) skipped/);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   if (/^Tests:\s+/m.test(o) && /\d+ total/.test(o)) {
     const line = /^Tests:\s+(.*)$/m.exec(o)?.[1] ?? "";
@@ -19447,21 +20891,37 @@ function parseTestSummary(output) {
     const total = Number(/(\d+) total/.exec(line)?.[1] ?? passed + failed + skipped);
     return { passed, failed, skipped, total, failing: [...new Set(failing)].slice(0, 20) };
   }
-  mm = /Tests:\s+(?:(\d+) failed,?\s*)?(?:(\d+) (?:skipped|incomplete|risky|warnings?),?\s*)*(\d+) passed/.exec(o);
+  mm = /Tests:\s+(?:(\d+) failed,?\s*)?(?:(\d+) (?:skipped|incomplete|risky|warnings?),?\s*)*(\d+) passed/.exec(
+    o
+  );
   if (mm) {
     const failed = Number(mm[1] ?? 0);
     const passed = Number(mm[3] ?? 0);
     const skipped = num(/(\d+) skipped/);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   mm = /OK \((\d+) tests?/.exec(o);
   if (mm) return { passed: Number(mm[1]), failed: 0, skipped: 0, total: Number(mm[1]), failing: [] };
-  mm = /Tests: (\d+), Assertions: \d+(?:, Errors: (\d+))?(?:, Failures: (\d+))?(?:, Errors: (\d+))?(?:, Warnings: \d+)?(?:, (?:Skipped|Incomplete): (\d+))?/.exec(o);
+  mm = /Tests: (\d+), Assertions: \d+(?:, Errors: (\d+))?(?:, Failures: (\d+))?(?:, Errors: (\d+))?(?:, Warnings: \d+)?(?:, (?:Skipped|Incomplete): (\d+))?/.exec(
+    o
+  );
   if (mm) {
     const total = Number(mm[1]);
     const failed = Number(mm[2] ?? 0) + Number(mm[3] ?? 0) + Number(mm[4] ?? 0);
     const skipped = Number(mm[5] ?? 0);
-    return { passed: total - failed - skipped, failed, skipped, total, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed: total - failed - skipped,
+      failed,
+      skipped,
+      total,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   mm = /=+ (.*?) in [\d.]+s/.exec(o);
   if (mm && /passed|failed|error/.test(mm[1])) {
@@ -19469,40 +20929,80 @@ function parseTestSummary(output) {
     const passed = Number(/(\d+) passed/.exec(s)?.[1] ?? 0);
     const failed = Number(/(\d+) failed/.exec(s)?.[1] ?? 0) + Number(/(\d+) errors?/.exec(s)?.[1] ?? 0);
     const skipped = Number(/(\d+) skipped/.exec(s)?.[1] ?? 0);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   if (/^# pass \d+/m.test(o)) {
     const passed = num(/^# pass (\d+)/m);
     const failed = num(/^# fail (\d+)/m);
     const skipped = num(/^# skip(?:ped)? (\d+)/m);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   if (/\d+ passing/.test(o)) {
     const passed = num(/(\d+) passing/);
     const failed = num(/(\d+) failing/);
     const skipped = num(/(\d+) pending/);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   mm = /test result: \w+\. (\d+) passed; (\d+) failed; (\d+) ignored/.exec(o);
-  if (mm) return { passed: Number(mm[1]), failed: Number(mm[2]), skipped: Number(mm[3]), total: Number(mm[1]) + Number(mm[2]) + Number(mm[3]), failing: [...new Set(failing)].slice(0, 20) };
+  if (mm)
+    return {
+      passed: Number(mm[1]),
+      failed: Number(mm[2]),
+      skipped: Number(mm[3]),
+      total: Number(mm[1]) + Number(mm[2]) + Number(mm[3]),
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   mm = /\+(\d+)(?: ~(\d+))?(?: -(\d+))?: (?:All tests passed|Some tests failed)/.exec(o);
   if (mm) {
     const passed = Number(mm[1]);
     const skipped = Number(mm[2] ?? 0);
     const failed = Number(mm[3] ?? 0);
-    return { passed, failed, skipped, total: passed + failed + skipped, failing: [...new Set(failing)].slice(0, 20) };
+    return {
+      passed,
+      failed,
+      skipped,
+      total: passed + failed + skipped,
+      failing: [...new Set(failing)].slice(0, 20)
+    };
   }
   if (/^(?:ok|FAIL|---)\s/m.test(o)) {
     const passed = (o.match(/^ok\s/gm) ?? []).length;
     const failed = (o.match(/^FAIL\s/gm) ?? []).length;
-    if (passed + failed) return { passed, failed, skipped: 0, total: passed + failed, failing: [...new Set(failing)].slice(0, 20) };
+    if (passed + failed)
+      return {
+        passed,
+        failed,
+        skipped: 0,
+        total: passed + failed,
+        failing: [...new Set(failing)].slice(0, 20)
+      };
   }
   return void 0;
 }
 function parseTsc(output) {
   const out2 = [];
-  for (const m of output.matchAll(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/gm)) out2.push({ file: m[1].trim(), line: Number(m[2]), column: Number(m[3]), code: m[4], message: m[5] });
-  for (const m of output.matchAll(/^(.+?):(\d+):(\d+) - error (TS\d+): (.+)$/gm)) out2.push({ file: m[1].trim(), line: Number(m[2]), column: Number(m[3]), code: m[4], message: m[5] });
+  for (const m of output.matchAll(/^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/gm))
+    out2.push({ file: m[1].trim(), line: Number(m[2]), column: Number(m[3]), code: m[4], message: m[5] });
+  for (const m of output.matchAll(/^(.+?):(\d+):(\d+) - error (TS\d+): (.+)$/gm))
+    out2.push({ file: m[1].trim(), line: Number(m[2]), column: Number(m[3]), code: m[4], message: m[5] });
   return out2;
 }
 function parsePhpstan(output) {
@@ -19511,7 +21011,9 @@ function parsePhpstan(output) {
   try {
     const j = JSON.parse(output.slice(start2));
     const out2 = [];
-    for (const [file, v] of Object.entries(j.files ?? {})) for (const m of v.messages) out2.push({ file, line: m.line, column: 1, code: m.identifier ?? "phpstan", message: m.message });
+    for (const [file, v] of Object.entries(j.files ?? {}))
+      for (const m of v.messages)
+        out2.push({ file, line: m.line, column: 1, code: m.identifier ?? "phpstan", message: m.message });
     return out2;
   } catch {
     return [];
@@ -19580,20 +21082,46 @@ async function runChecks(planned, opts) {
   for (const p of planned) {
     const display = p.argv.join(" ");
     if (p.skipReason || !opts.allowExec) {
-      results.push({ kind: p.kind, unit: p.unit, command: display, status: "skipped", durationMs: 0, reason: p.skipReason ?? "requires --allow-exec" });
+      results.push({
+        kind: p.kind,
+        unit: p.unit,
+        command: display,
+        status: "skipped",
+        durationMs: 0,
+        reason: p.skipReason ?? "requires --allow-exec"
+      });
       continue;
     }
     opts.onProgress?.(`running ${p.kind} (${p.unit}): ${display}`);
     let r;
     try {
-      r = await runCommand(p.argv, { cwd: p.cwd, timeoutMs: opts.timeoutSeconds * 1e3, allowExec: true, env: { NODE_ENV: p.kind === "build" ? "production" : "test", APP_ENV: "testing" } });
+      r = await runCommand(p.argv, {
+        cwd: p.cwd,
+        timeoutMs: opts.timeoutSeconds * 1e3,
+        allowExec: true,
+        env: { NODE_ENV: p.kind === "build" ? "production" : "test", APP_ENV: "testing" }
+      });
     } catch (e) {
-      results.push({ kind: p.kind, unit: p.unit, command: display, status: "error", durationMs: 0, reason: e.message });
+      results.push({
+        kind: p.kind,
+        unit: p.unit,
+        command: display,
+        status: "error",
+        durationMs: 0,
+        reason: e.message
+      });
       continue;
     }
     const output = `${r.stdout}
 ${r.stderr}`;
-    const res = { kind: p.kind, unit: p.unit, command: r.command, status: r.timedOut ? "timeout" : r.error ? "error" : r.exitCode === 0 ? "passed" : "failed", durationMs: r.durationMs, outputTail: tail(output, 60) };
+    const res = {
+      kind: p.kind,
+      unit: p.unit,
+      command: r.command,
+      status: r.timedOut ? "timeout" : r.error ? "error" : r.exitCode === 0 ? "passed" : "failed",
+      durationMs: r.durationMs,
+      outputTail: tail(output, 60)
+    };
     if (r.error) res.reason = r.error;
     if (p.parser === "tests") res.tests = parseTestSummary(output);
     const evidence = { command: r.command, output: tail(output, 40) };
@@ -19603,14 +21131,42 @@ ${r.stderr}`;
       res.diagnostics = diags.length;
       for (const d of diags.slice(0, 200)) {
         const rel = d.file.startsWith(opts.root) ? d.file.slice(opts.root.length + 1).replace(/\\/g, "/") : `${unitPrefix}${d.file.replace(/\\/g, "/").replace(/^\.\//, "")}`;
-        hits.push({ rule: EXEC_RULES.typecheck, hit: { file: rel, line: d.line, column: d.column, message: `${d.code}: ${d.message}`, facts: { code: d.code } }, provenance: "executed" });
+        hits.push({
+          rule: EXEC_RULES.typecheck,
+          hit: {
+            file: rel,
+            line: d.line,
+            column: d.column,
+            message: `${d.code}: ${d.message}`,
+            facts: { code: d.code }
+          },
+          provenance: "executed"
+        });
       }
-      if (res.status === "failed" && diags.length === 0) hits.push({ rule: EXEC_RULES.typecheck, hit: { message: `\`${r.command}\` failed in \`${p.unit}\`.`, snippet: evidence.output, anchor: `typecheck:${p.unit}` }, provenance: "executed" });
+      if (res.status === "failed" && diags.length === 0)
+        hits.push({
+          rule: EXEC_RULES.typecheck,
+          hit: {
+            message: `\`${r.command}\` failed in \`${p.unit}\`.`,
+            snippet: evidence.output,
+            anchor: `typecheck:${p.unit}`
+          },
+          provenance: "executed"
+        });
     } else if (res.status === "failed" || res.status === "timeout" || res.status === "error" && p.kind !== "lint") {
       const rule = res.status === "timeout" ? EXEC_RULES.timeout : EXEC_RULES[p.kind];
       const t2 = res.tests;
       const msg = res.status === "timeout" ? `\`${r.command}\` (${p.kind}, \`${p.unit}\`) was terminated after ${opts.timeoutSeconds}s.` : p.kind === "test" && t2 ? `${t2.failed} of ${t2.total} tests failed in \`${p.unit}\`${t2.failing.length ? ` (e.g. ${t2.failing.slice(0, 3).join("; ")})` : ""}.` : `\`${r.command}\` exited with code ${r.exitCode ?? r.signal ?? "error"} in \`${p.unit}\`.`;
-      hits.push({ rule, hit: { message: msg, snippet: evidence.output, anchor: `${p.kind}:${p.unit}`, facts: { command: r.command, exitCode: r.exitCode, durationMs: r.durationMs } }, provenance: "executed" });
+      hits.push({
+        rule,
+        hit: {
+          message: msg,
+          snippet: evidence.output,
+          anchor: `${p.kind}:${p.unit}`,
+          facts: { command: r.command, exitCode: r.exitCode, durationMs: r.durationMs }
+        },
+        provenance: "executed"
+      });
     }
     results.push(res);
   }
@@ -19654,7 +21210,11 @@ function loadConfig(root, explicitPath) {
   return { config: defaultConfig() };
 }
 function fail(file, msg) {
-  throw new RelivaroError("CONFIG_INVALID", `${file}: ${msg}`, "See docs/CONFIG.md for the configuration format.");
+  throw new RelivaroError(
+    "CONFIG_INVALID",
+    `${file}: ${msg}`,
+    "See docs/CONFIG.md for the configuration format."
+  );
 }
 var isObj = (v) => typeof v === "object" && v !== null && !Array.isArray(v);
 var isStrArr = (v) => Array.isArray(v) && v.every((x) => typeof x === "string");
@@ -19689,9 +21249,14 @@ function validateConfig(raw, file = "config") {
     for (const [id, v] of Object.entries(raw.rules)) {
       if (v === "off") c.rules[id] = "off";
       else if (isObj(v)) {
-        if (v.severity !== void 0 && !isSeverity(v.severity)) fail(file, `rules.${id}.severity is invalid`);
-        if (v.exclude !== void 0 && !isStrArr(v.exclude)) fail(file, `rules.${id}.exclude must be string[]`);
-        c.rules[id] = { severity: v.severity, exclude: v.exclude };
+        if (v.severity !== void 0 && !isSeverity(v.severity))
+          fail(file, `rules.${id}.severity is invalid`);
+        if (v.exclude !== void 0 && !isStrArr(v.exclude))
+          fail(file, `rules.${id}.exclude must be string[]`);
+        c.rules[id] = {
+          severity: v.severity,
+          exclude: v.exclude
+        };
       } else fail(file, `rules.${id} must be "off" or an object`);
     }
   }
@@ -19707,7 +21272,8 @@ function validateConfig(raw, file = "config") {
   if (raw.commands !== void 0) {
     if (!isObj(raw.commands)) fail(file, '"commands" must be an object');
     for (const [k, v] of Object.entries(raw.commands)) {
-      if (!["build", "test", "typecheck", "lint"].includes(k)) fail(file, `commands.${k} is not a known command`);
+      if (!["build", "test", "typecheck", "lint"].includes(k))
+        fail(file, `commands.${k} is not a known command`);
       if (typeof v !== "string" || !v.trim()) fail(file, `commands.${k} must be a non-empty string`);
       c.commands[k] = v;
     }
@@ -19750,7 +21316,8 @@ function validateConfig(raw, file = "config") {
       for (const [k, v] of Object.entries(b)) {
         if (!["meanMs", "p95Ms", "p99Ms", "errorRate", "maxRegressionPct"].includes(k))
           fail(file, `performance.budgets.${name2}.${k} is unknown`);
-        if (typeof v !== "number" || v < 0) fail(file, `performance.budgets.${name2}.${k} must be a non-negative number`);
+        if (typeof v !== "number" || v < 0)
+          fail(file, `performance.budgets.${name2}.${k} must be a non-negative number`);
       }
       c.performance.budgets[name2] = b;
     }
@@ -19776,8 +21343,20 @@ var ids = (fs2) => fs2.map((f) => f.id);
 function checkGate(run2, kind, title, failStatus) {
   const cs = run2.checks.filter((c) => c.kind === kind);
   const id = kind === "test" ? "tests" : kind;
-  if (!run2.options.checks.includes(kind)) return { id, title, status: "unverified", detail: `Not executed (run \`relivaro release --allow-exec\` to execute ${kind}).` };
-  if (!cs.length) return { id, title, status: kind === "test" ? "unverified" : "n/a", detail: `No ${kind} command detected.` };
+  if (!run2.options.checks.includes(kind))
+    return {
+      id,
+      title,
+      status: "unverified",
+      detail: `Not executed (run \`relivaro release --allow-exec\` to execute ${kind}).`
+    };
+  if (!cs.length)
+    return {
+      id,
+      title,
+      status: kind === "test" ? "unverified" : "n/a",
+      detail: `No ${kind} command detected.`
+    };
   const failed = cs.filter((c) => c.status === "failed" || c.status === "error" || c.status === "timeout");
   const skipped = cs.filter((c) => c.status === "skipped");
   if (failed.length)
@@ -19785,13 +21364,28 @@ function checkGate(run2, kind, title, failStatus) {
       id,
       title,
       status: failStatus,
-      detail: failed.map((c) => `${c.unit}: \`${c.command}\` ${c.status}${c.tests ? ` (${c.tests.failed}/${c.tests.total} tests failed)` : c.diagnostics ? ` (${c.diagnostics} errors)` : ""}`).join("; "),
+      detail: failed.map(
+        (c) => `${c.unit}: \`${c.command}\` ${c.status}${c.tests ? ` (${c.tests.failed}/${c.tests.total} tests failed)` : c.diagnostics ? ` (${c.diagnostics} errors)` : ""}`
+      ).join("; "),
       findings: ids(open(run2).filter((f) => f.ruleId.startsWith("exec/")))
     };
-  if (skipped.length === cs.length) return { id, title, status: "unverified", detail: skipped.map((c) => `${c.unit}: ${c.reason}`).join("; ") };
+  if (skipped.length === cs.length)
+    return {
+      id,
+      title,
+      status: "unverified",
+      detail: skipped.map((c) => `${c.unit}: ${c.reason}`).join("; ")
+    };
   const passed = cs.filter((c) => c.status === "passed");
-  const detail = passed.map((c) => `${c.unit}: \`${c.command}\` passed in ${(c.durationMs / 1e3).toFixed(1)}s${c.tests ? ` (${c.tests.passed} passed${c.tests.skipped ? `, ${c.tests.skipped} skipped` : ""})` : ""}`).join("; ");
-  return { id, title, status: skipped.length ? "warn" : "pass", detail: skipped.length ? `${detail}; not run: ${skipped.map((c) => `${c.unit} (${c.reason})`).join(", ")}` : detail };
+  const detail = passed.map(
+    (c) => `${c.unit}: \`${c.command}\` passed in ${(c.durationMs / 1e3).toFixed(1)}s${c.tests ? ` (${c.tests.passed} passed${c.tests.skipped ? `, ${c.tests.skipped} skipped` : ""})` : ""}`
+  ).join("; ");
+  return {
+    id,
+    title,
+    status: skipped.length ? "warn" : "pass",
+    detail: skipped.length ? `${detail}; not run: ${skipped.map((c) => `${c.unit} (${c.reason})`).join(", ")}` : detail
+  };
 }
 function assessRelease(run2, config, bench = []) {
   const gates = [];
@@ -19805,55 +21399,234 @@ function assessRelease(run2, config, bench = []) {
   }
   gates.push(testGate);
   const focused = all.filter((f) => f.ruleId === "test/focused-test");
-  if (focused.length) gates.push({ id: "focused-tests", title: "No focused tests", status: "block", detail: `${focused.length} focused test(s) (.only) make CI skip the rest of the suite.`, findings: ids(focused) });
+  if (focused.length)
+    gates.push({
+      id: "focused-tests",
+      title: "No focused tests",
+      status: "block",
+      detail: `${focused.length} focused test(s) (.only) make CI skip the rest of the suite.`,
+      findings: ids(focused)
+    });
   gates.push(checkGate(run2, "typecheck", "Type checking passes", "warn"));
   gates.push(checkGate(run2, "lint", "Lint passes", "warn"));
-  const secrets = all.filter((f) => (f.ruleId === "sec/hardcoded-secret" || f.ruleId === "sec/env-file-committed") && confident(f) && severityAtLeast(f.severity, "medium"));
-  gates.push(secrets.length ? { id: "secrets", title: "No exposed secrets", status: "block", detail: `${secrets.length} credential exposure(s).`, findings: ids(secrets) } : { id: "secrets", title: "No exposed secrets", status: "pass", detail: "No secrets detected in analysed files." });
-  const sec = all.filter((f) => (f.category === "security" || f.category === "supply-chain") && f.ruleId !== "sec/hardcoded-secret" && f.ruleId !== "sec/env-file-committed" && f.ruleId !== "sc/known-vulnerability");
-  const secBlock = sec.filter((f) => severityAtLeast(f.severity, config.release.blockOn) && confident(f));
-  const secWarn = sec.filter((f) => !secBlock.includes(f) && severityAtLeast(f.severity, "medium") && confident(f));
+  const secrets = all.filter(
+    (f) => (f.ruleId === "sec/hardcoded-secret" || f.ruleId === "sec/env-file-committed") && confident(f) && severityAtLeast(f.severity, "medium")
+  );
   gates.push(
-    secBlock.length ? { id: "security", title: "No unresolved high-risk security findings", status: "block", detail: `${secBlock.length} finding(s) at or above ${config.release.blockOn}: ${summarizeRules(secBlock)}.`, findings: ids(secBlock) } : secWarn.length ? { id: "security", title: "No unresolved high-risk security findings", status: "warn", detail: `${secWarn.length} medium finding(s): ${summarizeRules(secWarn)}.`, findings: ids(secWarn) } : { id: "security", title: "No unresolved high-risk security findings", status: "pass", detail: "No security findings at medium or above with medium/high confidence." }
+    secrets.length ? {
+      id: "secrets",
+      title: "No exposed secrets",
+      status: "block",
+      detail: `${secrets.length} credential exposure(s).`,
+      findings: ids(secrets)
+    } : {
+      id: "secrets",
+      title: "No exposed secrets",
+      status: "pass",
+      detail: "No secrets detected in analysed files."
+    }
+  );
+  const sec = all.filter(
+    (f) => (f.category === "security" || f.category === "supply-chain") && f.ruleId !== "sec/hardcoded-secret" && f.ruleId !== "sec/env-file-committed" && f.ruleId !== "sc/known-vulnerability"
+  );
+  const secBlock = sec.filter((f) => severityAtLeast(f.severity, config.release.blockOn) && confident(f));
+  const secWarn = sec.filter(
+    (f) => !secBlock.includes(f) && severityAtLeast(f.severity, "medium") && confident(f)
+  );
+  gates.push(
+    secBlock.length ? {
+      id: "security",
+      title: "No unresolved high-risk security findings",
+      status: "block",
+      detail: `${secBlock.length} finding(s) at or above ${config.release.blockOn}: ${summarizeRules(secBlock)}.`,
+      findings: ids(secBlock)
+    } : secWarn.length ? {
+      id: "security",
+      title: "No unresolved high-risk security findings",
+      status: "warn",
+      detail: `${secWarn.length} medium finding(s): ${summarizeRules(secWarn)}.`,
+      findings: ids(secWarn)
+    } : {
+      id: "security",
+      title: "No unresolved high-risk security findings",
+      status: "pass",
+      detail: "No security findings at medium or above with medium/high confidence."
+    }
   );
   const vulns = all.filter((f) => f.ruleId === "sc/known-vulnerability");
-  if (!run2.options.online) gates.push({ id: "dependencies", title: "No known-vulnerable dependencies", status: run2.profile.lockfiles.length ? "unverified" : "n/a", detail: run2.profile.lockfiles.length ? "Not checked (offline). Run with --online to query OSV.dev." : "No lockfiles to check." });
-  else if (run2.errors.network.length) gates.push({ id: "dependencies", title: "No known-vulnerable dependencies", status: "unverified", detail: `OSV lookup failed: ${run2.errors.network[0]}` });
+  if (!run2.options.online)
+    gates.push({
+      id: "dependencies",
+      title: "No known-vulnerable dependencies",
+      status: run2.profile.lockfiles.length ? "unverified" : "n/a",
+      detail: run2.profile.lockfiles.length ? "Not checked (offline). Run with --online to query OSV.dev." : "No lockfiles to check."
+    });
+  else if (run2.errors.network.length)
+    gates.push({
+      id: "dependencies",
+      title: "No known-vulnerable dependencies",
+      status: "unverified",
+      detail: `OSV lookup failed: ${run2.errors.network[0]}`
+    });
   else {
     const vb = vulns.filter((f) => severityAtLeast(f.severity, config.release.blockOn));
     gates.push(
-      vb.length ? { id: "dependencies", title: "No known-vulnerable dependencies", status: "block", detail: `${vb.length} advisories at or above ${config.release.blockOn} (of ${vulns.length} total).`, findings: ids(vb) } : vulns.length ? { id: "dependencies", title: "No known-vulnerable dependencies", status: "warn", detail: `${vulns.length} lower-severity advisories.`, findings: ids(vulns) } : { id: "dependencies", title: "No known-vulnerable dependencies", status: "pass", detail: `${run2.metrics.osvQueried ?? 0} resolved packages checked against OSV.dev; no advisories.` }
+      vb.length ? {
+        id: "dependencies",
+        title: "No known-vulnerable dependencies",
+        status: "block",
+        detail: `${vb.length} advisories at or above ${config.release.blockOn} (of ${vulns.length} total).`,
+        findings: ids(vb)
+      } : vulns.length ? {
+        id: "dependencies",
+        title: "No known-vulnerable dependencies",
+        status: "warn",
+        detail: `${vulns.length} lower-severity advisories.`,
+        findings: ids(vulns)
+      } : {
+        id: "dependencies",
+        title: "No known-vulnerable dependencies",
+        status: "pass",
+        detail: `${run2.metrics.osvQueried ?? 0} resolved packages checked against OSV.dev; no advisories.`
+      }
     );
   }
-  const lock = all.filter((f) => /^sc\/(?:missing-lockfile|lockfile-out-of-sync|multiple-lockfiles|non-registry-dependency|unpinned-dependency)$/.test(f.ruleId));
-  gates.push(lock.length ? { id: "reproducible-builds", title: "Reproducible dependency installs", status: "warn", detail: summarizeRules(lock), findings: ids(lock) } : { id: "reproducible-builds", title: "Reproducible dependency installs", status: "pass", detail: `${run2.profile.lockfiles.length} lockfile(s), consistent with manifests.` });
+  const lock = all.filter(
+    (f) => /^sc\/(?:missing-lockfile|lockfile-out-of-sync|multiple-lockfiles|non-registry-dependency|unpinned-dependency)$/.test(
+      f.ruleId
+    )
+  );
+  gates.push(
+    lock.length ? {
+      id: "reproducible-builds",
+      title: "Reproducible dependency installs",
+      status: "warn",
+      detail: summarizeRules(lock),
+      findings: ids(lock)
+    } : {
+      id: "reproducible-builds",
+      title: "Reproducible dependency installs",
+      status: "pass",
+      detail: `${run2.profile.lockfiles.length} lockfile(s), consistent with manifests.`
+    }
+  );
   const ci = run2.profile.ci;
-  if (!ci.length) gates.push({ id: "ci", title: "CI runs tests on every change", status: config.release.requireCi ? "warn" : "n/a", detail: "No CI configuration found." });
+  if (!ci.length)
+    gates.push({
+      id: "ci",
+      title: "CI runs tests on every change",
+      status: config.release.requireCi ? "warn" : "n/a",
+      detail: "No CI configuration found."
+    });
   else {
     const runsTests = ci.some((c) => c.runsTests);
     const ciFindings = all.filter((f) => /^sec\/gha-/.test(f.ruleId) && severityAtLeast(f.severity, "high"));
-    gates.push({ id: "ci", title: "CI runs tests on every change", status: ciFindings.length ? "block" : runsTests ? "pass" : "warn", detail: ciFindings.length ? `CI workflow vulnerabilities: ${summarizeRules(ciFindings)}.` : runsTests ? `${ci.map((c) => c.system).filter((v, i2, a) => a.indexOf(v) === i2).join(", ")} configured and runs tests.` : "CI is configured but no test step was detected.", findings: ciFindings.length ? ids(ciFindings) : void 0 });
+    gates.push({
+      id: "ci",
+      title: "CI runs tests on every change",
+      status: ciFindings.length ? "block" : runsTests ? "pass" : "warn",
+      detail: ciFindings.length ? `CI workflow vulnerabilities: ${summarizeRules(ciFindings)}.` : runsTests ? `${ci.map((c) => c.system).filter((v, i2, a) => a.indexOf(v) === i2).join(", ")} configured and runs tests.` : "CI is configured but no test step was detected.",
+      findings: ciFindings.length ? ids(ciFindings) : void 0
+    });
   }
   const reliability = all.filter((f) => f.category === "reliability" && confident(f));
   const relBlock = reliability.filter((f) => severityAtLeast(f.severity, "high"));
   const migrations = reliability.filter((f) => /migration/.test(f.ruleId));
   gates.push(
-    relBlock.length ? { id: "reliability", title: "No high-risk reliability defects", status: "block", detail: summarizeRules(relBlock), findings: ids(relBlock) } : reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f)).length ? { id: "reliability", title: "No high-risk reliability defects", status: "warn", detail: summarizeRules(reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f))), findings: ids(reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f))) } : { id: "reliability", title: "No high-risk reliability defects", status: "pass", detail: "No medium or higher reliability findings." }
+    relBlock.length ? {
+      id: "reliability",
+      title: "No high-risk reliability defects",
+      status: "block",
+      detail: summarizeRules(relBlock),
+      findings: ids(relBlock)
+    } : reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f)).length ? {
+      id: "reliability",
+      title: "No high-risk reliability defects",
+      status: "warn",
+      detail: summarizeRules(
+        reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f))
+      ),
+      findings: ids(
+        reliability.filter((f) => severityAtLeast(f.severity, "medium") && !migrations.includes(f))
+      )
+    } : {
+      id: "reliability",
+      title: "No high-risk reliability defects",
+      status: "pass",
+      detail: "No medium or higher reliability findings."
+    }
   );
   gates.push(
-    migrations.length ? { id: "migrations", title: "Database migrations are safe to deploy and roll back", status: "warn", detail: `${migrations.length} destructive/irreversible migration step(s); verify backups and expand/contract sequencing.`, findings: ids(migrations) } : { id: "migrations", title: "Database migrations are safe to deploy and roll back", status: run2.profile.migrations.length ? "pass" : "n/a", detail: run2.profile.migrations.length ? `${run2.profile.migrations.length} migration file(s) analysed; no destructive steps detected.` : "No migrations found." }
+    migrations.length ? {
+      id: "migrations",
+      title: "Database migrations are safe to deploy and roll back",
+      status: "warn",
+      detail: `${migrations.length} destructive/irreversible migration step(s); verify backups and expand/contract sequencing.`,
+      findings: ids(migrations)
+    } : {
+      id: "migrations",
+      title: "Database migrations are safe to deploy and roll back",
+      status: run2.profile.migrations.length ? "pass" : "n/a",
+      detail: run2.profile.migrations.length ? `${run2.profile.migrations.length} migration file(s) analysed; no destructive steps detected.` : "No migrations found."
+    }
   );
-  const undocumented = run2.profile.envVars.filter((v) => v.required && !v.documented && !config.env.optional.includes(v.name));
+  const undocumented = run2.profile.envVars.filter(
+    (v) => v.required && !v.documented && !config.env.optional.includes(v.name)
+  );
   gates.push(
-    undocumented.length ? { id: "configuration", title: "Required environment variables are documented", status: "warn", detail: `${undocumented.length} required variable(s) are read without a default but not documented in an env template/README: ${undocumented.slice(0, 15).map((v) => v.name).join(", ")}${undocumented.length > 15 ? ", \u2026" : ""}.` } : { id: "configuration", title: "Required environment variables are documented", status: run2.profile.envVars.length ? "pass" : "n/a", detail: run2.profile.envVars.length ? `${run2.profile.envVars.length} environment variable(s) detected; all required ones documented.` : "No environment variables read by the code." }
+    undocumented.length ? {
+      id: "configuration",
+      title: "Required environment variables are documented",
+      status: "warn",
+      detail: `${undocumented.length} required variable(s) are read without a default but not documented in an env template/README: ${undocumented.slice(0, 15).map((v) => v.name).join(", ")}${undocumented.length > 15 ? ", \u2026" : ""}.`
+    } : {
+      id: "configuration",
+      title: "Required environment variables are documented",
+      status: run2.profile.envVars.length ? "pass" : "n/a",
+      detail: run2.profile.envVars.length ? `${run2.profile.envVars.length} environment variable(s) detected; all required ones documented.` : "No environment variables read by the code."
+    }
   );
   const eol = all.filter((f) => f.ruleId === "sc/end-of-life-runtime");
-  gates.push(eol.length ? { id: "runtime-support", title: "Supported runtimes and frameworks", status: "warn", detail: eol.map((f) => f.message).slice(0, 4).join(" "), findings: ids(eol) } : { id: "runtime-support", title: "Supported runtimes and frameworks", status: "pass", detail: "No end-of-life runtime or framework versions detected." });
-  const ops = all.filter((f) => /^rel\/(?:no-health-check|no-error-monitoring|no-graceful-shutdown)$/.test(f.ruleId));
+  gates.push(
+    eol.length ? {
+      id: "runtime-support",
+      title: "Supported runtimes and frameworks",
+      status: "warn",
+      detail: eol.map((f) => f.message).slice(0, 4).join(" "),
+      findings: ids(eol)
+    } : {
+      id: "runtime-support",
+      title: "Supported runtimes and frameworks",
+      status: "pass",
+      detail: "No end-of-life runtime or framework versions detected."
+    }
+  );
+  const ops = all.filter(
+    (f) => /^rel\/(?:no-health-check|no-error-monitoring|no-graceful-shutdown)$/.test(f.ruleId)
+  );
   const deployable = run2.profile.units.some((u) => ["web-backend", "fullstack", "mobile"].includes(u.kind));
-  gates.push(ops.length ? { id: "operability", title: "Operational readiness (health checks, monitoring, shutdown)", status: "warn", detail: summarizeRules(ops), findings: ids(ops) } : { id: "operability", title: "Operational readiness (health checks, monitoring, shutdown)", status: deployable ? "pass" : "n/a", detail: deployable ? "Health checks, error monitoring and shutdown handling detected where applicable." : "No deployable service detected." });
+  gates.push(
+    ops.length ? {
+      id: "operability",
+      title: "Operational readiness (health checks, monitoring, shutdown)",
+      status: "warn",
+      detail: summarizeRules(ops),
+      findings: ids(ops)
+    } : {
+      id: "operability",
+      title: "Operational readiness (health checks, monitoring, shutdown)",
+      status: deployable ? "pass" : "n/a",
+      detail: deployable ? "Health checks, error monitoring and shutdown handling detected where applicable." : "No deployable service detected."
+    }
+  );
   const budgets = Object.entries(config.performance.budgets);
-  if (!budgets.length) gates.push({ id: "performance", title: "Performance budgets met", status: "unverified", detail: "No performance budgets configured (performance.budgets) \u2014 see `relivaro bench` / `relivaro load`." });
+  if (!budgets.length)
+    gates.push({
+      id: "performance",
+      title: "Performance budgets met",
+      status: "unverified",
+      detail: "No performance budgets configured (performance.budgets) \u2014 see `relivaro bench` / `relivaro load`."
+    });
   else {
     const failures = [];
     const missing = [];
@@ -19863,20 +21636,52 @@ function assessRelease(run2, config, bench = []) {
         missing.push(name2);
         continue;
       }
-      if (b.meanMs !== void 0 && snap.stats.meanMs > b.meanMs) failures.push(`${name2}: mean ${snap.stats.meanMs.toFixed(1)}ms > ${b.meanMs}ms`);
-      if (b.p95Ms !== void 0 && snap.stats.p95Ms > b.p95Ms) failures.push(`${name2}: p95 ${snap.stats.p95Ms.toFixed(1)}ms > ${b.p95Ms}ms`);
-      if (b.p99Ms !== void 0 && snap.stats.p99Ms !== void 0 && snap.stats.p99Ms > b.p99Ms) failures.push(`${name2}: p99 ${snap.stats.p99Ms.toFixed(1)}ms > ${b.p99Ms}ms`);
-      if (b.errorRate !== void 0 && (snap.stats.errorRate ?? 0) > b.errorRate) failures.push(`${name2}: error rate ${((snap.stats.errorRate ?? 0) * 100).toFixed(2)}% > ${(b.errorRate * 100).toFixed(2)}%`);
+      if (b.meanMs !== void 0 && snap.stats.meanMs > b.meanMs)
+        failures.push(`${name2}: mean ${snap.stats.meanMs.toFixed(1)}ms > ${b.meanMs}ms`);
+      if (b.p95Ms !== void 0 && snap.stats.p95Ms > b.p95Ms)
+        failures.push(`${name2}: p95 ${snap.stats.p95Ms.toFixed(1)}ms > ${b.p95Ms}ms`);
+      if (b.p99Ms !== void 0 && snap.stats.p99Ms !== void 0 && snap.stats.p99Ms > b.p99Ms)
+        failures.push(`${name2}: p99 ${snap.stats.p99Ms.toFixed(1)}ms > ${b.p99Ms}ms`);
+      if (b.errorRate !== void 0 && (snap.stats.errorRate ?? 0) > b.errorRate)
+        failures.push(
+          `${name2}: error rate ${((snap.stats.errorRate ?? 0) * 100).toFixed(2)}% > ${(b.errorRate * 100).toFixed(2)}%`
+        );
     }
-    gates.push({ id: "performance", title: "Performance budgets met", status: failures.length ? "block" : missing.length ? "unverified" : "pass", detail: failures.length ? failures.join("; ") : missing.length ? `No measurement for: ${missing.join(", ")}.` : `${budgets.length} budget(s) met by the latest measurements.` });
+    gates.push({
+      id: "performance",
+      title: "Performance budgets met",
+      status: failures.length ? "block" : missing.length ? "unverified" : "pass",
+      detail: failures.length ? failures.join("; ") : missing.length ? `No measurement for: ${missing.join(", ")}.` : `${budgets.length} budget(s) met by the latest measurements.`
+    });
   }
   if (config.release.minCoverage !== void 0) {
     const cov = run2.coverage[0];
-    gates.push(!cov ? { id: "coverage", title: `Line coverage \u2265 ${config.release.minCoverage}%`, status: "unverified", detail: "No coverage report found (lcov/clover/cobertura)." } : { id: "coverage", title: `Line coverage \u2265 ${config.release.minCoverage}%`, status: cov.pct >= config.release.minCoverage ? cov.stale ? "warn" : "pass" : "block", detail: `${cov.pct}% in ${cov.file}${cov.stale ? " (report older than latest source change)" : ""}.` });
+    gates.push(
+      !cov ? {
+        id: "coverage",
+        title: `Line coverage \u2265 ${config.release.minCoverage}%`,
+        status: "unverified",
+        detail: "No coverage report found (lcov/clover/cobertura)."
+      } : {
+        id: "coverage",
+        title: `Line coverage \u2265 ${config.release.minCoverage}%`,
+        status: cov.pct >= config.release.minCoverage ? cov.stale ? "warn" : "pass" : "block",
+        detail: `${cov.pct}% in ${cov.file}${cov.stale ? " (report older than latest source change)" : ""}.`
+      }
+    );
   }
   const d = run2.profile.docs;
-  const docIssues = [!d.readme && "no README", d.readme && d.readmeBytes < 400 && "README is very short", !d.license && "no LICENSE file"].filter(Boolean);
-  gates.push({ id: "documentation", title: "Installation and usage documentation", status: docIssues.length ? "warn" : "pass", detail: docIssues.length ? docIssues.join(", ") : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ", LICENSE" : ""}${d.changelog ? ", CHANGELOG" : ""}${d.security ? ", SECURITY policy" : ""}.` });
+  const docIssues = [
+    !d.readme && "no README",
+    d.readme && d.readmeBytes < 400 && "README is very short",
+    !d.license && "no LICENSE file"
+  ].filter(Boolean);
+  gates.push({
+    id: "documentation",
+    title: "Installation and usage documentation",
+    status: docIssues.length ? "warn" : "pass",
+    detail: docIssues.length ? docIssues.join(", ") : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ", LICENSE" : ""}${d.changelog ? ", CHANGELOG" : ""}${d.security ? ", SECURITY policy" : ""}.`
+  });
   const blockers = gates.filter((g) => g.status === "block");
   const warnings = gates.filter((g) => g.status === "warn");
   const unverified = gates.filter((g) => g.status === "unverified");
@@ -19887,7 +21692,9 @@ function assessRelease(run2, config, bench = []) {
   score = Math.max(0, Math.round(score));
   const scoreCapped = blockers.length > 0 && score > 40;
   if (blockers.length) score = Math.min(score, 40);
-  const critUnverified = gates.some((g) => (g.id === "build" || g.id === "tests") && g.status === "unverified");
+  const critUnverified = gates.some(
+    (g) => (g.id === "build" || g.id === "tests") && g.status === "unverified"
+  );
   const status = blockers.length ? "not-ready" : critUnverified ? "needs-verification" : warnings.length ? "ready-with-warnings" : "ready";
   return {
     status,
@@ -19935,26 +21742,43 @@ function isServerSide(file, source, project) {
   if (file.language === "php" || file.language === "python") return !file.isTest;
   if (/^\s*['"]use client['"]/m.test(source.slice(0, 500))) return false;
   if (/^\s*['"]use server['"]/m.test(source.slice(0, 500))) return true;
-  if (/(?:^|\/)(?:app\/.*\/)?route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)middleware\.[cm]?[jt]s$|\.server\.[cm]?[jt]sx?$/.test(file.path)) return true;
-  if (/\bfrom\s+['"](?:express|fastify|koa|hono|@nestjs\/[\w-]+|next\/server|@hapi\/hapi|node:http|http|pg|mysql2?|mongoose|@prisma\/client|bullmq|ioredis)['"]|require\(\s*['"](?:express|fastify|koa|http|pg|mysql2?|mongoose)['"]\s*\)/.test(source)) return true;
+  if (/(?:^|\/)(?:app\/.*\/)?route\.[cm]?[jt]s$|(?:^|\/)pages\/api\/|(?:^|\/)middleware\.[cm]?[jt]s$|\.server\.[cm]?[jt]sx?$/.test(
+    file.path
+  ))
+    return true;
+  if (/\bfrom\s+['"](?:express|fastify|koa|hono|@nestjs\/[\w-]+|next\/server|@hapi\/hapi|node:http|http|pg|mysql2?|mongoose|@prisma\/client|bullmq|ioredis)['"]|require\(\s*['"](?:express|fastify|koa|http|pg|mysql2?|mongoose)['"]\s*\)/.test(
+    source
+  ))
+    return true;
   if (SERVER_PATH.test(file.path) && !CLIENT_PATH.test(file.path)) return true;
-  const frontend = project.profile.technologies.some((t2) => t2.kind === "frontend" || t2.kind === "fullstack" || t2.kind === "mobile");
+  const frontend = project.profile.technologies.some(
+    (t2) => t2.kind === "frontend" || t2.kind === "fullstack" || t2.kind === "mobile"
+  );
   return !frontend && !file.path.endsWith(".tsx") && !file.path.endsWith(".jsx");
 }
 function callSite(n) {
   if (n.startPosition.row === n.endPosition.row) return n;
-  if (n.type === "member_call_expression" || n.type === "scoped_call_expression" || n.type === "nullsafe_member_call_expression") return n.childForFieldName("name") ?? n;
+  if (n.type === "member_call_expression" || n.type === "scoped_call_expression" || n.type === "nullsafe_member_call_expression")
+    return n.childForFieldName("name") ?? n;
   if (n.type === "call_expression") {
     const fn = n.childForFieldName("function");
-    if (fn?.type === "member_expression" && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName("property") ?? n;
+    if (fn?.type === "member_expression" && fn.startPosition.row !== fn.endPosition.row)
+      return fn.childForFieldName("property") ?? n;
   }
   if (n.type === "call") {
     const fn = n.childForFieldName("function");
-    if (fn?.type === "attribute" && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName("attribute") ?? n;
+    if (fn?.type === "attribute" && fn.startPosition.row !== fn.endPosition.row)
+      return fn.childForFieldName("attribute") ?? n;
   }
   return n;
 }
-var DOWNGRADE = { critical: "high", high: "medium", medium: "low", low: "low", info: "info" };
+var DOWNGRADE = {
+  critical: "high",
+  high: "medium",
+  medium: "low",
+  low: "low",
+  info: "info"
+};
 var SUPPRESS_RE = /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
 function parseSuppressions(lines) {
   const s = { file: { all: false, rules: /* @__PURE__ */ new Set() }, lines: /* @__PURE__ */ new Map() };
@@ -19963,8 +21787,14 @@ function parseSuppressions(lines) {
     if (!l.includes("relivaro-ignore")) continue;
     const m = SUPPRESS_RE.exec(l);
     if (!m) continue;
-    const rules = new Set((m[2] ?? "").split(",").map((r) => r.trim()).filter((r) => r.includes("/")));
-    const entry = { all: rules.size === 0, rules, reason: m[3]?.trim().replace(/\s*(?:\*\/|-->|#}}|\?>)\s*$/, "") || void 0 };
+    const rules = new Set(
+      (m[2] ?? "").split(",").map((r) => r.trim()).filter((r) => r.includes("/"))
+    );
+    const entry = {
+      all: rules.size === 0,
+      rules,
+      reason: m[3]?.trim().replace(/\s*(?:\*\/|-->|#}}|\?>)\s*$/, "") || void 0
+    };
     if (m[1] === "-file") {
       if (entry.all) s.file.all = true;
       for (const r of rules) s.file.rules.add(r);
@@ -20108,7 +21938,8 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
       const lines = text.split(/\r?\n/);
       for (const rule of applicableFileRules) {
         try {
-          for (const hit of rule.check({ project, file, text, lines })) builder.add(rule, { ...hit, file: hit.file ?? file.path });
+          for (const hit of rule.check({ project, file, text, lines }))
+            builder.add(rule, { ...hit, file: hit.file ?? file.path });
         } catch (e) {
           ruleErrors.push({ rule: rule.id, file: file.path, message: e.message });
         }
@@ -20201,8 +22032,20 @@ var BASELINE_FILE = "relivaro-baseline.json";
 function summarizeProfile(p) {
   return {
     ...p,
-    manifests: p.manifests.map((m) => ({ file: m.file, ecosystem: m.ecosystem, name: m.name, dependencies: m.deps.filter((d) => !d.dev).length, devDependencies: m.deps.filter((d) => d.dev).length, error: m.error })),
-    lockfiles: p.lockfiles.map((l) => ({ file: l.file, ecosystem: l.ecosystem, packages: l.packages.length, error: l.error }))
+    manifests: p.manifests.map((m) => ({
+      file: m.file,
+      ecosystem: m.ecosystem,
+      name: m.name,
+      dependencies: m.deps.filter((d) => !d.dev).length,
+      devDependencies: m.deps.filter((d) => d.dev).length,
+      error: m.error
+    })),
+    lockfiles: p.lockfiles.map((l) => ({
+      file: l.file,
+      ecosystem: l.ecosystem,
+      packages: l.packages.length,
+      error: l.error
+    }))
   };
 }
 async function runAudit(opts) {
@@ -20212,7 +22055,12 @@ async function runAudit(opts) {
   const progress = opts.onProgress ?? (() => {
   });
   progress("indexing files");
-  const files = new FileSet(opts.root, { include: config.include, exclude: config.exclude, maxFileSizeKb: config.maxFileSizeKb, useGit: opts.useGit });
+  const files = new FileSet(opts.root, {
+    include: config.include,
+    exclude: config.exclude,
+    maxFileSizeKb: config.maxFileSizeKb,
+    useGit: opts.useGit
+  });
   progress(`discovering project (${files.files.length} files)`);
   const profile = discover(files);
   const ctx = { files, profile, config };
@@ -20228,26 +22076,48 @@ async function runAudit(opts) {
   if (wantsSupplyChain) {
     if (opts.online) {
       progress("querying OSV.dev for known vulnerabilities");
-      const osv = await queryOsv(profile.lockfiles, { cacheFile: opts.noWrite ? void 0 : workspace.path("cache", "osv.json"), fetchImpl: opts.fetchImpl, onProgress: progress });
+      const osv = await queryOsv(profile.lockfiles, {
+        cacheFile: opts.noWrite ? void 0 : workspace.path("cache", "osv.json"),
+        fetchImpl: opts.fetchImpl,
+        onProgress: progress
+      });
       osvQueried = osv.queried;
       networkErrors.push(...osv.errors);
       const { OSV_RULE: OSV_RULE2 } = await Promise.resolve().then(() => (init_osv(), osv_exports));
       for (const h of osv.hits) builder.add(OSV_RULE2, h);
-      if (osv.errors.length) limitations.push(`Known-vulnerability lookup was incomplete (${osv.errors.length} network error(s)); dependency risk is partially unverified.`);
-      if (!profile.lockfiles.length) limitations.push("No lockfiles found: known vulnerabilities could not be checked against resolved versions.");
+      if (osv.errors.length)
+        limitations.push(
+          `Known-vulnerability lookup was incomplete (${osv.errors.length} network error(s)); dependency risk is partially unverified.`
+        );
+      if (!profile.lockfiles.length)
+        limitations.push(
+          "No lockfiles found: known vulnerabilities could not be checked against resolved versions."
+        );
     } else if (profile.lockfiles.length) {
-      limitations.push("Known vulnerabilities in dependencies were not checked (offline mode). Re-run with --online to query OSV.dev.");
+      limitations.push(
+        "Known vulnerabilities in dependencies were not checked (offline mode). Re-run with --online to query OSV.dev."
+      );
     }
   }
   let checks = [];
   const checkKinds = opts.checks ?? [];
   if (checkKinds.length) {
     const planned = planChecks(files, profile, config, checkKinds);
-    const exec = await runChecks(planned, { allowExec: !!opts.allowExec, timeoutSeconds: config.timeouts.commandSeconds, root: files.root, onProgress: progress });
+    const exec = await runChecks(planned, {
+      allowExec: !!opts.allowExec,
+      timeoutSeconds: config.timeouts.commandSeconds,
+      root: files.root,
+      onProgress: progress
+    });
     checks = exec.results;
     for (const h of exec.hits) builder.add(h.rule, h.hit, h.provenance);
-    if (!opts.allowExec && planned.length) limitations.push(`${planned.length} build/test/type-check command(s) were not executed (they run project code and require --allow-exec).`);
-    for (const c of checks) if (c.status === "skipped" && opts.allowExec) limitations.push(`${c.kind} for \`${c.unit}\` was skipped: ${c.reason}.`);
+    if (!opts.allowExec && planned.length)
+      limitations.push(
+        `${planned.length} build/test/type-check command(s) were not executed (they run project code and require --allow-exec).`
+      );
+    for (const c of checks)
+      if (c.status === "skipped" && opts.allowExec)
+        limitations.push(`${c.kind} for \`${c.unit}\` was skipped: ${c.reason}.`);
     if (!planned.length) limitations.push(`No ${checkKinds.join("/")} commands were detected.`);
   }
   let baselineFile;
@@ -20258,10 +22128,14 @@ async function runAudit(opts) {
       try {
         const b = JSON.parse(raw);
         const set = new Set(b.fingerprints.map((f) => f.fingerprint));
-        for (const f of builder.findings) if (f.status === "open" && set.has(f.fingerprint)) {
-          f.status = "baseline";
-          f.suppression = { kind: "baseline", reason: b.fingerprints.find((x) => x.fingerprint === f.fingerprint)?.reason };
-        }
+        for (const f of builder.findings)
+          if (f.status === "open" && set.has(f.fingerprint)) {
+            f.status = "baseline";
+            f.suppression = {
+              kind: "baseline",
+              reason: b.fingerprints.find((x) => x.fingerprint === f.fingerprint)?.reason
+            };
+          }
         baselineFile = path;
       } catch {
         throw new RelivaroError("CONFIG_INVALID", `${path} is not a valid Relivaro baseline file.`);
@@ -20271,14 +22145,47 @@ async function runAudit(opts) {
   const coverageReports = readCoverage(files, profile);
   const findings = builder.findings.sort(compareFindings);
   const gaps = categories.includes("testing") || categories.includes("quality") ? testGaps(files, findings, analysis2.complexity, coverageReports) : [];
-  if (analysis2.parseErrors.length) limitations.push(`${analysis2.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`);
-  if (files.skipped.tooLarge) limitations.push(`${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`);
-  if (files.skipped.sensitive) limitations.push(`${files.skipped.sensitive} untracked sensitive file(s) (e.g. .env) were intentionally not read.`);
+  if (analysis2.parseErrors.length)
+    limitations.push(
+      `${analysis2.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`
+    );
+  if (files.skipped.tooLarge)
+    limitations.push(
+      `${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`
+    );
+  if (files.skipped.sensitive)
+    limitations.push(
+      `${files.skipped.sensitive} untracked sensitive file(s) (e.g. .env) were intentionally not read.`
+    );
   const astLangs = /* @__PURE__ */ new Set(["JavaScript", "TypeScript", "PHP", "Python"]);
-  const otherLangs = profile.languages.filter((l) => !astLangs.has(l.name) && ["Go", "Ruby", "Java", "Kotlin", "Swift", "Dart", "Rust", "C#", "Objective-C", "Scala", "Elixir"].includes(l.name) && l.files >= 5);
-  if (otherLangs.length) limitations.push(`Source-level rules do not cover ${otherLangs.map((l) => `${l.name} (${l.files} files)`).join(", ")}; these parts were checked for configuration, dependencies and secrets only.`);
-  for (const c of coverageReports) if (c.stale) limitations.push(`Coverage report ${c.file} is older than the newest source change; coverage numbers may be outdated.`);
-  if (!files.gitRepo) limitations.push("Not a git repository (or git unavailable): .gitignore was approximated and tracked-file checks were skipped.");
+  const otherLangs = profile.languages.filter(
+    (l) => !astLangs.has(l.name) && [
+      "Go",
+      "Ruby",
+      "Java",
+      "Kotlin",
+      "Swift",
+      "Dart",
+      "Rust",
+      "C#",
+      "Objective-C",
+      "Scala",
+      "Elixir"
+    ].includes(l.name) && l.files >= 5
+  );
+  if (otherLangs.length)
+    limitations.push(
+      `Source-level rules do not cover ${otherLangs.map((l) => `${l.name} (${l.files} files)`).join(", ")}; these parts were checked for configuration, dependencies and secrets only.`
+    );
+  for (const c of coverageReports)
+    if (c.stale)
+      limitations.push(
+        `Coverage report ${c.file} is older than the newest source change; coverage numbers may be outdated.`
+      );
+  if (!files.gitRepo)
+    limitations.push(
+      "Not a git repository (or git unavailable): .gitignore was approximated and tracked-file checks were skipped."
+    );
   const run2 = {
     schemaVersion: SCHEMA_VERSION,
     tool: { name: "relivaro", version: VERSION },
@@ -20287,12 +22194,27 @@ async function runAudit(opts) {
     startedAt,
     durationMs: 0,
     root: files.root,
-    options: { categories, online: !!opts.online, allowExec: !!opts.allowExec, checks: checkKinds, configFile, baseline: baselineFile },
+    options: {
+      categories,
+      online: !!opts.online,
+      allowExec: !!opts.allowExec,
+      checks: checkKinds,
+      configFile,
+      baseline: baselineFile
+    },
     profile: summarizeProfile(profile),
     findings,
     summary: summarize(findings),
     checks,
-    coverage: coverageReports.map((c) => ({ file: c.file, format: c.format, generatedAt: c.generatedAt, stale: c.stale, pct: c.lines.pct, covered: c.lines.covered, total: c.lines.total })),
+    coverage: coverageReports.map((c) => ({
+      file: c.file,
+      format: c.format,
+      generatedAt: c.generatedAt,
+      stale: c.stale,
+      pct: c.lines.pct,
+      covered: c.lines.covered,
+      total: c.lines.total
+    })),
     testGaps: gaps,
     metrics: {
       files: files.files.length,
@@ -20307,7 +22229,11 @@ async function runAudit(opts) {
       filesSkipped: { ...files.skipped }
     },
     limitations: [...new Set(limitations)],
-    errors: { parse: analysis2.parseErrors.slice(0, 50), rules: analysis2.ruleErrors.slice(0, 50), network: networkErrors.slice(0, 20) }
+    errors: {
+      parse: analysis2.parseErrors.slice(0, 50),
+      rules: analysis2.ruleErrors.slice(0, 50),
+      network: networkErrors.slice(0, 20)
+    }
   };
   if (opts.release) run2.release = assessRelease(run2, config);
   run2.durationMs = Math.round(performance.now() - started);
@@ -20315,7 +22241,9 @@ async function runAudit(opts) {
 }
 function gateFailed(run2, failOn) {
   if (failOn === "none") return false;
-  return run2.findings.some((f) => f.status === "open" && severityAtLeast(f.severity, failOn) && f.confidence !== "low");
+  return run2.findings.some(
+    (f) => f.status === "open" && severityAtLeast(f.severity, failOn) && f.confidence !== "low"
+  );
 }
 
 // src/contract/openapi.ts
@@ -20329,7 +22257,8 @@ function loadSpec(text, name2 = "spec") {
   } catch (e) {
     throw new RelivaroError("PARSE_FAILED", `${name2} is not valid JSON/YAML: ${e.message}`);
   }
-  if (!doc || typeof doc !== "object") throw new RelivaroError("PARSE_FAILED", `${name2} is not an OpenAPI document.`);
+  if (!doc || typeof doc !== "object")
+    throw new RelivaroError("PARSE_FAILED", `${name2} is not an OpenAPI document.`);
   return doc;
 }
 function resolveRef(doc, ref) {
@@ -20355,21 +22284,25 @@ function validateSpec(doc) {
   const v3 = typeof doc.openapi === "string";
   const v2 = doc.swagger === "2.0";
   if (!v3 && !v2) add("$", 'Missing `openapi` (3.x) or `swagger: "2.0"` version field.');
-  if (v3 && !/^3\.\d+\.\d+$/.test(doc.openapi)) add("openapi", `Unsupported OpenAPI version "${doc.openapi}".`, "warning");
+  if (v3 && !/^3\.\d+\.\d+$/.test(doc.openapi))
+    add("openapi", `Unsupported OpenAPI version "${doc.openapi}".`, "warning");
   if (!doc.info?.title) add("info.title", "Missing info.title.");
   if (!doc.info?.version) add("info.version", "Missing info.version.");
   if (!doc.paths || typeof doc.paths !== "object") add("paths", "Missing paths object.");
   const walkRefs = (node, path, depth = 0) => {
     if (!node || typeof node !== "object" || depth > 60) return;
     if (typeof node.$ref === "string") {
-      if (node.$ref.startsWith("#/") && resolveRef(doc, node.$ref) === void 0) add(path, `Unresolved $ref ${node.$ref}.`);
+      if (node.$ref.startsWith("#/") && resolveRef(doc, node.$ref) === void 0)
+        add(path, `Unresolved $ref ${node.$ref}.`);
       return;
     }
     for (const [k, v] of Object.entries(node)) walkRefs(v, `${path}.${k}`, depth + 1);
   };
   walkRefs(doc, "$");
   const opIds = /* @__PURE__ */ new Map();
-  const schemes = new Set(Object.keys((v3 ? doc.components?.securitySchemes : doc.securityDefinitions) ?? {}));
+  const schemes = new Set(
+    Object.keys((v3 ? doc.components?.securitySchemes : doc.securityDefinitions) ?? {})
+  );
   for (const [p, item] of Object.entries(doc.paths ?? {})) {
     if (!p.startsWith("/")) add(`paths.${p}`, 'Path must start with "/".');
     const templ = [...p.matchAll(/\{([^}]+)\}/g)].map((m) => m[1]);
@@ -20380,17 +22313,23 @@ function validateSpec(doc) {
       const loc2 = `paths.${p}.${m}`;
       if (!op.responses || !Object.keys(op.responses).length) add(loc2, "Operation has no responses.");
       if (op.operationId) {
-        if (opIds.has(op.operationId)) add(loc2, `Duplicate operationId "${op.operationId}" (also ${opIds.get(op.operationId)}).`);
+        if (opIds.has(op.operationId))
+          add(loc2, `Duplicate operationId "${op.operationId}" (also ${opIds.get(op.operationId)}).`);
         opIds.set(op.operationId, loc2);
       }
       const params = [...pathLevel, ...(op.parameters ?? []).map((x) => deref(doc, x))];
-      for (const t2 of templ) if (!params.some((x) => x?.in === "path" && x?.name === t2)) add(loc2, `Path parameter {${t2}} is not declared.`);
+      for (const t2 of templ)
+        if (!params.some((x) => x?.in === "path" && x?.name === t2))
+          add(loc2, `Path parameter {${t2}} is not declared.`);
       for (const x of params) {
         if (!x?.name || !x?.in) add(loc2, "Parameter without name or in.");
         if (x?.in === "path" && x.required !== true) add(loc2, `Path parameter "${x.name}" must be required.`);
       }
-      for (const req of op.security ?? doc.security ?? []) for (const s of Object.keys(req)) if (!schemes.has(s)) add(loc2, `Security scheme "${s}" is not defined.`);
-      if (!op.security && !doc.security && /^(?:post|put|patch|delete)$/.test(m) && schemes.size) add(loc2, "Write operation without security requirement.", "warning");
+      for (const req of op.security ?? doc.security ?? [])
+        for (const s of Object.keys(req))
+          if (!schemes.has(s)) add(loc2, `Security scheme "${s}" is not defined.`);
+      if (!op.security && !doc.security && /^(?:post|put|patch|delete)$/.test(m) && schemes.size)
+        add(loc2, "Write operation without security requirement.", "warning");
     }
   }
   return issues;
@@ -20411,34 +22350,77 @@ function compareSchemas(oldDoc, newDoc, a, b, loc2, direction, out2, depth = 0) 
   const ta = schemaType(a);
   const tb = schemaType(b);
   if (ta !== "any" && tb !== "any" && ta !== tb && !(ta === "integer" && tb === "number" && direction === "request")) {
-    out2.push({ kind: "type-changed", location: loc2, message: `Type changed from ${ta} to ${tb}.`, breaking: true });
+    out2.push({
+      kind: "type-changed",
+      location: loc2,
+      message: `Type changed from ${ta} to ${tb}.`,
+      breaking: true
+    });
     return;
   }
   if (Array.isArray(a.enum) && Array.isArray(b.enum)) {
     const removed = a.enum.filter((x) => !b.enum.includes(x));
     const added = b.enum.filter((x) => !a.enum.includes(x));
-    if (removed.length) out2.push({ kind: "enum-value-removed", location: loc2, message: `Enum values removed: ${removed.join(", ")}.`, breaking: direction === "request" });
-    if (added.length) out2.push({ kind: "enum-value-added", location: loc2, message: `Enum values added: ${added.join(", ")}.`, breaking: direction === "response" });
+    if (removed.length)
+      out2.push({
+        kind: "enum-value-removed",
+        location: loc2,
+        message: `Enum values removed: ${removed.join(", ")}.`,
+        breaking: direction === "request"
+      });
+    if (added.length)
+      out2.push({
+        kind: "enum-value-added",
+        location: loc2,
+        message: `Enum values added: ${added.join(", ")}.`,
+        breaking: direction === "response"
+      });
   }
   const pa = a.properties ?? {};
   const pb = b.properties ?? {};
   const ra = new Set(a.required ?? []);
   const rb = new Set(b.required ?? []);
   for (const k of Object.keys(pa)) {
-    if (!(k in pb)) out2.push({ kind: "property-removed", location: `${loc2}.${k}`, message: `Property "${k}" removed.`, breaking: direction === "response" });
+    if (!(k in pb))
+      out2.push({
+        kind: "property-removed",
+        location: `${loc2}.${k}`,
+        message: `Property "${k}" removed.`,
+        breaking: direction === "response"
+      });
     else compareSchemas(oldDoc, newDoc, pa[k], pb[k], `${loc2}.${k}`, direction, out2, depth + 1);
   }
   for (const k of Object.keys(pb)) {
-    if (!(k in pa)) out2.push({ kind: "property-added", location: `${loc2}.${k}`, message: `Property "${k}" added${rb.has(k) ? " as required" : ""}.`, breaking: direction === "request" && rb.has(k) });
-    else if (direction === "request" && rb.has(k) && !ra.has(k)) out2.push({ kind: "property-became-required", location: `${loc2}.${k}`, message: `Property "${k}" became required.`, breaking: true });
-    else if (direction === "response" && ra.has(k) && !rb.has(k)) out2.push({ kind: "property-became-optional", location: `${loc2}.${k}`, message: `Response property "${k}" is no longer guaranteed.`, breaking: true });
+    if (!(k in pa))
+      out2.push({
+        kind: "property-added",
+        location: `${loc2}.${k}`,
+        message: `Property "${k}" added${rb.has(k) ? " as required" : ""}.`,
+        breaking: direction === "request" && rb.has(k)
+      });
+    else if (direction === "request" && rb.has(k) && !ra.has(k))
+      out2.push({
+        kind: "property-became-required",
+        location: `${loc2}.${k}`,
+        message: `Property "${k}" became required.`,
+        breaking: true
+      });
+    else if (direction === "response" && ra.has(k) && !rb.has(k))
+      out2.push({
+        kind: "property-became-optional",
+        location: `${loc2}.${k}`,
+        message: `Response property "${k}" is no longer guaranteed.`,
+        breaking: true
+      });
   }
-  if (a.items && b.items) compareSchemas(oldDoc, newDoc, a.items, b.items, `${loc2}[]`, direction, out2, depth + 1);
+  if (a.items && b.items)
+    compareSchemas(oldDoc, newDoc, a.items, b.items, `${loc2}[]`, direction, out2, depth + 1);
 }
 function bodySchema(doc, op, where, status) {
   if (where === "request") {
     const rb = deref(doc, op.requestBody);
-    if (rb?.content) return rb.content["application/json"]?.schema ?? Object.values(rb.content)[0]?.schema;
+    if (rb?.content)
+      return rb.content["application/json"]?.schema ?? Object.values(rb.content)[0]?.schema;
     const bodyParam = (op.parameters ?? []).map((p) => deref(doc, p)).find((p) => p?.in === "body");
     return bodyParam?.schema;
   }
@@ -20465,7 +22447,12 @@ function diffSpecs(oldDoc, newDoc) {
       const nop = nitem?.[m];
       const loc2 = `${m.toUpperCase()} ${p}`;
       if (!nop) {
-        out2.push({ kind: "operation-removed", location: loc2, message: `${loc2} was removed.`, breaking: true });
+        out2.push({
+          kind: "operation-removed",
+          location: loc2,
+          message: `${loc2} was removed.`,
+          breaking: true
+        });
         continue;
       }
       const params = (d, o, it) => [...it?.parameters ?? [], ...o.parameters ?? []].map((x) => deref(d, x)).filter((x) => x?.in !== "body");
@@ -20473,30 +22460,107 @@ function diffSpecs(oldDoc, newDoc) {
       const pb = params(newDoc, nop, nitem);
       for (const x of pb) {
         const prev = pa.find((y) => y.name === x.name && y.in === x.in);
-        if (!prev && x.required) out2.push({ kind: "required-parameter-added", location: loc2, message: `New required ${x.in} parameter "${x.name}".`, breaking: true });
-        else if (!prev) out2.push({ kind: "parameter-added", location: loc2, message: `New optional ${x.in} parameter "${x.name}".`, breaking: false });
+        if (!prev && x.required)
+          out2.push({
+            kind: "required-parameter-added",
+            location: loc2,
+            message: `New required ${x.in} parameter "${x.name}".`,
+            breaking: true
+          });
+        else if (!prev)
+          out2.push({
+            kind: "parameter-added",
+            location: loc2,
+            message: `New optional ${x.in} parameter "${x.name}".`,
+            breaking: false
+          });
         else {
-          if (x.required && !prev.required) out2.push({ kind: "parameter-became-required", location: loc2, message: `${x.in} parameter "${x.name}" became required.`, breaking: true });
-          compareSchemas(oldDoc, newDoc, prev.schema ?? prev, x.schema ?? x, `${loc2} ${x.in}:${x.name}`, "request", out2);
+          if (x.required && !prev.required)
+            out2.push({
+              kind: "parameter-became-required",
+              location: loc2,
+              message: `${x.in} parameter "${x.name}" became required.`,
+              breaking: true
+            });
+          compareSchemas(
+            oldDoc,
+            newDoc,
+            prev.schema ?? prev,
+            x.schema ?? x,
+            `${loc2} ${x.in}:${x.name}`,
+            "request",
+            out2
+          );
         }
       }
-      for (const y of pa) if (!pb.some((x) => x.name === y.name && x.in === y.in)) out2.push({ kind: "parameter-removed", location: loc2, message: `${y.in} parameter "${y.name}" removed.`, breaking: y.in === "path" });
+      for (const y of pa)
+        if (!pb.some((x) => x.name === y.name && x.in === y.in))
+          out2.push({
+            kind: "parameter-removed",
+            location: loc2,
+            message: `${y.in} parameter "${y.name}" removed.`,
+            breaking: y.in === "path"
+          });
       const orb = deref(oldDoc, op.requestBody);
       const nrb = deref(newDoc, nop.requestBody);
-      if (nrb?.required && !orb?.required) out2.push({ kind: "request-body-became-required", location: loc2, message: "Request body became required.", breaking: true });
-      compareSchemas(oldDoc, newDoc, bodySchema(oldDoc, op, "request"), bodySchema(newDoc, nop, "request"), `${loc2} request`, "request", out2);
+      if (nrb?.required && !orb?.required)
+        out2.push({
+          kind: "request-body-became-required",
+          location: loc2,
+          message: "Request body became required.",
+          breaking: true
+        });
+      compareSchemas(
+        oldDoc,
+        newDoc,
+        bodySchema(oldDoc, op, "request"),
+        bodySchema(newDoc, nop, "request"),
+        `${loc2} request`,
+        "request",
+        out2
+      );
       for (const status of Object.keys(op.responses ?? {})) {
         if (!(status in (nop.responses ?? {}))) {
-          out2.push({ kind: "response-removed", location: loc2, message: `Response ${status} removed.`, breaking: /^2/.test(status) });
+          out2.push({
+            kind: "response-removed",
+            location: loc2,
+            message: `Response ${status} removed.`,
+            breaking: /^2/.test(status)
+          });
           continue;
         }
-        if (/^2/.test(status)) compareSchemas(oldDoc, newDoc, bodySchema(oldDoc, op, "response", status), bodySchema(newDoc, nop, "response", status), `${loc2} ${status}`, "response", out2);
+        if (/^2/.test(status))
+          compareSchemas(
+            oldDoc,
+            newDoc,
+            bodySchema(oldDoc, op, "response", status),
+            bodySchema(newDoc, nop, "response", status),
+            `${loc2} ${status}`,
+            "response",
+            out2
+          );
       }
-      for (const status of Object.keys(nop.responses ?? {})) if (!(status in (op.responses ?? {}))) out2.push({ kind: "response-added", location: loc2, message: `Response ${status} added.`, breaking: false });
+      for (const status of Object.keys(nop.responses ?? {}))
+        if (!(status in (op.responses ?? {})))
+          out2.push({
+            kind: "response-added",
+            location: loc2,
+            message: `Response ${status} added.`,
+            breaking: false
+          });
     }
-    for (const m of METHODS) if (nitem?.[m] && !item?.[m]) out2.push({ kind: "operation-added", location: `${m.toUpperCase()} ${p}`, message: `${m.toUpperCase()} ${p} added.`, breaking: false });
+    for (const m of METHODS)
+      if (nitem?.[m] && !item?.[m])
+        out2.push({
+          kind: "operation-added",
+          location: `${m.toUpperCase()} ${p}`,
+          message: `${m.toUpperCase()} ${p} added.`,
+          breaking: false
+        });
   }
-  for (const p of Object.keys(newPaths)) if (!oldPaths[p] && !Object.keys(oldPaths).some((o) => norm2(o) === norm2(p))) out2.push({ kind: "path-added", location: p, message: `Path ${p} added.`, breaking: false });
+  for (const p of Object.keys(newPaths))
+    if (!oldPaths[p] && !Object.keys(oldPaths).some((o) => norm2(o) === norm2(p)))
+      out2.push({ kind: "path-added", location: p, message: `Path ${p} added.`, breaking: false });
   return out2;
 }
 
@@ -20505,7 +22569,19 @@ init_errors();
 init_workspace();
 
 // src/fix/workflow.ts
-import { chmodSync, cpSync, existsSync as existsSync9, mkdirSync as mkdirSync2, mkdtempSync, readdirSync as readdirSync3, readFileSync as readFileSync7, rmSync, statSync as statSync5, symlinkSync, writeFileSync as writeFileSync2 } from "node:fs";
+import {
+  chmodSync,
+  cpSync,
+  existsSync as existsSync9,
+  mkdirSync as mkdirSync2,
+  mkdtempSync,
+  readdirSync as readdirSync3,
+  readFileSync as readFileSync7,
+  rmSync,
+  statSync as statSync5,
+  symlinkSync,
+  writeFileSync as writeFileSync2
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname as dirname3, join as join8 } from "node:path";
 init_errors();
@@ -20537,7 +22613,9 @@ function unifiedDiff(path, before, after, context = 3) {
     const n = midA.length;
     const m = midB.length;
     const dp = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-    for (let i3 = n - 1; i3 >= 0; i3--) for (let j2 = m - 1; j2 >= 0; j2--) dp[i3][j2] = midA[i3] === midB[j2] ? dp[i3 + 1][j2 + 1] + 1 : Math.max(dp[i3 + 1][j2], dp[i3][j2 + 1]);
+    for (let i3 = n - 1; i3 >= 0; i3--)
+      for (let j2 = m - 1; j2 >= 0; j2--)
+        dp[i3][j2] = midA[i3] === midB[j2] ? dp[i3 + 1][j2 + 1] + 1 : Math.max(dp[i3 + 1][j2], dp[i3][j2 + 1]);
     let i2 = 0;
     let j = 0;
     while (i2 < n && j < m) {
@@ -20582,7 +22660,9 @@ function unifiedDiff(path, before, after, context = 3) {
     const chunk = full.slice(hs, he);
     const countA = chunk.filter((o) => o.t !== "+").length;
     const countB = chunk.filter((o) => o.t !== "-").length;
-    out2.push(`@@ -${countA ? posA[hs] : posA[hs] - 1},${countA} +${countB ? posB[hs] : posB[hs] - 1},${countB} @@`);
+    out2.push(
+      `@@ -${countA ? posA[hs] : posA[hs] - 1},${countA} +${countB ? posB[hs] : posB[hs] - 1},${countB} @@`
+    );
     for (const o of chunk) out2.push(`${o.t}${o.s}`);
     idx = he;
   }
@@ -20595,7 +22675,9 @@ async function generateFixes(root, findings, readFile) {
   const contents = /* @__PURE__ */ new Map();
   const items = [];
   const skipped = [];
-  const sorted = [...findings].sort((a, b) => (a.location?.file ?? "").localeCompare(b.location?.file ?? "") || (b.location?.line ?? 0) - (a.location?.line ?? 0) || (b.location?.column ?? 0) - (a.location?.column ?? 0));
+  const sorted = [...findings].sort(
+    (a, b) => (a.location?.file ?? "").localeCompare(b.location?.file ?? "") || (b.location?.line ?? 0) - (a.location?.line ?? 0) || (b.location?.column ?? 0) - (a.location?.column ?? 0)
+  );
   for (const f of sorted) {
     const fixer = f.fixer ? findFixer(f.fixer) : void 0;
     if (!fixer) {
@@ -20626,39 +22708,78 @@ async function generateFixes(root, findings, readFile) {
       continue;
     }
     if (next === null || next === entry.after) {
-      skipped.push({ findingId: f.id, reason: "code no longer matches the pattern the fixer expects (already fixed or changed)" });
+      skipped.push({
+        findingId: f.id,
+        reason: "code no longer matches the pattern the fixer expects (already fixed or changed)"
+      });
       continue;
     }
     entry.after = next;
     contents.set(target, entry);
-    items.push({ findingId: f.id, fingerprint: f.fingerprint, ruleId: f.ruleId, fixer: fixer.id, title: fixer.title, safety: fixer.safety, file: target, line: f.location?.line, message: f.message });
+    items.push({
+      findingId: f.id,
+      fingerprint: f.fingerprint,
+      ruleId: f.ruleId,
+      fixer: fixer.id,
+      title: fixer.title,
+      safety: fixer.safety,
+      file: target,
+      line: f.location?.line,
+      message: f.message
+    });
   }
   return { contents, items, skipped };
 }
 async function createPlan(root, findings, ws) {
   const files = new FileSet(root);
-  const { contents, items, skipped } = await generateFixes(files.root, findings, (p) => files.read(p) ?? files.readAny(p));
+  const { contents, items, skipped } = await generateFixes(
+    files.root,
+    findings,
+    (p) => files.read(p) ?? files.readAny(p)
+  );
   const planId = ws.newRunId("fix-");
   const planned = [];
   for (const [path, c] of contents) {
-    planned.push({ path, beforeHash: sha256(c.before), afterHash: sha256(c.after), existed: c.existed, diff: unifiedDiff(path, c.before, c.after) });
+    planned.push({
+      path,
+      beforeHash: sha256(c.before),
+      afterHash: sha256(c.after),
+      existed: c.existed,
+      diff: unifiedDiff(path, c.before, c.after)
+    });
     ws.writeText(["fixes", planId, "after", ...path.split("/")], c.after);
   }
-  const plan = { schemaVersion: 1, tool: VERSION, planId, createdAt: (/* @__PURE__ */ new Date()).toISOString(), root: files.root, items: items.reverse(), skipped, files: planned };
+  const plan = {
+    schemaVersion: 1,
+    tool: VERSION,
+    planId,
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    root: files.root,
+    items: items.reverse(),
+    skipped,
+    files: planned
+  };
   ws.writeJson(["fixes", planId, "plan.json"], plan);
   return plan;
 }
 function loadPlan(ws, id) {
   const planId = id === "latest" ? latestOf(ws, "plan.json") : id;
   const plan = ws.readJson(["fixes", planId, "plan.json"]);
-  if (!plan) throw new RelivaroError("NOT_FOUND", `Fix plan not found: ${id}`, "Create one with `relivaro fix plan`.");
+  if (!plan)
+    throw new RelivaroError("NOT_FOUND", `Fix plan not found: ${id}`, "Create one with `relivaro fix plan`.");
   return plan;
 }
 function latestOf(ws, marker) {
   const dir = ws.path("fixes");
   if (!existsSync9(dir)) throw new RelivaroError("NOT_FOUND", "No fix plans or applies exist yet.");
-  const ids2 = readdirSync3(dir).filter((d) => existsSync9(join8(dir, d, marker))).sort((a, b) => statSync5(join8(dir, a, marker)).mtimeMs - statSync5(join8(dir, b, marker)).mtimeMs || a.localeCompare(b));
-  if (!ids2.length) throw new RelivaroError("NOT_FOUND", `No ${marker === "plan.json" ? "fix plans" : "applied fixes"} found.`);
+  const ids2 = readdirSync3(dir).filter((d) => existsSync9(join8(dir, d, marker))).sort(
+    (a, b) => statSync5(join8(dir, a, marker)).mtimeMs - statSync5(join8(dir, b, marker)).mtimeMs || a.localeCompare(b)
+  );
+  if (!ids2.length)
+    throw new RelivaroError(
+      "NOT_FOUND",
+      `No ${marker === "plan.json" ? "fix plans" : "applied fixes"} found.`
+    );
   return ids2[ids2.length - 1];
 }
 function currentHash(root, path) {
@@ -20702,23 +22823,39 @@ async function applyPlan(ws, plan, opts) {
   const root = plan.root;
   let items = plan.items;
   if (opts.only?.length) {
-    items = items.filter((i2) => opts.only.includes(i2.findingId) || opts.only.includes(i2.fixer) || opts.only.includes(i2.ruleId));
-    if (!items.length) throw new RelivaroError("USAGE", `None of ${opts.only.join(", ")} are in plan ${plan.planId}.`);
+    items = items.filter(
+      (i2) => opts.only.includes(i2.findingId) || opts.only.includes(i2.fixer) || opts.only.includes(i2.ruleId)
+    );
+    if (!items.length)
+      throw new RelivaroError("USAGE", `None of ${opts.only.join(", ")} are in plan ${plan.planId}.`);
   }
   if (!opts.yes)
-    throw new RelivaroError("APPROVAL_REQUIRED", `Applying ${items.length} fix(es) to ${new Set(items.map((i2) => i2.file)).size} file(s) modifies your working tree.`, `Review the diff (\`relivaro fix show ${plan.planId}\`) and re-run with --yes.`);
-  if (opts.verifyCommand && !opts.allowExec) throw new RelivaroError("EXEC_NOT_ALLOWED", "Running a verification command executes project code and requires --allow-exec.");
+    throw new RelivaroError(
+      "APPROVAL_REQUIRED",
+      `Applying ${items.length} fix(es) to ${new Set(items.map((i2) => i2.file)).size} file(s) modifies your working tree.`,
+      `Review the diff (\`relivaro fix show ${plan.planId}\`) and re-run with --yes.`
+    );
+  if (opts.verifyCommand && !opts.allowExec)
+    throw new RelivaroError(
+      "EXEC_NOT_ALLOWED",
+      "Running a verification command executes project code and requires --allow-exec."
+    );
   for (const f of plan.files) {
     const cur = currentHash(root, f.path);
     if (f.existed ? cur !== f.beforeHash : cur !== null && cur !== f.beforeHash)
-      throw new RelivaroError("FIX_CONFLICT", `${f.path} changed since plan ${plan.planId} was created.`, "Create a new plan with `relivaro fix plan`.");
+      throw new RelivaroError(
+        "FIX_CONFLICT",
+        `${f.path} changed since plan ${plan.planId} was created.`,
+        "Create a new plan with `relivaro fix plan`."
+      );
   }
   const desired = /* @__PURE__ */ new Map();
   if (items.length === plan.items.length) {
     for (const f of plan.files) {
       const before = f.existed ? readFileSync7(safeResolve(root, f.path), "utf8") : "";
       const after = readFileSync7(ws.path("fixes", plan.planId, "after", ...f.path.split("/")), "utf8");
-      if (sha256(after) !== f.afterHash) throw new RelivaroError("FIX_FAILED", `Planned content for ${f.path} is corrupt.`);
+      if (sha256(after) !== f.afterHash)
+        throw new RelivaroError("FIX_FAILED", `Planned content for ${f.path} is corrupt.`);
       desired.set(f.path, { before, after, existed: f.existed });
     }
   } else {
@@ -20732,7 +22869,13 @@ async function applyPlan(ws, plan, opts) {
   const verification = await verify(root, items, desired, opts);
   if (verification.verdict === "failed") {
     const rec2 = record(ws, plan, items, desired, verification, false);
-    throw Object.assign(new RelivaroError("FIX_FAILED", `Verification failed; your working tree was not modified. ${verification.notes.join(" ")}`), { record: rec2 });
+    throw Object.assign(
+      new RelivaroError(
+        "FIX_FAILED",
+        `Verification failed; your working tree was not modified. ${verification.notes.join(" ")}`
+      ),
+      { record: rec2 }
+    );
   }
   const applyId = ws.newRunId("apply-");
   const files = [];
@@ -20745,7 +22888,16 @@ async function applyPlan(ws, plan, opts) {
     }
     files.push({ path, beforeHash: sha256(c.before), afterHash: sha256(c.after), existed: c.existed, mode });
   }
-  const rec = { schemaVersion: 1, applyId, planId: plan.planId, appliedAt: (/* @__PURE__ */ new Date()).toISOString(), root, items, files, verification };
+  const rec = {
+    schemaVersion: 1,
+    applyId,
+    planId: plan.planId,
+    appliedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    root,
+    items,
+    files,
+    verification
+  };
   ws.writeJson(["fixes", applyId, "apply.json"], rec);
   for (const [path, c] of desired) {
     const abs = safeResolve(root, path);
@@ -20757,42 +22909,102 @@ async function applyPlan(ws, plan, opts) {
 }
 function record(ws, plan, items, desired, verification, applied) {
   const applyId = ws.newRunId(applied ? "apply-" : "rejected-");
-  const rec = { schemaVersion: 1, applyId, planId: plan.planId, appliedAt: (/* @__PURE__ */ new Date()).toISOString(), root: plan.root, items, files: [...desired].map(([path, c]) => ({ path, beforeHash: sha256(c.before), afterHash: sha256(c.after), existed: c.existed })), verification };
+  const rec = {
+    schemaVersion: 1,
+    applyId,
+    planId: plan.planId,
+    appliedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    root: plan.root,
+    items,
+    files: [...desired].map(([path, c]) => ({
+      path,
+      beforeHash: sha256(c.before),
+      afterHash: sha256(c.after),
+      existed: c.existed
+    })),
+    verification
+  };
   ws.writeJson(["fixes", applyId, applied ? "apply.json" : "rejected.json"], rec);
   return rec;
 }
 async function reanalyze(files, only) {
   const { config } = loadConfig(files.root);
-  const scoped = new FileSet(files.root, { include: [...only], exclude: config.exclude, maxFileSizeKb: config.maxFileSizeKb });
-  return { scoped, config, analyzeFindings: (await analyze({ files: scoped, profile: discover(scoped), config }, RULES.filter((r) => r.kind !== "project"))).findings };
+  const scoped = new FileSet(files.root, {
+    include: [...only],
+    exclude: config.exclude,
+    maxFileSizeKb: config.maxFileSizeKb
+  });
+  return {
+    scoped,
+    config,
+    analyzeFindings: (await analyze(
+      { files: scoped, profile: discover(scoped), config },
+      RULES.filter((r) => r.kind !== "project")
+    )).findings
+  };
 }
 async function verify(root, items, desired, opts) {
   const notes = [];
   const changed = /* @__PURE__ */ new Set([...desired.keys()]);
   opts.onProgress?.("re-analysing changed files");
   const { config } = loadConfig(root);
-  const before = new FileSet(root, { include: [...changed], exclude: config.exclude, maxFileSizeKb: config.maxFileSizeKb });
+  const before = new FileSet(root, {
+    include: [...changed],
+    exclude: config.exclude,
+    maxFileSizeKb: config.maxFileSizeKb
+  });
   const astRules = RULES.filter((r) => r.kind !== "project");
   const beforeF = (await analyze({ files: before, profile: discover(before), config }, astRules)).findings;
-  const after = new FileSet(root, { include: [...changed], exclude: config.exclude, maxFileSizeKb: config.maxFileSizeKb });
+  const after = new FileSet(root, {
+    include: [...changed],
+    exclude: config.exclude,
+    maxFileSizeKb: config.maxFileSizeKb
+  });
   after.overlay(new Map([...desired].map(([p, c]) => [p, c.after])));
   const afterF = (await analyze({ files: after, profile: discover(after), config }, astRules)).findings;
-  const beforeKeys = new Set(beforeF.map((f) => `${f.ruleId}|${f.location?.file}|${f.message}`));
+  const key = (rule, file) => `${rule}\0${file ?? ""}`;
+  const count = (fs2) => {
+    const m = /* @__PURE__ */ new Map();
+    for (const f of fs2)
+      if (f.status !== "suppressed")
+        m.set(key(f.ruleId, f.location?.file), (m.get(key(f.ruleId, f.location?.file)) ?? 0) + 1);
+    return m;
+  };
+  const bc = count(beforeF);
+  const ac = count(afterF);
+  const targeted = /* @__PURE__ */ new Map();
+  for (const i2 of items)
+    targeted.set(key(i2.ruleId, i2.file), [...targeted.get(key(i2.ruleId, i2.file)) ?? [], i2]);
   const resolved = [];
   const unresolved = [];
-  for (const i2 of items) {
-    const stillThere = afterF.some((f) => f.ruleId === i2.ruleId && f.location?.file === i2.file && f.message === i2.message);
-    const analysable = beforeF.some((f) => f.fingerprint === i2.fingerprint) || beforeF.some((f) => f.ruleId === i2.ruleId && f.location?.file === i2.file);
-    if (!analysable) {
-      resolved.push(i2.findingId);
-      notes.push(`${i2.findingId} (${i2.ruleId}) is not re-checkable statically; confirm with \`relivaro audit\` after applying.`);
-    } else if (stillThere) unresolved.push(i2.findingId);
-    else resolved.push(i2.findingId);
+  const introduced = [];
+  for (const k of /* @__PURE__ */ new Set([...bc.keys(), ...ac.keys(), ...targeted.keys()])) {
+    const before2 = bc.get(k) ?? 0;
+    const afterN = ac.get(k) ?? 0;
+    const group = targeted.get(k) ?? [];
+    if (group.length && before2 === 0) {
+      for (const i2 of group) {
+        resolved.push(i2.findingId);
+        notes.push(
+          `${i2.findingId} (${i2.ruleId}) is not re-checkable statically; confirm with \`relivaro audit\` after applying.`
+        );
+      }
+      continue;
+    }
+    const fixed = Math.min(group.length, Math.max(0, before2 - afterN));
+    for (const [idx, i2] of group.entries()) (idx < fixed ? resolved : unresolved).push(i2.findingId);
+    if (afterN > before2) {
+      const [ruleId, file] = k.split("\0");
+      for (const f of afterF.filter((x) => x.ruleId === ruleId && (x.location?.file ?? "") === file).slice(before2))
+        introduced.push({ ruleId: f.ruleId, file: f.location?.file, message: f.message });
+    }
   }
-  const introduced = afterF.filter((f) => !beforeKeys.has(`${f.ruleId}|${f.location?.file}|${f.message}`)).map((f) => ({ ruleId: f.ruleId, file: f.location?.file, message: f.message }));
   const v = { static: { resolved, unresolved, introduced }, verdict: "static-only", notes };
   if (unresolved.length) notes.push(`${unresolved.length} finding(s) still detected after the change.`);
-  if (introduced.length) notes.push(`The change introduces ${introduced.length} new finding(s): ${introduced.slice(0, 3).map((x) => x.ruleId).join(", ")}.`);
+  if (introduced.length)
+    notes.push(
+      `The change introduces ${introduced.length} new finding(s): ${introduced.slice(0, 3).map((x) => x.ruleId).join(", ")}.`
+    );
   if (unresolved.length || introduced.length) v.verdict = "failed";
   if (opts.verifyCommand && v.verdict !== "failed") {
     const argv = splitCommand(opts.verifyCommand);
@@ -20811,38 +23023,74 @@ async function verify(root, items, desired, opts) {
         }
         opts.onProgress?.(`after fix: ${opts.verifyCommand}`);
         const a = await runCommand(argv, { cwd: dir, timeoutMs, allowExec: true });
-        v.command = { command: a.command, isolated: true, before: { exitCode: b.exitCode, durationMs: b.durationMs, timedOut: b.timedOut }, after: { exitCode: a.exitCode, durationMs: a.durationMs, timedOut: a.timedOut, outputTail: tail(`${a.stdout}
-${a.stderr}`, 30) } };
+        v.command = {
+          command: a.command,
+          isolated: true,
+          before: { exitCode: b.exitCode, durationMs: b.durationMs, timedOut: b.timedOut },
+          after: {
+            exitCode: a.exitCode,
+            durationMs: a.durationMs,
+            timedOut: a.timedOut,
+            outputTail: tail(`${a.stdout}
+${a.stderr}`, 30)
+          }
+        };
         if (a.exitCode === 0) v.verdict = "verified";
         else if (b.exitCode !== 0) {
           v.verdict = "failed";
-          notes.push("The verification command already failed before the fix, so the fix cannot be verified. Fix the existing failures first or verify with a narrower command.");
+          notes.push(
+            "The verification command already failed before the fix, so the fix cannot be verified. Fix the existing failures first or verify with a narrower command."
+          );
         } else {
           v.verdict = "failed";
-          notes.push("The verification command passed before the fix and fails after it: the fix introduces a regression.");
+          notes.push(
+            "The verification command passed before the fix and fails after it: the fix introduces a regression."
+          );
         }
       } finally {
         rmSync(dir, { recursive: true, force: true });
       }
     } else {
-      notes.push("Verification ran in the working tree after applying (--no-isolate); failures are rolled back automatically.");
-      v.command = { command: argv.join(" "), isolated: false, after: { exitCode: null, durationMs: 0, timedOut: false, outputTail: "" } };
+      notes.push(
+        "Verification ran in the working tree after applying (--no-isolate); failures are rolled back automatically."
+      );
+      v.command = {
+        command: argv.join(" "),
+        isolated: false,
+        after: { exitCode: null, durationMs: 0, timedOut: false, outputTail: "" }
+      };
     }
   }
   return v;
 }
 async function verifyInPlace(ws, rec, command, timeoutSeconds) {
-  const r = await runCommand(splitCommand(command), { cwd: rec.root, timeoutMs: timeoutSeconds * 1e3, allowExec: true });
-  rec.verification.command = { command: r.command, isolated: false, after: { exitCode: r.exitCode, durationMs: r.durationMs, timedOut: r.timedOut, outputTail: tail(`${r.stdout}
-${r.stderr}`, 30) } };
+  const r = await runCommand(splitCommand(command), {
+    cwd: rec.root,
+    timeoutMs: timeoutSeconds * 1e3,
+    allowExec: true
+  });
+  rec.verification.command = {
+    command: r.command,
+    isolated: false,
+    after: {
+      exitCode: r.exitCode,
+      durationMs: r.durationMs,
+      timedOut: r.timedOut,
+      outputTail: tail(`${r.stdout}
+${r.stderr}`, 30)
+    }
+  };
   if (r.exitCode === 0) rec.verification.verdict = "verified";
   else {
     rec.verification.verdict = "failed";
     rec.verification.notes.push("Verification command failed after applying; the change was rolled back.");
     ws.writeJson(["fixes", rec.applyId, "apply.json"], rec);
     rollback(ws, rec.applyId, false);
-    throw new RelivaroError("FIX_FAILED", `Verification failed after applying; changes were rolled back.
-${rec.verification.command.after.outputTail}`);
+    throw new RelivaroError(
+      "FIX_FAILED",
+      `Verification failed after applying; changes were rolled back.
+${rec.verification.command.after.outputTail}`
+    );
   }
   ws.writeJson(["fixes", rec.applyId, "apply.json"], rec);
   return rec;
@@ -20855,10 +23103,18 @@ function loadApply(ws, id) {
 }
 function rollback(ws, id, force) {
   const rec = loadApply(ws, id);
-  if (rec.rolledBackAt) throw new RelivaroError("ROLLBACK_CONFLICT", `${rec.applyId} was already rolled back at ${rec.rolledBackAt}.`);
+  if (rec.rolledBackAt)
+    throw new RelivaroError(
+      "ROLLBACK_CONFLICT",
+      `${rec.applyId} was already rolled back at ${rec.rolledBackAt}.`
+    );
   const conflicts = rec.files.filter((f) => currentHash(rec.root, f.path) !== f.afterHash);
   if (conflicts.length && !force)
-    throw new RelivaroError("ROLLBACK_CONFLICT", `Files changed after the fix was applied: ${conflicts.map((c) => c.path).join(", ")}. Rolling back would overwrite those changes.`, "Inspect the files, or re-run with --force to restore the backups anyway.");
+    throw new RelivaroError(
+      "ROLLBACK_CONFLICT",
+      `Files changed after the fix was applied: ${conflicts.map((c) => c.path).join(", ")}. Rolling back would overwrite those changes.`,
+      "Inspect the files, or re-run with --force to restore the backups anyway."
+    );
   for (const f of rec.files) {
     const abs = safeResolve(rec.root, f.path);
     if (!f.existed) {
@@ -20866,7 +23122,8 @@ function rollback(ws, id, force) {
       continue;
     }
     const backup = readFileSync7(ws.path("fixes", rec.applyId, "backup", ...f.path.split("/")), "utf8");
-    if (sha256(backup) !== f.beforeHash) throw new RelivaroError("ROLLBACK_CONFLICT", `Backup for ${f.path} is corrupt; not restoring.`);
+    if (sha256(backup) !== f.beforeHash)
+      throw new RelivaroError("ROLLBACK_CONFLICT", `Backup for ${f.path} is corrupt; not restoring.`);
     atomicWrite(abs, backup);
     if (f.mode !== void 0) chmodSync(abs, f.mode & 4095);
   }
@@ -20887,8 +23144,8 @@ init_files();
 init_errors();
 import { lookup as lookup2 } from "node:dns/promises";
 import { existsSync as existsSync10, readdirSync as readdirSync4 } from "node:fs";
-import { cpus } from "node:os";
 import { isIP } from "node:net";
+import { cpus } from "node:os";
 
 // src/perf/stats.ts
 function quantile(sorted, q) {
@@ -20904,14 +23161,30 @@ function stats(samples) {
   const mean = n ? s.reduce((a, b) => a + b, 0) / n : 0;
   const variance = n > 1 ? s.reduce((a, b) => a + (b - mean) ** 2, 0) / (n - 1) : 0;
   const r = (x) => Math.round(x * 100) / 100;
-  return { n, minMs: r(s[0] ?? 0), maxMs: r(s[n - 1] ?? 0), meanMs: r(mean), medianMs: r(quantile(s, 0.5)), p90Ms: r(quantile(s, 0.9)), p95Ms: r(quantile(s, 0.95)), p99Ms: r(quantile(s, 0.99)), stddevMs: r(Math.sqrt(variance)) };
+  return {
+    n,
+    minMs: r(s[0] ?? 0),
+    maxMs: r(s[n - 1] ?? 0),
+    meanMs: r(mean),
+    medianMs: r(quantile(s, 0.5)),
+    p90Ms: r(quantile(s, 0.9)),
+    p95Ms: r(quantile(s, 0.95)),
+    p99Ms: r(quantile(s, 0.99)),
+    stddevMs: r(Math.sqrt(variance))
+  };
 }
 function compareStats(base, cur) {
   const changePct = base.meanMs ? (cur.meanMs - base.meanMs) / base.meanMs * 100 : 0;
   const se = Math.sqrt(base.stddevMs ** 2 / Math.max(base.n, 1) + cur.stddevMs ** 2 / Math.max(cur.n, 1));
   const diff = cur.meanMs - base.meanMs;
   const significant = se === 0 ? Math.abs(changePct) > 5 : Math.abs(diff) > 1.96 * se && Math.abs(changePct) > 2;
-  return { baselineMeanMs: base.meanMs, currentMeanMs: cur.meanMs, changePct: Math.round(changePct * 10) / 10, significant, verdict: !significant ? "no significant change" : diff < 0 ? "faster" : "slower" };
+  return {
+    baselineMeanMs: base.meanMs,
+    currentMeanMs: cur.meanMs,
+    changePct: Math.round(changePct * 10) / 10,
+    significant,
+    verdict: !significant ? "no significant change" : diff < 0 ? "faster" : "slower"
+  };
 }
 
 // src/perf/bench.ts
@@ -20920,41 +23193,78 @@ function envInfo() {
 }
 async function benchCommand(opts) {
   if (opts.runs < 1 || opts.runs > 100) throw new RelivaroError("USAGE", "--runs must be between 1 and 100.");
-  if (opts.warmup < 0 || opts.warmup > 20) throw new RelivaroError("USAGE", "--warmup must be between 0 and 20.");
+  if (opts.warmup < 0 || opts.warmup > 20)
+    throw new RelivaroError("USAGE", "--warmup must be between 0 and 20.");
   const argv = splitCommand(opts.command);
   const samples = [];
   let failures = 0;
   for (let i2 = 0; i2 < opts.warmup + opts.runs; i2++) {
     const warm = i2 < opts.warmup;
-    opts.onProgress?.(`${warm ? "warmup" : "run"} ${warm ? i2 + 1 : i2 - opts.warmup + 1}/${warm ? opts.warmup : opts.runs}`);
+    opts.onProgress?.(
+      `${warm ? "warmup" : "run"} ${warm ? i2 + 1 : i2 - opts.warmup + 1}/${warm ? opts.warmup : opts.runs}`
+    );
     const t0 = performance.now();
-    const r = await runCommand(argv, { cwd: opts.cwd, timeoutMs: opts.timeoutSeconds * 1e3, allowExec: opts.allowExec, maxOutputBytes: 64 * 1024 });
+    const r = await runCommand(argv, {
+      cwd: opts.cwd,
+      timeoutMs: opts.timeoutSeconds * 1e3,
+      allowExec: opts.allowExec,
+      maxOutputBytes: 64 * 1024
+    });
     const ms = performance.now() - t0;
     if (r.exitCode !== 0) {
       failures++;
       if (failures > Math.max(1, Math.floor(opts.runs / 2)))
-        throw new RelivaroError("EXEC_FAILED", `\`${r.command}\` failed ${failures} times (exit ${r.exitCode ?? r.signal}); benchmark aborted.`, r.stderr.slice(-500) || void 0);
+        throw new RelivaroError(
+          "EXEC_FAILED",
+          `\`${r.command}\` failed ${failures} times (exit ${r.exitCode ?? r.signal}); benchmark aborted.`,
+          r.stderr.slice(-500) || void 0
+        );
       continue;
     }
     if (!warm) samples.push(ms);
   }
   if (!samples.length) throw new RelivaroError("EXEC_FAILED", "No successful runs to measure.");
-  return { schemaVersion: 1, kind: "command", name: opts.name, command: argv.join(" "), cwd: opts.cwd, runs: opts.runs, warmup: opts.warmup, measuredAt: (/* @__PURE__ */ new Date()).toISOString(), samplesMs: samples.map((s) => Math.round(s * 100) / 100), failures, stats: stats(samples), environment: envInfo() };
+  return {
+    schemaVersion: 1,
+    kind: "command",
+    name: opts.name,
+    command: argv.join(" "),
+    cwd: opts.cwd,
+    runs: opts.runs,
+    warmup: opts.warmup,
+    measuredAt: (/* @__PURE__ */ new Date()).toISOString(),
+    samplesMs: samples.map((s) => Math.round(s * 100) / 100),
+    failures,
+    stats: stats(samples),
+    environment: envInfo()
+  };
 }
-var PRIVATE_V4 = [/^127\./, /^10\./, /^192\.168\./, /^172\.(?:1[6-9]|2\d|3[01])\./, /^169\.254\./, /^0\.0\.0\.0$/];
+var PRIVATE_V4 = [
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(?:1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^0\.0\.0\.0$/
+];
 function isPrivateAddress(ip) {
   if (isIP(ip) === 4) return PRIVATE_V4.some((r) => r.test(ip));
   const v = ip.toLowerCase();
   return v === "::1" || v.startsWith("fc") || v.startsWith("fd") || v.startsWith("fe80") || v.startsWith("::ffff:127.") || v.startsWith("::ffff:10.") || v.startsWith("::ffff:192.168.");
 }
 async function assertLoadTarget(url, allowRemote) {
-  if (!/^https?:$/.test(url.protocol)) throw new RelivaroError("USAGE", "Only http:// and https:// targets are supported.");
+  if (!/^https?:$/.test(url.protocol))
+    throw new RelivaroError("USAGE", "Only http:// and https:// targets are supported.");
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addrs = isIP(host) ? [host] : host === "localhost" || host.endsWith(".localhost") || host.endsWith(".test") ? ["127.0.0.1"] : (await lookup2(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addrs.length) throw new RelivaroError("NETWORK_FAILED", `Cannot resolve ${host}.`);
   const publicAddrs = addrs.filter((a) => !isPrivateAddress(a));
   if (publicAddrs.length && !allowRemote)
-    throw new RelivaroError("TARGET_NOT_ALLOWED", `${host} resolves to a public address (${publicAddrs[0]}). Load tests are limited to local and private-network targets.`, "Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply).");
+    throw new RelivaroError(
+      "TARGET_NOT_ALLOWED",
+      `${host} resolves to a public address (${publicAddrs[0]}). Load tests are limited to local and private-network targets.`,
+      "Run against a local or staging environment you control. --allow-remote lifts this check for hosts you are authorized to test (caps still apply)."
+    );
   return addrs;
 }
 var LOAD_LIMITS = { maxConcurrency: 64, maxDurationSec: 120, maxRequests: 2e5 };
@@ -20987,7 +23297,13 @@ async function loadTest(opts) {
       sent++;
       const t0 = performance.now();
       try {
-        const res = await fetchImpl(url, { method: opts.method, headers: opts.headers, body: opts.body, redirect: "manual", signal: AbortSignal.timeout(opts.timeoutMs) });
+        const res = await fetchImpl(url, {
+          method: opts.method,
+          headers: opts.headers,
+          body: opts.body,
+          redirect: "manual",
+          signal: AbortSignal.timeout(opts.timeoutMs)
+        });
         await res.arrayBuffer();
         const key = String(res.status);
         codes[key] = (codes[key] ?? 0) + 1;
@@ -21042,7 +23358,18 @@ function benchSnapshots(ws) {
   const out2 = [];
   for (const d of readdirSync4(dir)) {
     const r = ws.readJson(["bench", d, "latest.json"]);
-    if (r) out2.push({ name: r.name, kind: r.kind, stats: { meanMs: r.stats.meanMs, p95Ms: r.stats.p95Ms, p99Ms: r.stats.p99Ms, errorRate: r.kind === "http" ? r.errorRate : 0 }, measuredAt: r.measuredAt });
+    if (r)
+      out2.push({
+        name: r.name,
+        kind: r.kind,
+        stats: {
+          meanMs: r.stats.meanMs,
+          p95Ms: r.stats.p95Ms,
+          p99Ms: r.stats.p99Ms,
+          errorRate: r.kind === "http" ? r.errorRate : 0
+        },
+        measuredAt: r.measuredAt
+      });
   }
   return out2;
 }
@@ -21060,10 +23387,16 @@ function compareRuns(base, head) {
   for (const c of head.checks) {
     const prev = base.checks.find((x) => x.kind === c.kind && x.unit === c.unit);
     if (!prev || prev.status === "skipped" || c.status === "skipped") continue;
-    if (prev.status === "passed" && c.status !== "passed") regressions.push(`${c.kind} (${c.unit}) passed before and is now ${c.status}`);
-    if (prev.status !== "passed" && c.status === "passed") improvements.push(`${c.kind} (${c.unit}) now passes`);
-    if (prev.tests && c.tests && c.tests.failed > prev.tests.failed) regressions.push(`${c.kind} (${c.unit}) failing tests ${prev.tests.failed} \u2192 ${c.tests.failed}`);
-    if (c.durationMs > prev.durationMs * 1.5 && c.durationMs - prev.durationMs > 5e3) regressions.push(`${c.kind} (${c.unit}) duration ${(prev.durationMs / 1e3).toFixed(1)}s \u2192 ${(c.durationMs / 1e3).toFixed(1)}s`);
+    if (prev.status === "passed" && c.status !== "passed")
+      regressions.push(`${c.kind} (${c.unit}) passed before and is now ${c.status}`);
+    if (prev.status !== "passed" && c.status === "passed")
+      improvements.push(`${c.kind} (${c.unit}) now passes`);
+    if (prev.tests && c.tests && c.tests.failed > prev.tests.failed)
+      regressions.push(`${c.kind} (${c.unit}) failing tests ${prev.tests.failed} \u2192 ${c.tests.failed}`);
+    if (c.durationMs > prev.durationMs * 1.5 && c.durationMs - prev.durationMs > 5e3)
+      regressions.push(
+        `${c.kind} (${c.unit}) duration ${(prev.durationMs / 1e3).toFixed(1)}s \u2192 ${(c.durationMs / 1e3).toFixed(1)}s`
+      );
   }
   const out2 = {
     base: { runId: base.runId, startedAt: base.startedAt, open: openB.length },
@@ -21074,7 +23407,13 @@ function compareRuns(base, head) {
     checkRegressions: regressions,
     checkImprovements: improvements
   };
-  if (base.release && head.release) out2.releaseChange = { from: base.release.status, to: head.release.status, scoreFrom: base.release.score, scoreTo: head.release.score };
+  if (base.release && head.release)
+    out2.releaseChange = {
+      from: base.release.status,
+      to: head.release.status,
+      scoreFrom: base.release.score,
+      scoreTo: head.release.score
+    };
   return out2;
 }
 
@@ -21083,7 +23422,10 @@ function toHtml(run2) {
   const payload = JSON.stringify({
     run: { ...run2, root: run2.root }
   }).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
-  const title = `Relivaro \u2014 ${run2.profile.name}`.replace(/[<>&"]/g, (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]);
+  const title = `Relivaro \u2014 ${run2.profile.name}`.replace(
+    /[<>&"]/g,
+    (c) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", '"': "&quot;" })[c]
+  );
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -21196,11 +23538,15 @@ function toMarkdown(run2, opts = {}) {
   const L = [];
   L.push(`# Relivaro report \u2014 ${p.name}`);
   L.push("");
-  L.push(`Run \`${run2.runId}\` \xB7 \`relivaro ${run2.command}\` \xB7 Relivaro ${run2.tool.version} \xB7 ${run2.startedAt} \xB7 ${(run2.durationMs / 1e3).toFixed(1)}s`);
+  L.push(
+    `Run \`${run2.runId}\` \xB7 \`relivaro ${run2.command}\` \xB7 Relivaro ${run2.tool.version} \xB7 ${run2.startedAt} \xB7 ${(run2.durationMs / 1e3).toFixed(1)}s`
+  );
   L.push("");
   if (run2.release) {
     const r = run2.release;
-    L.push(`## Release readiness: **${r.status.toUpperCase().replace(/-/g, " ")}** (score ${r.score}/100${r.scoreCapped ? ", capped by blockers" : ""})`);
+    L.push(
+      `## Release readiness: **${r.status.toUpperCase().replace(/-/g, " ")}** (score ${r.score}/100${r.scoreCapped ? ", capped by blockers" : ""})`
+    );
     L.push("");
     L.push("| Gate | Status | Detail |");
     L.push("| --- | --- | --- |");
@@ -21211,29 +23557,55 @@ function toMarkdown(run2, opts = {}) {
   }
   L.push("## Summary");
   L.push("");
-  L.push(`**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(", ")})${s.suppressed ? ` \xB7 ${s.suppressed} suppressed` : ""}${s.baseline ? ` \xB7 ${s.baseline} in baseline` : ""}.`);
+  L.push(
+    `**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(", ")})${s.suppressed ? ` \xB7 ${s.suppressed} suppressed` : ""}${s.baseline ? ` \xB7 ${s.baseline} in baseline` : ""}.`
+  );
   L.push("");
-  L.push(`Analysed ${run2.metrics.files} files (${run2.metrics.linesOfCode.toLocaleString("en-US")} lines, ${run2.metrics.parsedFiles} parsed to syntax trees) with ${run2.metrics.rulesRun} rules in ${(run2.metrics.analysisMs / 1e3).toFixed(1)}s.`);
+  L.push(
+    `Analysed ${run2.metrics.files} files (${run2.metrics.linesOfCode.toLocaleString("en-US")} lines, ${run2.metrics.parsedFiles} parsed to syntax trees) with ${run2.metrics.rulesRun} rules in ${(run2.metrics.analysisMs / 1e3).toFixed(1)}s.`
+  );
   L.push("");
   L.push("## Project");
   L.push("");
-  L.push(`- **Languages:** ${p.languages.slice(0, 8).map((l) => `${l.name} (${l.files} files)`).join(", ") || "\u2014"}`);
-  L.push(`- **Units:** ${p.units.map((u) => `\`${u.path}\` ${u.frameworks.join("/") || u.kind}`).join(", ")}${p.monorepo ? " (monorepo)" : ""}`);
+  L.push(
+    `- **Languages:** ${p.languages.slice(0, 8).map((l) => `${l.name} (${l.files} files)`).join(", ") || "\u2014"}`
+  );
+  L.push(
+    `- **Units:** ${p.units.map((u) => `\`${u.path}\` ${u.frameworks.join("/") || u.kind}`).join(", ")}${p.monorepo ? " (monorepo)" : ""}`
+  );
   const tech = (k) => [...new Set(p.technologies.filter((t2) => t2.kind === k).map((t2) => t2.name))].join(", ");
-  for (const [label, kind] of [["Data", "database"], ["ORM", "orm"], ["Queues", "queue"], ["Cache", "cache"], ["Auth", "auth"], ["Observability", "observability"], ["Payments", "payments"], ["Integrations", "integration"]]) {
+  for (const [label, kind] of [
+    ["Data", "database"],
+    ["ORM", "orm"],
+    ["Queues", "queue"],
+    ["Cache", "cache"],
+    ["Auth", "auth"],
+    ["Observability", "observability"],
+    ["Payments", "payments"],
+    ["Integrations", "integration"]
+  ]) {
     const t2 = tech(kind);
     if (t2) L.push(`- **${label}:** ${t2}`);
   }
-  L.push(`- **Tests:** ${p.tests.testFiles} test files / ${p.tests.sourceFiles} source files${p.tests.frameworks.length ? ` (${p.tests.frameworks.join(", ")})` : ""}`);
-  L.push(`- **CI/CD:** ${[...new Set(p.ci.map((c) => c.system))].join(", ") || "none"}${p.deploy.length ? ` \xB7 deploy: ${p.deploy.map((d) => d.kind).join(", ")}` : ""}${p.containers.dockerfiles.length ? ` \xB7 ${p.containers.dockerfiles.length} Dockerfile(s)` : ""}`);
-  L.push(`- **API surface:** ${p.api.routes} route definitions${p.api.specs.length ? ` \xB7 specs: ${p.api.specs.join(", ")}` : ""}`);
+  L.push(
+    `- **Tests:** ${p.tests.testFiles} test files / ${p.tests.sourceFiles} source files${p.tests.frameworks.length ? ` (${p.tests.frameworks.join(", ")})` : ""}`
+  );
+  L.push(
+    `- **CI/CD:** ${[...new Set(p.ci.map((c) => c.system))].join(", ") || "none"}${p.deploy.length ? ` \xB7 deploy: ${p.deploy.map((d) => d.kind).join(", ")}` : ""}${p.containers.dockerfiles.length ? ` \xB7 ${p.containers.dockerfiles.length} Dockerfile(s)` : ""}`
+  );
+  L.push(
+    `- **API surface:** ${p.api.routes} route definitions${p.api.specs.length ? ` \xB7 specs: ${p.api.specs.join(", ")}` : ""}`
+  );
   L.push("");
   if (run2.checks.length) {
     L.push("## Executed checks");
     L.push("");
     L.push("| Check | Unit | Command | Result | Time |");
     L.push("| --- | --- | --- | --- | --- |");
-    for (const c of run2.checks) L.push(`| ${c.kind} | \`${c.unit}\` | \`${esc(c.command)}\` | ${c.status}${c.tests ? ` (${c.tests.passed}\u2713 ${c.tests.failed}\u2717 ${c.tests.skipped}\u21B7)` : ""}${c.reason ? ` \u2014 ${esc(c.reason)}` : ""} | ${(c.durationMs / 1e3).toFixed(1)}s |`);
+    for (const c of run2.checks)
+      L.push(
+        `| ${c.kind} | \`${c.unit}\` | \`${esc(c.command)}\` | ${c.status}${c.tests ? ` (${c.tests.passed}\u2713 ${c.tests.failed}\u2717 ${c.tests.skipped}\u21B7)` : ""}${c.reason ? ` \u2014 ${esc(c.reason)}` : ""} | ${(c.durationMs / 1e3).toFixed(1)}s |`
+      );
     L.push("");
   }
   const openF = run2.findings.filter((f) => f.status === "open");
@@ -21243,7 +23615,9 @@ function toMarkdown(run2, opts = {}) {
   for (const f of openF.slice(0, max)) {
     L.push(`### ${f.severity.toUpperCase()} \xB7 ${esc(f.title)} \u2014 ${loc(f)}`);
     L.push("");
-    L.push(`\`${f.id}\` \xB7 rule \`${f.ruleId}\` \xB7 confidence ${f.confidence} \xB7 ${f.provenance}${f.cwe?.length ? ` \xB7 ${f.cwe.join(", ")}` : ""}${f.owasp?.length ? ` \xB7 ${f.owasp.join("; ")}` : ""}`);
+    L.push(
+      `\`${f.id}\` \xB7 rule \`${f.ruleId}\` \xB7 confidence ${f.confidence} \xB7 ${f.provenance}${f.cwe?.length ? ` \xB7 ${f.cwe.join(", ")}` : ""}${f.owasp?.length ? ` \xB7 ${f.owasp.join("; ")}` : ""}`
+    );
     L.push("");
     L.push(f.message);
     L.push("");
@@ -21255,7 +23629,9 @@ function toMarkdown(run2, opts = {}) {
     }
     if (f.evidence.command) L.push(`Command: \`${f.evidence.command}\``);
     L.push(`- **Impact:** ${f.impact}`);
-    L.push(`- **Fix:** ${f.recommendation}${f.fixer ? ` (automated fix available: \`relivaro fix plan --finding ${f.id}\`)` : ""}`);
+    L.push(
+      `- **Fix:** ${f.recommendation}${f.fixer ? ` (automated fix available: \`relivaro fix plan --finding ${f.id}\`)` : ""}`
+    );
     L.push(`- **Verify:** ${f.verification}`);
     L.push("");
   }
@@ -21263,13 +23639,17 @@ function toMarkdown(run2, opts = {}) {
   if (run2.testGaps.length) {
     L.push("## Untested high-risk code (heuristic)");
     L.push("");
-    for (const g of run2.testGaps.slice(0, 15)) L.push(`- \`${g.file}\` \u2014 risk ${g.risk}: ${g.reasons.join(", ")}`);
+    for (const g of run2.testGaps.slice(0, 15))
+      L.push(`- \`${g.file}\` \u2014 risk ${g.risk}: ${g.reasons.join(", ")}`);
     L.push("");
   }
   if (run2.coverage.length) {
     L.push("## Coverage (existing reports)");
     L.push("");
-    for (const c of run2.coverage) L.push(`- \`${c.file}\` (${c.format}): ${c.pct}% lines (${c.covered}/${c.total}), generated ${c.generatedAt}${c.stale ? " \u2014 **stale**" : ""}`);
+    for (const c of run2.coverage)
+      L.push(
+        `- \`${c.file}\` (${c.format}): ${c.pct}% lines (${c.covered}/${c.total}), generated ${c.generatedAt}${c.stale ? " \u2014 **stale**" : ""}`
+      );
     L.push("");
   }
   if (run2.limitations.length) {
@@ -21284,8 +23664,20 @@ function toMarkdown(run2, opts = {}) {
 
 // src/report/sarif.ts
 init_rules();
-var LEVEL = { critical: "error", high: "error", medium: "warning", low: "note", info: "note" };
-var SECURITY_SEVERITY = { critical: "9.5", high: "8.0", medium: "5.5", low: "3.0", info: "0.0" };
+var LEVEL = {
+  critical: "error",
+  high: "error",
+  medium: "warning",
+  low: "note",
+  info: "note"
+};
+var SECURITY_SEVERITY = {
+  critical: "9.5",
+  high: "8.0",
+  medium: "5.5",
+  low: "3.0",
+  info: "0.0"
+};
 function toSarif(run2) {
   const used = new Set(run2.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
@@ -21303,19 +23695,29 @@ function toSarif(run2) {
             informationUri: "https://github.com/cihantopac/relivaro",
             rules: rules.map((r) => ({
               id: r.id,
-              name: r.id.replace(/[^A-Za-z0-9]+(.)?/g, (_m, c) => c ? c.toUpperCase() : ""),
+              name: r.id.replace(
+                /[^A-Za-z0-9]+(.)?/g,
+                (_m, c) => c ? c.toUpperCase() : ""
+              ),
               shortDescription: { text: r.title },
               fullDescription: { text: r.description },
-              help: { text: `${r.recommendation}
+              help: {
+                text: `${r.recommendation}
 
-Verification: ${r.verification}`, markdown: `**Impact:** ${r.impact}
+Verification: ${r.verification}`,
+                markdown: `**Impact:** ${r.impact}
 
 **Fix:** ${r.recommendation}
 
-**Verify:** ${r.verification}` },
+**Verify:** ${r.verification}`
+              },
               defaultConfiguration: { level: LEVEL[r.severity] },
               properties: {
-                tags: [r.category, ...(r.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`), ...r.tags ?? []],
+                tags: [
+                  r.category,
+                  ...(r.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`),
+                  ...r.tags ?? []
+                ],
                 precision: r.confidence === "high" ? "high" : r.confidence === "medium" ? "medium" : "low",
                 ...r.category === "security" || r.category === "supply-chain" ? { "security-severity": SECURITY_SEVERITY[r.severity] } : {}
               }
@@ -21335,17 +23737,32 @@ function result(f, ruleIndex) {
     level: LEVEL[f.severity],
     message: { text: `${f.message} ${f.recommendation}`.trim() },
     partialFingerprints: { "relivaro/v1": f.fingerprint },
-    properties: { severity: f.severity, confidence: f.confidence, category: f.category, provenance: f.provenance, findingId: f.id }
+    properties: {
+      severity: f.severity,
+      confidence: f.confidence,
+      category: f.category,
+      provenance: f.provenance,
+      findingId: f.id
+    }
   };
   if (ruleIndex !== void 0) r.ruleIndex = ruleIndex;
   if (f.location) {
     const region = {};
     if (f.location.line) region.startLine = f.location.line;
     if (f.location.column) region.startColumn = f.location.column;
-    if (f.location.endLine && f.location.endLine >= (f.location.line ?? 0)) region.endLine = f.location.endLine;
-    r.locations = [{ physicalLocation: { artifactLocation: { uri: encodeURI(f.location.file), uriBaseId: "%SRCROOT%" }, ...Object.keys(region).length ? { region } : {} } }];
+    if (f.location.endLine && f.location.endLine >= (f.location.line ?? 0))
+      region.endLine = f.location.endLine;
+    r.locations = [
+      {
+        physicalLocation: {
+          artifactLocation: { uri: encodeURI(f.location.file), uriBaseId: "%SRCROOT%" },
+          ...Object.keys(region).length ? { region } : {}
+        }
+      }
+    ];
   }
-  if (f.status === "suppressed") r.suppressions = [{ kind: "inSource", justification: f.suppression?.reason ?? "" }];
+  if (f.status === "suppressed")
+    r.suppressions = [{ kind: "inSource", justification: f.suppression?.reason ?? "" }];
   return r;
 }
 
@@ -21364,7 +23781,8 @@ function makeOut(opts) {
 `);
     },
     progress: (s) => {
-      if (!opts.quiet && !opts.json && process.stderr.isTTY) process.stderr.write(`\r\x1B[2K${dim(color, `\u2026 ${s}`)}`);
+      if (!opts.quiet && !opts.json && process.stderr.isTTY)
+        process.stderr.write(`\r\x1B[2K${dim(color, `\u2026 ${s}`)}`);
       else if (!opts.quiet && !opts.json && process.env.RELIVARO_PROGRESS) process.stderr.write(`\u2026 ${s}
 `);
     },
@@ -21377,7 +23795,17 @@ function makeOut(opts) {
 function clearProgress() {
   if (process.stderr.isTTY) process.stderr.write("\r\x1B[2K");
 }
-var CODES = { red: [31, 39], yellow: [33, 39], green: [32, 39], blue: [34, 39], magenta: [35, 39], cyan: [36, 39], gray: [90, 39], bold: [1, 22], dim: [2, 22] };
+var CODES = {
+  red: [31, 39],
+  yellow: [33, 39],
+  green: [32, 39],
+  blue: [34, 39],
+  magenta: [35, 39],
+  cyan: [36, 39],
+  gray: [90, 39],
+  bold: [1, 22],
+  dim: [2, 22]
+};
 function paint(on, style, s) {
   if (!on) return s;
   const [a, b] = CODES[style];
@@ -21386,7 +23814,13 @@ function paint(on, style, s) {
 function dim(on, s) {
   return paint(on, "dim", s);
 }
-var SEV_STYLE = { critical: "magenta", high: "red", medium: "yellow", low: "blue", info: "gray" };
+var SEV_STYLE = {
+  critical: "magenta",
+  high: "red",
+  medium: "yellow",
+  low: "blue",
+  info: "gray"
+};
 function sevLabel(on, s) {
   return paint(on, SEV_STYLE[s], s.toUpperCase().padEnd(8));
 }
@@ -21398,30 +23832,55 @@ function findingLine(on, f) {
 function printRunSummary(out2, run2, files, maxFindings = 15) {
   const on = out2.color;
   const s = run2.summary;
-  out2.print(`${paint(on, "bold", `Relivaro ${run2.command}`)} \xB7 ${run2.profile.name} \xB7 ${run2.metrics.files} files \xB7 ${(run2.durationMs / 1e3).toFixed(1)}s`);
+  out2.print(
+    `${paint(on, "bold", `Relivaro ${run2.command}`)} \xB7 ${run2.profile.name} \xB7 ${run2.metrics.files} files \xB7 ${(run2.durationMs / 1e3).toFixed(1)}s`
+  );
   const stack = [...new Set(run2.profile.units.flatMap((u) => u.frameworks))].slice(0, 8).join(", ");
-  if (stack && !out2.quiet) out2.print(paint(on, "gray", `Stack: ${stack}${run2.profile.monorepo ? ` \xB7 monorepo (${run2.profile.units.length} units)` : ""}`));
+  if (stack && !out2.quiet)
+    out2.print(
+      paint(
+        on,
+        "gray",
+        `Stack: ${stack}${run2.profile.monorepo ? ` \xB7 monorepo (${run2.profile.units.length} units)` : ""}`
+      )
+    );
   out2.print("");
   if (run2.release) {
     const r = run2.release;
     const st = r.status === "ready" ? paint(on, "green", "READY") : r.status === "ready-with-warnings" ? paint(on, "yellow", "READY WITH WARNINGS") : r.status === "needs-verification" ? paint(on, "yellow", "NEEDS VERIFICATION") : paint(on, "red", "NOT READY");
-    out2.print(`Release readiness: ${paint(on, "bold", st)}  score ${r.score}/100${r.scoreCapped ? " (capped by blockers)" : ""}`);
-    const icon = { block: paint(on, "red", "\u2716 blocker   "), warn: paint(on, "yellow", "! warning   "), pass: paint(on, "green", "\u2714 passed    "), unverified: paint(on, "gray", "? unverified"), "n/a": paint(on, "gray", "- n/a       ") };
-    for (const g of r.gates) out2.print(`  ${icon[g.status]} ${g.title}${g.status !== "pass" && g.status !== "n/a" ? paint(on, "gray", ` \u2014 ${g.detail.slice(0, 160)}`) : ""}`);
+    out2.print(
+      `Release readiness: ${paint(on, "bold", st)}  score ${r.score}/100${r.scoreCapped ? " (capped by blockers)" : ""}`
+    );
+    const icon = {
+      block: paint(on, "red", "\u2716 blocker   "),
+      warn: paint(on, "yellow", "! warning   "),
+      pass: paint(on, "green", "\u2714 passed    "),
+      unverified: paint(on, "gray", "? unverified"),
+      "n/a": paint(on, "gray", "- n/a       ")
+    };
+    for (const g of r.gates)
+      out2.print(
+        `  ${icon[g.status]} ${g.title}${g.status !== "pass" && g.status !== "n/a" ? paint(on, "gray", ` \u2014 ${g.detail.slice(0, 160)}`) : ""}`
+      );
     out2.print("");
   }
   if (run2.checks.length) {
     for (const c of run2.checks) {
       const st = c.status === "passed" ? paint(on, "green", "passed") : c.status === "skipped" ? paint(on, "gray", "skipped") : paint(on, "red", c.status);
-      out2.print(`  ${c.kind.padEnd(9)} ${c.unit.padEnd(16)} ${st}${c.tests ? ` (${c.tests.passed} passed, ${c.tests.failed} failed, ${c.tests.skipped} skipped)` : ""}${c.reason ? paint(on, "gray", ` \u2014 ${c.reason}`) : ""}`);
+      out2.print(
+        `  ${c.kind.padEnd(9)} ${c.unit.padEnd(16)} ${st}${c.tests ? ` (${c.tests.passed} passed, ${c.tests.failed} failed, ${c.tests.skipped} skipped)` : ""}${c.reason ? paint(on, "gray", ` \u2014 ${c.reason}`) : ""}`
+      );
     }
     out2.print("");
   }
-  out2.print(`${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} baseline`) : ""}`);
+  out2.print(
+    `${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} baseline`) : ""}`
+  );
   if (!out2.quiet) {
     const open2 = run2.findings.filter((f) => f.status === "open");
     for (const f of open2.slice(0, maxFindings)) out2.print(findingLine(on, f));
-    if (open2.length > maxFindings) out2.print(paint(on, "gray", `\u2026 and ${open2.length - maxFindings} more (see the report).`));
+    if (open2.length > maxFindings)
+      out2.print(paint(on, "gray", `\u2026 and ${open2.length - maxFindings} more (see the report).`));
     if (run2.limitations.length) {
       out2.print("");
       out2.print(paint(on, "bold", "Not verified / limitations:"));
@@ -21435,19 +23894,61 @@ function printRunSummary(out2, run2, files, maxFindings = 15) {
 // src/cli/commands.ts
 var FORMATS = ["json", "md", "html", "sarif"];
 var ANALYSIS_OPTS = [
-  { name: "online", type: "boolean", description: "Query OSV.dev for known dependency vulnerabilities (sends package names and versions only)." },
-  { name: "allow-exec", type: "boolean", description: "Allow running project commands (tests, build, type check, lint). They execute project code." },
-  { name: "format", type: "list", value: "<list>", choices: FORMATS, description: "Report formats to write: json, md, html, sarif.", default: "json,md,html" },
+  {
+    name: "online",
+    type: "boolean",
+    description: "Query OSV.dev for known dependency vulnerabilities (sends package names and versions only)."
+  },
+  {
+    name: "allow-exec",
+    type: "boolean",
+    description: "Allow running project commands (tests, build, type check, lint). They execute project code."
+  },
+  {
+    name: "format",
+    type: "list",
+    value: "<list>",
+    choices: FORMATS,
+    description: "Report formats to write: json, md, html, sarif.",
+    default: "json,md,html"
+  },
   { name: "out", type: "string", value: "<dir>", description: "Also copy the reports to this directory." },
-  { name: "fail-on", type: "string", value: "<severity>", choices: [...SEVERITIES, "none"], description: "Exit with code 1 when an open finding (medium/high confidence) is at or above this severity." },
-  { name: "rule", type: "list", value: "<ids>", description: 'Only run these rules (prefix with * suffix allowed, e.g. "sec/*").' },
+  {
+    name: "fail-on",
+    type: "string",
+    value: "<severity>",
+    choices: [...SEVERITIES, "none"],
+    description: "Exit with code 1 when an open finding (medium/high confidence) is at or above this severity."
+  },
+  {
+    name: "rule",
+    type: "list",
+    value: "<ids>",
+    description: 'Only run these rules (prefix with * suffix allowed, e.g. "sec/*").'
+  },
   { name: "config", type: "string", value: "<file>", description: "Path to relivaro.config.json." },
-  { name: "workspace", type: "string", value: "<dir>", description: "Where run data is stored (default: <project>/.relivaro). Use it to keep the analysed repository untouched." },
-  { name: "baseline", type: "string", value: "<file>", description: `Baseline file (default: ${BASELINE_FILE} if present).` },
+  {
+    name: "workspace",
+    type: "string",
+    value: "<dir>",
+    description: "Where run data is stored (default: <project>/.relivaro). Use it to keep the analysed repository untouched."
+  },
+  {
+    name: "baseline",
+    type: "string",
+    value: "<file>",
+    description: `Baseline file (default: ${BASELINE_FILE} if present).`
+  },
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
   { name: "no-write", type: "boolean", description: "Do not write run data or reports (stdout only)." },
-  { name: "max-findings", type: "number", value: "<n>", description: "Findings printed to the terminal.", default: 15 }
+  {
+    name: "max-findings",
+    type: "number",
+    value: "<n>",
+    description: "Findings printed to the terminal.",
+    default: 15
+  }
 ];
 function rootArg(p) {
   const r = resolve3(p.positionals[0] ?? ".");
@@ -21501,17 +24002,29 @@ async function analysisCommand(p, out2, cfg) {
   if (cfg.release) run2.release = assessRelease(run2, config, benchSnapshots(workspace));
   clearProgress();
   const formats = p.opts.format ?? ["json", "md", "html"];
-  const files = p.opts["no-write"] ? {} : writeReports(workspace, run2, Array.isArray(formats) ? formats : String(formats).split(","), p.opts.out);
+  const files = p.opts["no-write"] ? {} : writeReports(
+    workspace,
+    run2,
+    Array.isArray(formats) ? formats : String(formats).split(","),
+    p.opts.out
+  );
   if (out2.json) out2.print(JSON.stringify(run2, null, 2));
   else printRunSummary(out2, run2, files, Number(p.opts["max-findings"] ?? 15));
   const failOn = p.opts["fail-on"] ?? config.failOn;
   if (cfg.release && run2.release) {
     if (run2.release.status === "not-ready") return EXIT.GATE_FAILED;
-    if (p.opts.strict && run2.release.status !== "ready" && run2.release.status !== "ready-with-warnings") return EXIT.GATE_FAILED;
+    if (p.opts.strict && run2.release.status !== "ready" && run2.release.status !== "ready-with-warnings")
+      return EXIT.GATE_FAILED;
   }
   return gateFailed(run2, failOn) ? EXIT.GATE_FAILED : EXIT.OK;
 }
-var categoryOpt = { name: "category", type: "list", value: "<list>", choices: CATEGORIES, description: `Restrict to categories: ${CATEGORIES.join(", ")}.` };
+var categoryOpt = {
+  name: "category",
+  type: "list",
+  value: "<list>",
+  choices: CATEGORIES,
+  description: `Restrict to categories: ${CATEGORIES.join(", ")}.`
+};
 function analysis(name2, summary, description, categories, checks, extra = [], release = false) {
   return {
     spec: {
@@ -21521,41 +24034,100 @@ function analysis(name2, summary, description, categories, checks, extra = [], r
       description,
       positionals: ["path"],
       options: [...name2 === "audit" ? [categoryOpt] : [], ...ANALYSIS_OPTS, ...extra],
-      examples: [`relivaro ${name2}`, `relivaro ${name2} ../my-app --online --format sarif --out reports`, `relivaro ${name2} . --allow-exec --fail-on high`]
+      examples: [
+        `relivaro ${name2}`,
+        `relivaro ${name2} ../my-app --online --format sarif --out reports`,
+        `relivaro ${name2} . --allow-exec --fail-on high`
+      ]
     },
     run: (p, out2) => analysisCommand(p, out2, { command: name2, categories, checks, release })
   };
 }
 var discoverCmd = {
-  spec: { name: "discover", summary: "Show what Relivaro understands about a project", usage: "relivaro discover [path] [--json]", positionals: ["path"], options: [{ name: "no-git", type: "boolean", description: "Do not use git to list files." }] },
+  spec: {
+    name: "discover",
+    summary: "Show what Relivaro understands about a project",
+    usage: "relivaro discover [path] [--json]",
+    positionals: ["path"],
+    options: [{ name: "no-git", type: "boolean", description: "Do not use git to list files." }]
+  },
   async run(p, out2) {
     const { FileSet: FileSet2 } = await Promise.resolve().then(() => (init_files(), files_exports));
     const { discover: discover2 } = await Promise.resolve().then(() => (init_discover(), discover_exports));
     const root = rootArg(p);
     const { config } = loadConfig(root);
-    const files = new FileSet2(root, { include: config.include, exclude: config.exclude, useGit: p.opts["no-git"] ? false : void 0 });
+    const files = new FileSet2(root, {
+      include: config.include,
+      exclude: config.exclude,
+      useGit: p.opts["no-git"] ? false : void 0
+    });
     const profile = discover2(files);
     if (out2.json) {
-      out2.print(JSON.stringify({ ...profile, manifests: profile.manifests.map((m) => ({ ...m, deps: m.deps.length })), lockfiles: profile.lockfiles.map((l) => ({ file: l.file, ecosystem: l.ecosystem, packages: l.packages.length })) }, null, 2));
+      out2.print(
+        JSON.stringify(
+          {
+            ...profile,
+            manifests: profile.manifests.map((m) => ({ ...m, deps: m.deps.length })),
+            lockfiles: profile.lockfiles.map((l) => ({
+              file: l.file,
+              ecosystem: l.ecosystem,
+              packages: l.packages.length
+            }))
+          },
+          null,
+          2
+        )
+      );
       return EXIT.OK;
     }
     const on = out2.color;
-    out2.print(paint(on, "bold", `${profile.name}`) + paint(on, "gray", ` \u2014 ${profile.stats.files} files${profile.gitRepo ? ", git" : ""}${profile.monorepo ? ", monorepo" : ""}`));
-    out2.print(`Languages: ${profile.languages.slice(0, 10).map((l) => `${l.name} ${l.files}f/${l.lines}l`).join(", ")}`);
+    out2.print(
+      paint(on, "bold", `${profile.name}`) + paint(
+        on,
+        "gray",
+        ` \u2014 ${profile.stats.files} files${profile.gitRepo ? ", git" : ""}${profile.monorepo ? ", monorepo" : ""}`
+      )
+    );
+    out2.print(
+      `Languages: ${profile.languages.slice(0, 10).map((l) => `${l.name} ${l.files}f/${l.lines}l`).join(", ")}`
+    );
     out2.print("Units:");
-    for (const u of profile.units) out2.print(`  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(", ") || "-"}${u.packageManager ? paint(on, "gray", ` (${u.packageManager})`) : ""}${paint(on, "gray", ` ${u.sourceFiles} src / ${u.testFiles} test`)}`);
+    for (const u of profile.units)
+      out2.print(
+        `  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(", ") || "-"}${u.packageManager ? paint(on, "gray", ` (${u.packageManager})`) : ""}${paint(on, "gray", ` ${u.sourceFiles} src / ${u.testFiles} test`)}`
+      );
     const byKind = /* @__PURE__ */ new Map();
-    for (const t2 of profile.technologies) byKind.set(t2.kind, [.../* @__PURE__ */ new Set([...byKind.get(t2.kind) ?? [], t2.name])]);
+    for (const t2 of profile.technologies)
+      byKind.set(t2.kind, [.../* @__PURE__ */ new Set([...byKind.get(t2.kind) ?? [], t2.name])]);
     for (const [k, v] of byKind) out2.print(`${k.padEnd(14)} ${v.join(", ")}`);
-    out2.print(`CI:            ${profile.ci.map((c) => `${c.system} (${c.file}${c.runsTests ? ", tests" : ""})`).join("; ") || "none"}`);
-    out2.print(`Deploy:        ${profile.deploy.map((d) => `${d.kind} (${d.file})`).join("; ") || "none"}${profile.containers.dockerfiles.length ? `; Docker: ${profile.containers.dockerfiles.join(", ")}` : ""}`);
-    out2.print(`API:           ${profile.api.routes} routes in ${profile.api.routeFiles.length} files${profile.api.specs.length ? `; specs: ${profile.api.specs.join(", ")}` : ""}`);
-    out2.print(`Tests:         ${profile.tests.testFiles} test files (${profile.tests.frameworks.join(", ") || "no framework detected"})${profile.tests.e2e.length ? `; e2e: ${profile.tests.e2e.length}` : ""}`);
-    out2.print(`Env vars:      ${profile.envVars.length} read by code; templates: ${profile.envTemplates.join(", ") || "none"}`);
+    out2.print(
+      `CI:            ${profile.ci.map((c) => `${c.system} (${c.file}${c.runsTests ? ", tests" : ""})`).join("; ") || "none"}`
+    );
+    out2.print(
+      `Deploy:        ${profile.deploy.map((d) => `${d.kind} (${d.file})`).join("; ") || "none"}${profile.containers.dockerfiles.length ? `; Docker: ${profile.containers.dockerfiles.join(", ")}` : ""}`
+    );
+    out2.print(
+      `API:           ${profile.api.routes} routes in ${profile.api.routeFiles.length} files${profile.api.specs.length ? `; specs: ${profile.api.specs.join(", ")}` : ""}`
+    );
+    out2.print(
+      `Tests:         ${profile.tests.testFiles} test files (${profile.tests.frameworks.join(", ") || "no framework detected"})${profile.tests.e2e.length ? `; e2e: ${profile.tests.e2e.length}` : ""}`
+    );
+    out2.print(
+      `Env vars:      ${profile.envVars.length} read by code; templates: ${profile.envTemplates.join(", ") || "none"}`
+    );
     const undocumented = profile.envVars.filter((v) => v.required && !v.documented);
-    if (undocumented.length) out2.print(paint(on, "yellow", `               undocumented required: ${undocumented.map((v) => v.name).slice(0, 20).join(", ")}`));
+    if (undocumented.length)
+      out2.print(
+        paint(
+          on,
+          "yellow",
+          `               undocumented required: ${undocumented.map((v) => v.name).slice(0, 20).join(", ")}`
+        )
+      );
     out2.print(`Migrations:    ${profile.migrations.length}`);
-    out2.print(`Docs:          ${[profile.docs.readme, profile.docs.license, profile.docs.changelog, profile.docs.contributing, profile.docs.security].filter(Boolean).join(", ") || "none"}`);
+    out2.print(
+      `Docs:          ${[profile.docs.readme, profile.docs.license, profile.docs.changelog, profile.docs.contributing, profile.docs.security].filter(Boolean).join(", ") || "none"}`
+    );
     return EXIT.OK;
   }
 };
@@ -21568,7 +24140,14 @@ var reportCmd = {
     options: [
       { name: "path", type: "string", value: "<dir>", description: "Project directory (default: .)." },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." },
-      { name: "format", type: "list", value: "<list>", choices: FORMATS, description: "Formats to write.", default: "md,html" },
+      {
+        name: "format",
+        type: "list",
+        value: "<list>",
+        choices: FORMATS,
+        description: "Formats to write.",
+        default: "md,html"
+      },
       { name: "out", type: "string", value: "<dir>", description: "Output directory." }
     ]
   },
@@ -21591,7 +24170,14 @@ var compareCmd = {
     options: [
       { name: "path", type: "string", value: "<dir>", description: "Project directory (default: .)." },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." },
-      { name: "fail-on", type: "string", value: "<severity>", choices: [...SEVERITIES, "none"], description: "Exit 1 if an introduced finding is at or above this severity, or a check regressed.", default: "none" }
+      {
+        name: "fail-on",
+        type: "string",
+        value: "<severity>",
+        choices: [...SEVERITIES, "none"],
+        description: "Exit 1 if an introduced finding is at or above this severity, or a check regressed.",
+        default: "none"
+      }
     ]
   },
   async run(p, out2) {
@@ -21603,17 +24189,26 @@ var compareCmd = {
     else {
       const on = out2.color;
       out2.print(`${paint(on, "bold", "Compare")} ${c.base.runId} \u2192 ${c.head.runId}`);
-      out2.print(`Open findings ${c.base.open} \u2192 ${c.head.open}: ${paint(on, "red", `+${c.introduced.length} introduced`)}, ${paint(on, "green", `-${c.resolved.length} resolved`)}, ${c.persisting} persisting`);
-      if (c.releaseChange) out2.print(`Release: ${c.releaseChange.from} (${c.releaseChange.scoreFrom}) \u2192 ${c.releaseChange.to} (${c.releaseChange.scoreTo})`);
+      out2.print(
+        `Open findings ${c.base.open} \u2192 ${c.head.open}: ${paint(on, "red", `+${c.introduced.length} introduced`)}, ${paint(on, "green", `-${c.resolved.length} resolved`)}, ${c.persisting} persisting`
+      );
+      if (c.releaseChange)
+        out2.print(
+          `Release: ${c.releaseChange.from} (${c.releaseChange.scoreFrom}) \u2192 ${c.releaseChange.to} (${c.releaseChange.scoreTo})`
+        );
       for (const r of c.checkRegressions) out2.print(paint(on, "red", `  regression: ${r}`));
       for (const r of c.checkImprovements) out2.print(paint(on, "green", `  improved: ${r}`));
       if (c.introduced.length) out2.print(paint(on, "bold", "\nIntroduced:"));
       for (const f of c.introduced.slice(0, 20)) out2.print(findingLine(on, f));
       if (c.resolved.length) out2.print(paint(on, "bold", "\nResolved:"));
-      for (const f of c.resolved.slice(0, 20)) out2.print(`  ${sevLabel(on, f.severity)} ${f.title} ${paint(on, "gray", f.location?.file ?? "")}`);
+      for (const f of c.resolved.slice(0, 20))
+        out2.print(`  ${sevLabel(on, f.severity)} ${f.title} ${paint(on, "gray", f.location?.file ?? "")}`);
     }
     const failOn = p.opts["fail-on"];
-    if (failOn !== "none" && (c.checkRegressions.length || c.introduced.some((f) => SEVERITIES.indexOf(f.severity) <= SEVERITIES.indexOf(failOn) && f.confidence !== "low"))) return EXIT.GATE_FAILED;
+    if (failOn !== "none" && (c.checkRegressions.length || c.introduced.some(
+      (f) => SEVERITIES.indexOf(f.severity) <= SEVERITIES.indexOf(failOn) && f.confidence !== "low"
+    )))
+      return EXIT.GATE_FAILED;
     return EXIT.OK;
   }
 };
@@ -21625,10 +24220,25 @@ var baselineCmd = {
     description: `Writes ${BASELINE_FILE} (fingerprints only, no code or secrets) to the project root. Commit it to share the baseline. Baseline findings remain visible in reports.`,
     positionals: ["path"],
     options: [
-      { name: "reason", type: "string", value: "<text>", description: "Justification stored with every entry." },
-      { name: "from", type: "string", value: "<run>", description: "Use findings of this stored run instead of running a new audit." },
+      {
+        name: "reason",
+        type: "string",
+        value: "<text>",
+        description: "Justification stored with every entry."
+      },
+      {
+        name: "from",
+        type: "string",
+        value: "<run>",
+        description: "Use findings of this stored run instead of running a new audit."
+      },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." },
-      { name: "output", type: "string", value: "<file>", description: `Baseline file path (default: <path>/${BASELINE_FILE}).` }
+      {
+        name: "output",
+        type: "string",
+        value: "<file>",
+        description: `Baseline file path (default: <path>/${BASELINE_FILE}).`
+      }
     ]
   },
   async run(p, out2) {
@@ -21637,9 +24247,25 @@ var baselineCmd = {
     if (p.opts.from) {
       const ws = new Workspace(root, p.opts.workspace);
       run2 = ws.readJson(["runs", ws.resolveRun(p.opts.from), "run.json"]);
-    } else run2 = (await runAudit({ root, command: "baseline", baseline: false, noWrite: true, onProgress: out2.progress })).run;
+    } else
+      run2 = (await runAudit({
+        root,
+        command: "baseline",
+        baseline: false,
+        noWrite: true,
+        onProgress: out2.progress
+      })).run;
     clearProgress();
-    const b = { schemaVersion: 1, createdAt: (/* @__PURE__ */ new Date()).toISOString(), fingerprints: run2.findings.filter((f) => f.status !== "suppressed").map((f) => ({ fingerprint: f.fingerprint, ruleId: f.ruleId, file: f.location?.file, reason: p.opts.reason })) };
+    const b = {
+      schemaVersion: 1,
+      createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+      fingerprints: run2.findings.filter((f) => f.status !== "suppressed").map((f) => ({
+        fingerprint: f.fingerprint,
+        ruleId: f.ruleId,
+        file: f.location?.file,
+        reason: p.opts.reason
+      }))
+    };
     const file = resolve3(p.opts.output ?? join9(root, BASELINE_FILE));
     atomicWrite(file, `${JSON.stringify(b, null, 2)}
 `);
@@ -21673,25 +24299,60 @@ var fixCmd = {
       { name: "finding", type: "list", value: "<ids>", description: "plan/apply: only these finding ids." },
       { name: "rule", type: "list", value: "<ids>", description: "plan: only findings of these rules." },
       { name: "fixer", type: "list", value: "<ids>", description: "plan: only these fixers." },
-      { name: "include-review", type: "boolean", description: 'plan: include fixers that intentionally change behaviour (marked "review").', default: true },
+      {
+        name: "include-review",
+        type: "boolean",
+        description: 'plan: include fixers that intentionally change behaviour (marked "review").',
+        default: true
+      },
       { name: "yes", type: "boolean", short: "y", description: "apply: confirm modifying the working tree." },
-      { name: "verify", type: "string", value: "<command>", description: 'apply: command that must pass after the fix (e.g. "npm test").' },
+      {
+        name: "verify",
+        type: "string",
+        value: "<command>",
+        description: 'apply: command that must pass after the fix (e.g. "npm test").'
+      },
       { name: "allow-exec", type: "boolean", description: "apply: allow running the verification command." },
-      { name: "no-isolate", type: "boolean", description: "apply: run verification in the working tree (auto-rollback on failure) instead of a temporary copy." },
-      { name: "force", type: "boolean", description: "rollback: restore backups even if files changed after the fix." },
-      { name: "path", type: "string", value: "<dir>", description: "Project directory for show/apply/rollback/history (default: .)." },
+      {
+        name: "no-isolate",
+        type: "boolean",
+        description: "apply: run verification in the working tree (auto-rollback on failure) instead of a temporary copy."
+      },
+      {
+        name: "force",
+        type: "boolean",
+        description: "rollback: restore backups even if files changed after the fix."
+      },
+      {
+        name: "path",
+        type: "string",
+        value: "<dir>",
+        description: "Project directory for show/apply/rollback/history (default: .)."
+      },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." }
     ],
-    examples: ["relivaro fix plan", "relivaro fix show latest", 'relivaro fix apply latest --yes --verify "npm test" --allow-exec', "relivaro fix rollback latest"]
+    examples: [
+      "relivaro fix plan",
+      "relivaro fix show latest",
+      'relivaro fix apply latest --yes --verify "npm test" --allow-exec',
+      "relivaro fix rollback latest"
+    ]
   },
   async run(p, out2) {
     const sub = p.positionals[0];
     const arg = p.positionals[1];
     const on = out2.color;
-    const projectDir = resolve3(p.opts.path ?? (sub === "list" || sub === "plan" ? arg ?? "." : "."));
+    const projectDir = resolve3(
+      p.opts.path ?? (sub === "list" || sub === "plan" ? arg ?? "." : ".")
+    );
     const ws = new Workspace(projectDir, p.opts.workspace);
     if (sub === "list" || sub === "plan") {
-      const { run: run2 } = await runAudit({ root: projectDir, command: `fix ${sub}`, noWrite: true, onProgress: out2.progress });
+      const { run: run2 } = await runAudit({
+        root: projectDir,
+        command: `fix ${sub}`,
+        noWrite: true,
+        onProgress: out2.progress
+      });
       clearProgress();
       let fixable = run2.findings.filter((f) => f.status === "open" && f.fixer && findFixer(f.fixer));
       const fids = p.opts.finding;
@@ -21700,13 +24361,31 @@ var fixCmd = {
       if (fids?.length) fixable = fixable.filter((f) => fids.includes(f.id));
       if (rules?.length) fixable = fixable.filter((f) => rules.includes(f.ruleId));
       if (fixers?.length) fixable = fixable.filter((f) => fixers.includes(f.fixer));
-      if (p.opts["include-review"] === false) fixable = fixable.filter((f) => findFixer(f.fixer).safety === "safe");
+      if (p.opts["include-review"] === false)
+        fixable = fixable.filter((f) => findFixer(f.fixer).safety === "safe");
       if (sub === "list") {
-        if (out2.json) out2.print(JSON.stringify(fixable.map((f) => ({ id: f.id, ruleId: f.ruleId, fixer: f.fixer, safety: findFixer(f.fixer).safety, location: f.location, message: f.message })), null, 2));
+        if (out2.json)
+          out2.print(
+            JSON.stringify(
+              fixable.map((f) => ({
+                id: f.id,
+                ruleId: f.ruleId,
+                fixer: f.fixer,
+                safety: findFixer(f.fixer).safety,
+                location: f.location,
+                message: f.message
+              })),
+              null,
+              2
+            )
+          );
         else {
           out2.print(`${fixable.length} fixable finding(s):`);
-          for (const f of fixable) out2.print(`${findingLine(on, f)}
-         ${paint(on, "green", `fixer: ${f.fixer} (${findFixer(f.fixer).safety})`)}`);
+          for (const f of fixable)
+            out2.print(
+              `${findingLine(on, f)}
+         ${paint(on, "green", `fixer: ${f.fixer} (${findFixer(f.fixer).safety})`)}`
+            );
         }
         return EXIT.OK;
       }
@@ -21731,19 +24410,37 @@ var fixCmd = {
       const { config } = loadConfig(plan.root);
       const isolate = !p.opts["no-isolate"];
       const verify2 = p.opts.verify;
-      let rec = await applyPlan(ws, plan, { only: p.opts.finding, yes: !!p.opts.yes, verifyCommand: isolate ? verify2 : void 0, allowExec: !!p.opts["allow-exec"], isolate, timeoutSeconds: config.timeouts.commandSeconds, onProgress: out2.progress });
+      let rec = await applyPlan(ws, plan, {
+        only: p.opts.finding,
+        yes: !!p.opts.yes,
+        verifyCommand: isolate ? verify2 : void 0,
+        allowExec: !!p.opts["allow-exec"],
+        isolate,
+        timeoutSeconds: config.timeouts.commandSeconds,
+        onProgress: out2.progress
+      });
       if (!isolate && verify2) {
-        if (!p.opts["allow-exec"]) throw new RelivaroError("EXEC_NOT_ALLOWED", "Running a verification command requires --allow-exec.");
+        if (!p.opts["allow-exec"])
+          throw new RelivaroError(
+            "EXEC_NOT_ALLOWED",
+            "Running a verification command requires --allow-exec."
+          );
         rec = await verifyInPlace(ws, rec, verify2, config.timeouts.commandSeconds);
       }
       clearProgress();
       if (out2.json) out2.print(JSON.stringify(rec, null, 2));
       else {
-        out2.print(paint(on, "green", `Applied ${rec.items.length} fix(es) to ${rec.files.length} file(s).`) + ` Apply id: ${rec.applyId}`);
+        out2.print(
+          paint(on, "green", `Applied ${rec.items.length} fix(es) to ${rec.files.length} file(s).`) + ` Apply id: ${rec.applyId}`
+        );
         for (const f of rec.files) out2.print(`  ${f.path}`);
         const v = rec.verification;
-        out2.print(`Verification: ${v.verdict}${v.command ? ` \u2014 \`${v.command.command}\` exit ${v.command.after.exitCode}${v.command.isolated ? " (isolated copy)" : ""}${v.command.before ? `, before fix exit ${v.command.before.exitCode}` : ""}` : ""}`);
-        out2.print(`  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}`);
+        out2.print(
+          `Verification: ${v.verdict}${v.command ? ` \u2014 \`${v.command.command}\` exit ${v.command.after.exitCode}${v.command.isolated ? " (isolated copy)" : ""}${v.command.before ? `, before fix exit ${v.command.before.exitCode}` : ""}` : ""}`
+        );
+        out2.print(
+          `  resolved: ${v.static.resolved.length}, still present: ${v.static.unresolved.length}, introduced: ${v.static.introduced.length}`
+        );
         for (const n of v.notes) out2.print(paint(on, "gray", `  ${n}`));
         out2.print(`Roll back with: relivaro fix rollback ${rec.applyId}`);
       }
@@ -21759,20 +24456,36 @@ var fixCmd = {
       const h = history(ws);
       if (out2.json) out2.print(JSON.stringify(h, null, 2));
       else if (!h.length) out2.print("No fixes applied yet.");
-      else for (const r of h) out2.print(`${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.rolledBackAt ? paint(on, "yellow", `, rolled back ${r.rolledBackAt}`) : ""}`);
+      else
+        for (const r of h)
+          out2.print(
+            `${r.applyId}  ${r.appliedAt}  ${r.items.length} fix(es), ${r.files.length} file(s), verification ${r.verification.verdict}${r.rolledBackAt ? paint(on, "yellow", `, rolled back ${r.rolledBackAt}`) : ""}`
+          );
       return EXIT.OK;
     }
-    throw new RelivaroError("USAGE", `Unknown fix subcommand "${sub ?? ""}".`, "Use one of: list, plan, show, apply, rollback, history.");
+    throw new RelivaroError(
+      "USAGE",
+      `Unknown fix subcommand "${sub ?? ""}".`,
+      "Use one of: list, plan, show, apply, rollback, history."
+    );
   }
 };
 function printPlan(out2, plan) {
   const on = out2.color;
-  out2.print(`${paint(on, "bold", `Fix plan ${plan.planId}`)}: ${plan.items.length} fix(es) in ${plan.files.length} file(s)`);
-  for (const i2 of plan.items) out2.print(`  ${i2.safety === "safe" ? paint(on, "green", "safe  ") : paint(on, "yellow", "review")} ${i2.findingId} ${i2.title} \u2014 ${i2.file}${i2.line ? `:${i2.line}` : ""}`);
+  out2.print(
+    `${paint(on, "bold", `Fix plan ${plan.planId}`)}: ${plan.items.length} fix(es) in ${plan.files.length} file(s)`
+  );
+  for (const i2 of plan.items)
+    out2.print(
+      `  ${i2.safety === "safe" ? paint(on, "green", "safe  ") : paint(on, "yellow", "review")} ${i2.findingId} ${i2.title} \u2014 ${i2.file}${i2.line ? `:${i2.line}` : ""}`
+    );
   for (const s of plan.skipped) out2.print(paint(on, "gray", `  skipped ${s.findingId}: ${s.reason}`));
   for (const f of plan.files) {
     out2.print("");
-    for (const l of f.diff.trimEnd().split("\n")) out2.print(l.startsWith("+") && !l.startsWith("+++") ? paint(on, "green", l) : l.startsWith("-") && !l.startsWith("---") ? paint(on, "red", l) : l.startsWith("@@") ? paint(on, "cyan", l) : l);
+    for (const l of f.diff.trimEnd().split("\n"))
+      out2.print(
+        l.startsWith("+") && !l.startsWith("+++") ? paint(on, "green", l) : l.startsWith("-") && !l.startsWith("---") ? paint(on, "red", l) : l.startsWith("@@") ? paint(on, "cyan", l) : l
+      );
   }
   out2.print("");
   out2.print(`Apply with: relivaro fix apply ${plan.planId} --yes [--verify "<test command>" --allow-exec]`);
@@ -21786,14 +24499,22 @@ var benchCmd = {
     positionals: ["path"],
     options: [
       { name: "cmd", type: "string", value: "<command>", description: "Command to measure (required)." },
-      { name: "name", type: "string", value: "<name>", description: "Benchmark name (default: derived from the command)." },
+      {
+        name: "name",
+        type: "string",
+        value: "<name>",
+        description: "Benchmark name (default: derived from the command)."
+      },
       { name: "runs", type: "number", value: "<n>", description: "Measured runs.", default: 10 },
       { name: "warmup", type: "number", value: "<n>", description: "Unmeasured warm-up runs.", default: 1 },
       { name: "save-baseline", type: "boolean", description: "Store this result as the new baseline." },
       { name: "allow-exec", type: "boolean", description: "Required: the command runs project code." },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." }
     ],
-    examples: ['relivaro bench --cmd "npm run build" --name build --runs 5 --allow-exec --save-baseline', 'relivaro bench --cmd "npm run build" --name build --runs 5 --allow-exec']
+    examples: [
+      'relivaro bench --cmd "npm run build" --name build --runs 5 --allow-exec --save-baseline',
+      'relivaro bench --cmd "npm run build" --name build --runs 5 --allow-exec'
+    ]
   },
   async run(p, out2) {
     const root = rootArg(p);
@@ -21802,7 +24523,16 @@ var benchCmd = {
     const { config } = loadConfig(root);
     const name2 = p.opts.name ?? cmd.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40);
     const ws = new Workspace(root, p.opts.workspace);
-    const res = await benchCommand({ name: name2, command: cmd, cwd: root, runs: Number(p.opts.runs), warmup: Number(p.opts.warmup), allowExec: !!p.opts["allow-exec"], timeoutSeconds: config.timeouts.commandSeconds, onProgress: out2.progress });
+    const res = await benchCommand({
+      name: name2,
+      command: cmd,
+      cwd: root,
+      runs: Number(p.opts.runs),
+      warmup: Number(p.opts.warmup),
+      allowExec: !!p.opts["allow-exec"],
+      timeoutSeconds: config.timeouts.commandSeconds,
+      onProgress: out2.progress
+    });
     clearProgress();
     const base = loadBaseline(ws, name2);
     if (base) res.comparison = compareStats(base.stats, res.stats);
@@ -21811,12 +24541,18 @@ var benchCmd = {
     else {
       const s = res.stats;
       out2.print(`${paint(out2.color, "bold", name2)}: \`${res.command}\` \xD7 ${s.n} (warm-up ${res.warmup})`);
-      out2.print(`  mean ${s.meanMs.toFixed(1)} ms \xB7 median ${s.medianMs.toFixed(1)} \xB7 p95 ${s.p95Ms.toFixed(1)} \xB7 min ${s.minMs.toFixed(1)} \xB7 max ${s.maxMs.toFixed(1)} \xB7 \u03C3 ${s.stddevMs.toFixed(1)}`);
-      if (res.comparison) out2.print(`  vs baseline: ${res.comparison.changePct > 0 ? "+" : ""}${res.comparison.changePct}% (${res.comparison.verdict})`);
+      out2.print(
+        `  mean ${s.meanMs.toFixed(1)} ms \xB7 median ${s.medianMs.toFixed(1)} \xB7 p95 ${s.p95Ms.toFixed(1)} \xB7 min ${s.minMs.toFixed(1)} \xB7 max ${s.maxMs.toFixed(1)} \xB7 \u03C3 ${s.stddevMs.toFixed(1)}`
+      );
+      if (res.comparison)
+        out2.print(
+          `  vs baseline: ${res.comparison.changePct > 0 ? "+" : ""}${res.comparison.changePct}% (${res.comparison.verdict})`
+        );
       if (saved.baseline) out2.print(paint(out2.color, "gray", `  baseline saved: ${saved.baseline}`));
     }
     const budget = config.performance.budgets[name2];
-    if (budget?.maxRegressionPct !== void 0 && res.comparison?.significant && res.comparison.changePct > budget.maxRegressionPct) return EXIT.GATE_FAILED;
+    if (budget?.maxRegressionPct !== void 0 && res.comparison?.significant && res.comparison.changePct > budget.maxRegressionPct)
+      return EXIT.GATE_FAILED;
     if (budget?.meanMs !== void 0 && res.stats.meanMs > budget.meanMs) return EXIT.GATE_FAILED;
     if (budget?.p95Ms !== void 0 && res.stats.p95Ms > budget.p95Ms) return EXIT.GATE_FAILED;
     return EXIT.OK;
@@ -21830,17 +24566,43 @@ var loadCmd = {
     description: "Sends requests with bounded concurrency for a fixed duration and reports throughput, latency percentiles, status codes and error rate. Targets must resolve to loopback/private addresses (public hosts are refused unless --allow-remote, and hard caps always apply: 64 concurrent, 120 s, 200k requests). Never point this at production.",
     positionals: ["url"],
     options: [
-      { name: "duration", type: "number", value: "<sec>", description: "Test duration in seconds.", default: 10 },
-      { name: "concurrency", type: "number", value: "<n>", description: "Concurrent connections.", default: 10 },
+      {
+        name: "duration",
+        type: "number",
+        value: "<sec>",
+        description: "Test duration in seconds.",
+        default: 10
+      },
+      {
+        name: "concurrency",
+        type: "number",
+        value: "<n>",
+        description: "Concurrent connections.",
+        default: 10
+      },
       { name: "requests", type: "number", value: "<n>", description: "Stop after this many requests." },
       { name: "method", type: "string", value: "<method>", description: "HTTP method.", default: "GET" },
-      { name: "header", type: "list", value: '<"K: V">', description: "Request header (repeatable; commas are not split for this option)." },
+      {
+        name: "header",
+        type: "list",
+        value: '<"K: V">',
+        description: "Request header (repeatable; commas are not split for this option)."
+      },
       { name: "body", type: "string", value: "<text>", description: "Request body." },
       { name: "timeout", type: "number", value: "<ms>", description: "Per-request timeout.", default: 1e4 },
       { name: "name", type: "string", value: "<name>", description: "Result name for baselines/budgets." },
       { name: "save-baseline", type: "boolean", description: "Store this result as the new baseline." },
-      { name: "allow-remote", type: "boolean", description: "Allow non-private targets you are authorized to test (caps still apply)." },
-      { name: "path", type: "string", value: "<dir>", description: "Project directory for storing results (default: .)." },
+      {
+        name: "allow-remote",
+        type: "boolean",
+        description: "Allow non-private targets you are authorized to test (caps still apply)."
+      },
+      {
+        name: "path",
+        type: "string",
+        value: "<dir>",
+        description: "Project directory for storing results (default: .)."
+      },
       { name: "workspace", type: "string", value: "<dir>", description: "Workspace directory." }
     ],
     examples: ["relivaro load http://localhost:3000/api/health --duration 15 --concurrency 20 --name health"]
@@ -21856,7 +24618,19 @@ var loadCmd = {
     }
     const parsed = new URL(url);
     const name2 = p.opts.name ?? `${parsed.hostname}${parsed.pathname}`.replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const res = await loadTest({ name: name2, url, method: String(p.opts.method).toUpperCase(), headers, body: p.opts.body, concurrency: Number(p.opts.concurrency), durationSec: Number(p.opts.duration), maxRequests: p.opts.requests, timeoutMs: Number(p.opts.timeout), allowRemote: !!p.opts["allow-remote"], onProgress: out2.progress });
+    const res = await loadTest({
+      name: name2,
+      url,
+      method: String(p.opts.method).toUpperCase(),
+      headers,
+      body: p.opts.body,
+      concurrency: Number(p.opts.concurrency),
+      durationSec: Number(p.opts.duration),
+      maxRequests: p.opts.requests,
+      timeoutMs: Number(p.opts.timeout),
+      allowRemote: !!p.opts["allow-remote"],
+      onProgress: out2.progress
+    });
     clearProgress();
     const projectDir = resolve3(p.opts.path ?? ".");
     const ws = new Workspace(projectDir, p.opts.workspace);
@@ -21866,15 +24640,27 @@ var loadCmd = {
     if (out2.json) out2.print(JSON.stringify({ ...res, files: saved }, null, 2));
     else {
       const s = res.stats;
-      out2.print(`${paint(out2.color, "bold", name2)}: ${res.method} ${res.url} \u2014 ${res.requests} requests in ${res.durationSec}s at concurrency ${res.concurrency}`);
-      out2.print(`  throughput ${res.throughputRps} req/s \xB7 errors ${res.errors} (${(res.errorRate * 100).toFixed(2)}%) \xB7 status ${Object.entries(res.statusCodes).map(([k, v]) => `${k}:${v}`).join(" ")}`);
-      out2.print(`  latency mean ${s.meanMs} ms \xB7 p50 ${s.medianMs} \xB7 p90 ${s.p90Ms} \xB7 p95 ${s.p95Ms} \xB7 p99 ${s.p99Ms} \xB7 max ${s.maxMs}`);
-      if (res.comparison) out2.print(`  vs baseline: ${res.comparison.changePct > 0 ? "+" : ""}${res.comparison.changePct}% mean latency (${res.comparison.verdict})`);
+      out2.print(
+        `${paint(out2.color, "bold", name2)}: ${res.method} ${res.url} \u2014 ${res.requests} requests in ${res.durationSec}s at concurrency ${res.concurrency}`
+      );
+      out2.print(
+        `  throughput ${res.throughputRps} req/s \xB7 errors ${res.errors} (${(res.errorRate * 100).toFixed(2)}%) \xB7 status ${Object.entries(
+          res.statusCodes
+        ).map(([k, v]) => `${k}:${v}`).join(" ")}`
+      );
+      out2.print(
+        `  latency mean ${s.meanMs} ms \xB7 p50 ${s.medianMs} \xB7 p90 ${s.p90Ms} \xB7 p95 ${s.p95Ms} \xB7 p99 ${s.p99Ms} \xB7 max ${s.maxMs}`
+      );
+      if (res.comparison)
+        out2.print(
+          `  vs baseline: ${res.comparison.changePct > 0 ? "+" : ""}${res.comparison.changePct}% mean latency (${res.comparison.verdict})`
+        );
       for (const l of res.limitedBy) out2.print(paint(out2.color, "yellow", `  limit: ${l}`));
     }
     const { config } = loadConfig(projectDir);
     const b = config.performance.budgets[name2];
-    if (b && (b.p95Ms !== void 0 && res.stats.p95Ms > b.p95Ms || b.errorRate !== void 0 && res.errorRate > b.errorRate || b.meanMs !== void 0 && res.stats.meanMs > b.meanMs)) return EXIT.GATE_FAILED;
+    if (b && (b.p95Ms !== void 0 && res.stats.p95Ms > b.p95Ms || b.errorRate !== void 0 && res.errorRate > b.errorRate || b.meanMs !== void 0 && res.stats.meanMs > b.meanMs))
+      return EXIT.GATE_FAILED;
     return EXIT.OK;
   }
 };
@@ -21885,8 +24671,18 @@ var contractCmd = {
     usage: "relivaro contract <validate|diff> <spec> [other-spec] [--base <git-ref>]",
     description: "validate <spec>: structural checks (versions, unresolved $refs, undeclared path parameters, duplicate operationIds, undefined security schemes).\ndiff <old> <new> | diff <spec> --base <git-ref>: classifies changes as breaking or compatible (removed endpoints/responses, new required parameters, type changes, removed response properties, narrowed enums).",
     positionals: ["subcommand", "spec", "other"],
-    options: [{ name: "base", type: "string", value: "<git-ref>", description: "diff: compare <spec> with its version at this git ref." }],
-    examples: ["relivaro contract validate openapi.yaml", "relivaro contract diff openapi.yaml --base origin/main"]
+    options: [
+      {
+        name: "base",
+        type: "string",
+        value: "<git-ref>",
+        description: "diff: compare <spec> with its version at this git ref."
+      }
+    ],
+    examples: [
+      "relivaro contract validate openapi.yaml",
+      "relivaro contract diff openapi.yaml --base origin/main"
+    ]
   },
   async run(p, out2) {
     const [sub, a, b] = p.positionals;
@@ -21900,7 +24696,10 @@ var contractCmd = {
       if (out2.json) out2.print(JSON.stringify({ spec: a, issues }, null, 2));
       else {
         out2.print(issues.length ? `${issues.length} issue(s) in ${a}:` : `${a}: valid.`);
-        for (const i2 of issues) out2.print(`  ${i2.severity === "error" ? paint(out2.color, "red", "error  ") : paint(out2.color, "yellow", "warning")} ${i2.path}: ${i2.message}`);
+        for (const i2 of issues)
+          out2.print(
+            `  ${i2.severity === "error" ? paint(out2.color, "red", "error  ") : paint(out2.color, "yellow", "warning")} ${i2.path}: ${i2.message}`
+          );
       }
       return issues.some((i2) => i2.severity === "error") ? EXIT.GATE_FAILED : EXIT.OK;
     }
@@ -21914,7 +24713,8 @@ var contractCmd = {
         if (!top) throw new RelivaroError("USAGE", "--base requires the spec to be inside a git repository.");
         const rel = absA.slice(top.length + 1).replace(/\\/g, "/");
         const ref = String(p.opts.base);
-        if (!/^[\w./@^~-]+$/.test(ref) || ref.startsWith("-")) throw new RelivaroError("USAGE", `Invalid git ref "${ref}".`);
+        if (!/^[\w./@^~-]+$/.test(ref) || ref.startsWith("-"))
+          throw new RelivaroError("USAGE", `Invalid git ref "${ref}".`);
         const text = runGit(top, ["show", `${ref}:${rel}`]);
         if (text === null) throw new RelivaroError("NOT_FOUND", `${rel} does not exist at ${ref}.`);
         oldDoc = loadSpec(text, `${ref}:${rel}`);
@@ -21926,10 +24726,14 @@ var contractCmd = {
       }
       const changes = diffSpecs(oldDoc, newDoc);
       const breaking = changes.filter((c) => c.breaking);
-      if (out2.json) out2.print(JSON.stringify({ breaking, compatible: changes.filter((c) => !c.breaking) }, null, 2));
+      if (out2.json)
+        out2.print(JSON.stringify({ breaking, compatible: changes.filter((c) => !c.breaking) }, null, 2));
       else {
         out2.print(`${breaking.length} breaking, ${changes.length - breaking.length} compatible change(s).`);
-        for (const c of changes) out2.print(`  ${c.breaking ? paint(out2.color, "red", "BREAKING  ") : paint(out2.color, "green", "compatible")} ${c.location}: ${c.message}`);
+        for (const c of changes)
+          out2.print(
+            `  ${c.breaking ? paint(out2.color, "red", "BREAKING  ") : paint(out2.color, "green", "compatible")} ${c.location}: ${c.message}`
+          );
       }
       return breaking.length ? EXIT.GATE_FAILED : EXIT.OK;
     }
@@ -21952,21 +24756,45 @@ var rulesCmd = {
       if (out2.json) out2.print(JSON.stringify({ ...r, check: void 0, appliesTo: void 0 }, null, 2));
       else {
         out2.print(`${paint(out2.color, "bold", r.id)} \u2014 ${r.title}`);
-        out2.print(`${r.category} \xB7 default severity ${r.severity} \xB7 confidence ${r.confidence}${r.fixer ? ` \xB7 fixer ${r.fixer}` : ""}`);
+        out2.print(
+          `${r.category} \xB7 default severity ${r.severity} \xB7 confidence ${r.confidence}${r.fixer ? ` \xB7 fixer ${r.fixer}` : ""}`
+        );
         if (r.cwe?.length || r.owasp?.length) out2.print([...r.cwe ?? [], ...r.owasp ?? []].join(", "));
-        out2.print(`
+        out2.print(
+          `
 ${r.description}
 
 Impact: ${r.impact}
 Fix: ${r.recommendation}
-Verify: ${r.verification}`);
+Verify: ${r.verification}`
+        );
       }
       return EXIT.OK;
     }
     const cats = p.opts.category;
     const rules = allRuleMeta().filter((r) => !cats?.length || cats.includes(r.category));
-    if (out2.json) out2.print(JSON.stringify(rules.map((r) => ({ id: r.id, title: r.title, category: r.category, severity: r.severity, confidence: r.confidence, cwe: r.cwe, owasp: r.owasp, fixer: r.fixer })), null, 2));
-    else for (const r of rules) out2.print(`${r.id.padEnd(44)} ${r.severity.padEnd(8)} ${r.title}${r.fixer ? paint(out2.color, "green", " [fix]") : ""}`);
+    if (out2.json)
+      out2.print(
+        JSON.stringify(
+          rules.map((r) => ({
+            id: r.id,
+            title: r.title,
+            category: r.category,
+            severity: r.severity,
+            confidence: r.confidence,
+            cwe: r.cwe,
+            owasp: r.owasp,
+            fixer: r.fixer
+          })),
+          null,
+          2
+        )
+      );
+    else
+      for (const r of rules)
+        out2.print(
+          `${r.id.padEnd(44)} ${r.severity.padEnd(8)} ${r.title}${r.fixer ? paint(out2.color, "green", " [fix]") : ""}`
+        );
     return EXIT.OK;
   }
 };
@@ -21977,7 +24805,11 @@ var initCmd = {
     usage: "relivaro init [path] [--github-action] [--force]",
     positionals: ["path"],
     options: [
-      { name: "github-action", type: "boolean", description: "Also write .github/workflows/relivaro.yml (SARIF upload to code scanning)." },
+      {
+        name: "github-action",
+        type: "boolean",
+        description: "Also write .github/workflows/relivaro.yml (SARIF upload to code scanning)."
+      },
       { name: "force", type: "boolean", description: "Overwrite existing files." }
     ]
   },
@@ -21985,15 +24817,25 @@ var initCmd = {
     const root = rootArg(p);
     const written = [];
     const cfgFile = join9(root, "relivaro.config.json");
-    if (existsSync11(cfgFile) && !p.opts.force) throw new RelivaroError("USAGE", `${cfgFile} already exists (use --force to overwrite).`);
+    if (existsSync11(cfgFile) && !p.opts.force)
+      throw new RelivaroError("USAGE", `${cfgFile} already exists (use --force to overwrite).`);
     const d = defaultConfig();
-    const cfg = { $schema: "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/config.schema.json", exclude: [], rules: {}, failOn: "high", release: d.release, performance: d.performance, env: d.env };
+    const cfg = {
+      $schema: "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/config.schema.json",
+      exclude: [],
+      rules: {},
+      failOn: "high",
+      release: d.release,
+      performance: d.performance,
+      env: d.env
+    };
     atomicWrite(cfgFile, `${JSON.stringify(cfg, null, 2)}
 `);
     written.push(cfgFile);
     if (p.opts["github-action"]) {
       const wf = join9(root, ".github", "workflows", "relivaro.yml");
-      if (existsSync11(wf) && !p.opts.force) throw new RelivaroError("USAGE", `${wf} already exists (use --force to overwrite).`);
+      if (existsSync11(wf) && !p.opts.force)
+        throw new RelivaroError("USAGE", `${wf} already exists (use --force to overwrite).`);
       atomicWrite(wf, GITHUB_WORKFLOW);
       written.push(wf);
     }
@@ -22033,44 +24875,136 @@ jobs:
           sarif_file: relivaro-report/report.sarif
 `;
 var doctorCmd = {
-  spec: { name: "doctor", summary: "Check that Relivaro and optional toolchains work in this environment", usage: "relivaro doctor", options: [] },
+  spec: {
+    name: "doctor",
+    summary: "Check that Relivaro and optional toolchains work in this environment",
+    usage: "relivaro doctor",
+    options: []
+  },
   async run(_p, out2) {
     const checks = [];
     const major = Number(process.versions.node.split(".")[0]);
-    checks.push({ name: "Node.js", ok: major >= 22, detail: `${process.version} (requires >= 22)`, required: true });
+    checks.push({
+      name: "Node.js",
+      ok: major >= 22,
+      detail: `${process.version} (requires >= 22)`,
+      required: true
+    });
     for (const lang of ["javascript", "typescript", "tsx", "php", "python"]) {
       try {
-        const t2 = await parse(lang, lang === "php" ? "<?php echo 1;" : lang === "python" ? "x = 1" : "const x = 1;");
-        checks.push({ name: `parser:${lang}`, ok: !!t2 && !t2.rootNode.hasError, detail: "loaded", required: true });
+        const t2 = await parse(
+          lang,
+          lang === "php" ? "<?php echo 1;" : lang === "python" ? "x = 1" : "const x = 1;"
+        );
+        checks.push({
+          name: `parser:${lang}`,
+          ok: !!t2 && !t2.rootNode.hasError,
+          detail: "loaded",
+          required: true
+        });
         t2?.delete();
       } catch (e) {
         checks.push({ name: `parser:${lang}`, ok: false, detail: e.message, required: true });
       }
     }
-    for (const a of grammarAssets()) checks.push({ name: `asset:${a.name}`, ok: existsSync11(a.path), detail: a.path, required: true });
-    const tools = ["git", "npm", "pnpm", "yarn", "php", "composer", "python3", "pytest", "go", "cargo", "flutter", "dart"];
+    for (const a of grammarAssets())
+      checks.push({ name: `asset:${a.name}`, ok: existsSync11(a.path), detail: a.path, required: true });
+    const tools = [
+      "git",
+      "npm",
+      "pnpm",
+      "yarn",
+      "php",
+      "composer",
+      "python3",
+      "pytest",
+      "go",
+      "cargo",
+      "flutter",
+      "dart"
+    ];
     for (const t2 of tools) {
       const w = whichSync(t2);
-      checks.push({ name: t2, ok: !!w, detail: w ?? "not found (only needed for --allow-exec checks of that ecosystem)", required: t2 === "git" ? false : false });
+      checks.push({
+        name: t2,
+        ok: !!w,
+        detail: w ?? "not found (only needed for --allow-exec checks of that ecosystem)",
+        required: false
+      });
     }
     const failed = checks.filter((c) => c.required && !c.ok);
     if (out2.json) out2.print(JSON.stringify({ version: VERSION, checks, ok: !failed.length }, null, 2));
     else {
       out2.print(`Relivaro ${VERSION} on ${process.platform}/${process.arch}`);
-      for (const c of checks) out2.print(`  ${c.ok ? paint(out2.color, "green", "\u2714") : c.required ? paint(out2.color, "red", "\u2716") : paint(out2.color, "gray", "-")} ${c.name.padEnd(28)} ${paint(out2.color, "gray", c.detail)}`);
-      out2.print(failed.length ? paint(out2.color, "red", `${failed.length} required check(s) failed.`) : paint(out2.color, "green", "All required checks passed."));
+      for (const c of checks)
+        out2.print(
+          `  ${c.ok ? paint(out2.color, "green", "\u2714") : c.required ? paint(out2.color, "red", "\u2716") : paint(out2.color, "gray", "-")} ${c.name.padEnd(28)} ${paint(out2.color, "gray", c.detail)}`
+        );
+      out2.print(
+        failed.length ? paint(out2.color, "red", `${failed.length} required check(s) failed.`) : paint(out2.color, "green", "All required checks passed.")
+      );
     }
     return failed.length ? EXIT.RUNTIME : EXIT.OK;
   }
 };
 var COMMANDS = [
-  analysis("audit", "Complete engineering audit (security, supply chain, reliability, performance, quality, testing)", "Runs every rule category. With --allow-exec it also runs the project's type check and tests; with --online it checks dependencies against OSV.dev.", [...CATEGORIES], ["typecheck", "test"]),
-  analysis("security", "Security and supply-chain analysis", "Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, CORS, mass assignment, secrets, CI/CD and container hardening, dependency risks (OWASP Top 10:2025, API Security Top 10:2023, OpenSSF).", ["security", "supply-chain"], []),
-  analysis("performance", "Performance and scalability anti-patterns", 'N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handlers, catastrophic regex backtracking, missing indexes. Static findings are "suspected"; use `relivaro bench` and `relivaro load` for measurements.', ["performance"], []),
-  analysis("reliability", "Reliability and resilience analysis", "Timeouts, error handling, idempotency, race conditions, migrations, retries, graceful shutdown, health checks and monitoring.", ["reliability"], []),
-  analysis("quality", "Code quality analysis", "Debug leftovers, complexity, disabled type checking; with --allow-exec the type checker and linter.", ["quality"], ["typecheck", "lint"]),
-  analysis("test", "Test discovery, execution, coverage and untested-risk ranking", "Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail counts), reads existing coverage reports and ranks untested high-risk code.", ["testing", "quality"], ["test"]),
-  analysis("release", "Production-readiness assessment with explicit gates", "Runs all analyses plus build, tests, type check and lint (with --allow-exec), dependency vulnerabilities (with --online) and performance budgets, then reports blockers, warnings, passed and unverified gates. Exit code 1 when not ready.", [...CATEGORIES], ["build", "test", "typecheck", "lint"], [{ name: "strict", type: "boolean", description: "Also fail (exit 1) when critical gates are unverified." }], true),
+  analysis(
+    "audit",
+    "Complete engineering audit (security, supply chain, reliability, performance, quality, testing)",
+    "Runs every rule category. With --allow-exec it also runs the project's type check and tests; with --online it checks dependencies against OSV.dev.",
+    [...CATEGORIES],
+    ["typecheck", "test"]
+  ),
+  analysis(
+    "security",
+    "Security and supply-chain analysis",
+    "Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, CORS, mass assignment, secrets, CI/CD and container hardening, dependency risks (OWASP Top 10:2025, API Security Top 10:2023, OpenSSF).",
+    ["security", "supply-chain"],
+    []
+  ),
+  analysis(
+    "performance",
+    "Performance and scalability anti-patterns",
+    'N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handlers, catastrophic regex backtracking, missing indexes. Static findings are "suspected"; use `relivaro bench` and `relivaro load` for measurements.',
+    ["performance"],
+    []
+  ),
+  analysis(
+    "reliability",
+    "Reliability and resilience analysis",
+    "Timeouts, error handling, idempotency, race conditions, migrations, retries, graceful shutdown, health checks and monitoring.",
+    ["reliability"],
+    []
+  ),
+  analysis(
+    "quality",
+    "Code quality analysis",
+    "Debug leftovers, complexity, disabled type checking; with --allow-exec the type checker and linter.",
+    ["quality"],
+    ["typecheck", "lint"]
+  ),
+  analysis(
+    "test",
+    "Test discovery, execution, coverage and untested-risk ranking",
+    "Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail counts), reads existing coverage reports and ranks untested high-risk code.",
+    ["testing", "quality"],
+    ["test"]
+  ),
+  analysis(
+    "release",
+    "Production-readiness assessment with explicit gates",
+    "Runs all analyses plus build, tests, type check and lint (with --allow-exec), dependency vulnerabilities (with --online) and performance budgets, then reports blockers, warnings, passed and unverified gates. Exit code 1 when not ready.",
+    [...CATEGORIES],
+    ["build", "test", "typecheck", "lint"],
+    [
+      {
+        name: "strict",
+        type: "boolean",
+        description: "Also fail (exit 1) when critical gates are unverified."
+      }
+    ],
+    true
+  ),
   discoverCmd,
   fixCmd,
   reportCmd,
@@ -22122,13 +25056,17 @@ function cliMarkdown() {
   ];
   for (const c of COMMANDS) {
     const s = c.spec;
-    L.push(`## \`relivaro ${s.name}\``, "", s.summary + ".", "", "```", s.usage, "```", "");
-    if (s.description) L.push(s.description.includes("\n") ? `\`\`\`
+    L.push(`## \`relivaro ${s.name}\``, "", `${s.summary}.`, "", "```", s.usage, "```", "");
+    if (s.description)
+      L.push(s.description.includes("\n") ? `\`\`\`
 ${s.description}
 \`\`\`` : s.description, "");
     if (s.options.length) {
       L.push("| Option | Description |", "| --- | --- |");
-      for (const o of s.options) L.push(`| \`--${o.name}${o.type === "boolean" ? "" : ` ${o.value ?? `<${o.type}>`}`}\` | ${o.description.replace(/\|/g, "\\|")}${o.default !== void 0 && o.type !== "boolean" ? ` Default: \`${o.default}\`.` : ""} |`);
+      for (const o of s.options)
+        L.push(
+          `| \`--${o.name}${o.type === "boolean" ? "" : ` ${o.value ?? `<${o.type}>`}`}\` | ${o.description.replace(/\|/g, "\\|")}${o.default !== void 0 && o.type !== "boolean" ? ` Default: \`${o.default}\`.` : ""} |`
+        );
       L.push("");
     }
     if (s.examples?.length) L.push("Examples:", "", "```bash", ...s.examples, "```", "");
@@ -22140,18 +25078,44 @@ ${s.description}
 }
 function rulesMarkdown() {
   const rules = allRuleMeta();
-  const L = ["# Relivaro rule reference", "", "<!-- Generated by `npm run build` from the rule registry. Do not edit by hand. -->", "", `${rules.length} rules. Severity and confidence are defaults; findings may adjust them (e.g. user input confirmed \u2192 higher confidence, test files \u2192 lower). Configure with \`rules\` in \`relivaro.config.json\`.`, ""];
-  L.push("| Rule | Category | Severity | Confidence | Standards | Fixer |", "| --- | --- | --- | --- | --- | --- |");
-  for (const r of rules) L.push(`| [\`${r.id}\`](#${r.id.replace(/[^a-z0-9]+/g, "-")}) | ${r.category} | ${r.severity} | ${r.confidence} | ${[...r.cwe ?? [], ...r.owasp ?? []].join(", ")} | ${r.fixer ? `\`${r.fixer}\`` : ""} |`);
+  const L = [
+    "# Relivaro rule reference",
+    "",
+    "<!-- Generated by `npm run build` from the rule registry. Do not edit by hand. -->",
+    "",
+    `${rules.length} rules. Severity and confidence are defaults; findings may adjust them (e.g. user input confirmed \u2192 higher confidence, test files \u2192 lower). Configure with \`rules\` in \`relivaro.config.json\`.`,
+    ""
+  ];
+  L.push(
+    "| Rule | Category | Severity | Confidence | Standards | Fixer |",
+    "| --- | --- | --- | --- | --- | --- |"
+  );
+  for (const r of rules)
+    L.push(
+      `| [\`${r.id}\`](#${r.id.replace(/[^a-z0-9]+/g, "-")}) | ${r.category} | ${r.severity} | ${r.confidence} | ${[...r.cwe ?? [], ...r.owasp ?? []].join(", ")} | ${r.fixer ? `\`${r.fixer}\`` : ""} |`
+    );
   L.push("");
   for (const r of rules) {
-    L.push(`## ${r.id}`, "", `**${r.title}** \u2014 ${r.category}, default severity ${r.severity}, confidence ${r.confidence}.`, "", r.description, "", `- **Impact:** ${r.impact}`, `- **Fix:** ${r.recommendation}`, `- **Verify:** ${r.verification}`);
+    L.push(
+      `## ${r.id}`,
+      "",
+      `**${r.title}** \u2014 ${r.category}, default severity ${r.severity}, confidence ${r.confidence}.`,
+      "",
+      r.description,
+      "",
+      `- **Impact:** ${r.impact}`,
+      `- **Fix:** ${r.recommendation}`,
+      `- **Verify:** ${r.verification}`
+    );
     if (r.references?.length) L.push(`- **References:** ${r.references.join(", ")}`);
     L.push("");
   }
   L.push("## Automated fixers", "", "| Fixer | Safety | Change | Notes |", "| --- | --- | --- | --- |");
   for (const f of FIXERS) L.push(`| \`${f.id}\` | ${f.safety} | ${f.title} | ${f.description} |`);
-  L.push("", "`safe` fixers preserve behaviour for correct programs; `review` fixers intentionally change behaviour (e.g. enabling TLS verification) and should be reviewed before applying.");
+  L.push(
+    "",
+    "`safe` fixers preserve behaviour for correct programs; `review` fixers intentionally change behaviour (e.g. enabling TLS verification) and should be reviewed before applying."
+  );
   return `${L.join("\n")}
 `;
 }
@@ -22180,27 +25144,38 @@ async function main(argv) {
       return EXIT.OK;
     }
     const cmd = COMMANDS.find((c) => c.spec.name === cmdName);
-    if (!cmd) throw new RelivaroError("USAGE", `Unknown command "${cmdName}".`, "Run `relivaro --help` for the list of commands.");
+    if (!cmd)
+      throw new RelivaroError(
+        "USAGE",
+        `Unknown command "${cmdName}".`,
+        "Run `relivaro --help` for the list of commands."
+      );
     const parsed = parseArgs(rest, cmd.spec);
     if (parsed.opts.help) {
       process.stdout.write(`${helpText(cmd.spec)}
 `);
       return EXIT.OK;
     }
-    const out2 = makeOut({ json: !!parsed.opts.json, quiet: !!parsed.opts.quiet, color: parsed.opts["no-color"] ? false : void 0 });
+    const out2 = makeOut({
+      json: !!parsed.opts.json,
+      quiet: !!parsed.opts.quiet,
+      color: parsed.opts["no-color"] ? false : void 0
+    });
     return await cmd.run(parsed, out2);
   } catch (e) {
     clearProgress();
     const err2 = e instanceof RelivaroError ? e : new RelivaroError("INTERNAL", errorMessage(e));
     const message = redact(err2.message);
-    if (jsonMode) process.stderr.write(`${JSON.stringify({ error: { code: err2.code, message, hint: err2.hint } })}
+    if (jsonMode)
+      process.stderr.write(`${JSON.stringify({ error: { code: err2.code, message, hint: err2.hint } })}
 `);
     else {
       process.stderr.write(`relivaro: ${message}
 `);
       if (err2.hint) process.stderr.write(`hint: ${redact(err2.hint)}
 `);
-      if (err2.code === "INTERNAL" && process.env.RELIVARO_DEBUG && e instanceof Error) process.stderr.write(`${e.stack}
+      if (err2.code === "INTERNAL" && process.env.RELIVARO_DEBUG && e instanceof Error)
+        process.stderr.write(`${e.stack}
 `);
     }
     return err2.exitCode;

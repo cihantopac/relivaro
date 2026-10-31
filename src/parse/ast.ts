@@ -39,10 +39,37 @@ const CALL_TYPES: Record<Language, Set<string>> = {
 };
 
 export const FUNCTION_TYPES: Record<Language, Set<string>> = {
-  javascript: new Set(['function_declaration', 'function_expression', 'arrow_function', 'method_definition', 'generator_function_declaration', 'function']),
-  typescript: new Set(['function_declaration', 'function_expression', 'arrow_function', 'method_definition', 'generator_function_declaration', 'function']),
-  tsx: new Set(['function_declaration', 'function_expression', 'arrow_function', 'method_definition', 'generator_function_declaration', 'function']),
-  php: new Set(['function_definition', 'method_declaration', 'anonymous_function', 'arrow_function', 'anonymous_function_creation_expression']),
+  javascript: new Set([
+    'function_declaration',
+    'function_expression',
+    'arrow_function',
+    'method_definition',
+    'generator_function_declaration',
+    'function',
+  ]),
+  typescript: new Set([
+    'function_declaration',
+    'function_expression',
+    'arrow_function',
+    'method_definition',
+    'generator_function_declaration',
+    'function',
+  ]),
+  tsx: new Set([
+    'function_declaration',
+    'function_expression',
+    'arrow_function',
+    'method_definition',
+    'generator_function_declaration',
+    'function',
+  ]),
+  php: new Set([
+    'function_definition',
+    'method_declaration',
+    'anonymous_function',
+    'arrow_function',
+    'anonymous_function_creation_expression',
+  ]),
   python: new Set(['function_definition', 'lambda']),
 };
 
@@ -59,7 +86,7 @@ export function isJs(lang: Language): boolean {
 }
 
 /** Depth-first pre-order traversal using a cursor (fast, no recursion). Return false from `visit` to skip children. */
-export function walk(root: Node, visit: (n: Node) => boolean | undefined | void): void {
+export function walk(root: Node, visit: (n: Node) => unknown): void {
   const cursor = root.walk();
   let descend = true;
   for (;;) {
@@ -146,7 +173,12 @@ export function enclosingLoop(n: Node, lang: Language): Node | null {
       const call = p.parent?.parent;
       if (isJs(lang) && call?.type === 'call_expression' && p.parent?.type === 'arguments') {
         const callee = call.childForFieldName('function');
-        if (callee?.type === 'member_expression' && /^(?:forEach|map|flatMap|reduce|filter|some|every)$/.test(callee.childForFieldName('property')?.text ?? ''))
+        if (
+          callee?.type === 'member_expression' &&
+          /^(?:forEach|map|flatMap|reduce|filter|some|every)$/.test(
+            callee.childForFieldName('property')?.text ?? '',
+          )
+        )
           return call;
       }
       return null;
@@ -187,7 +219,8 @@ export function callInfo(n: Node, lang: Language): CallInfo | null {
       receiver = compact(calleeNode.childForFieldName('object')?.text ?? '');
     } else name = callee;
   } else if (lang === 'php') {
-    argsNode = n.childForFieldName('arguments') ?? n.namedChildren.find((c) => c?.type === 'arguments') ?? null;
+    argsNode =
+      n.childForFieldName('arguments') ?? n.namedChildren.find((c) => c?.type === 'arguments') ?? null;
     if (n.type === 'function_call_expression') {
       calleeNode = n.childForFieldName('function');
       callee = compact(calleeNode?.text ?? '').replace(/^\\/, '');
@@ -215,7 +248,8 @@ export function callInfo(n: Node, lang: Language): CallInfo | null {
   }
   const args: Node[] = [];
   const kwargs = new Map<string, Node>();
-  if (argsNode?.type === 'template_string') return { node: n, callee, name, receiver, args: [argsNode], kwargs, isNew, tagged: true };
+  if (argsNode?.type === 'template_string')
+    return { node: n, callee, name, receiver, args: [argsNode], kwargs, isNew, tagged: true };
   if (argsNode) {
     for (const c of argsNode.namedChildren) {
       if (!c || c.type === 'comment') continue;
@@ -252,7 +286,15 @@ export function isStaticString(n: Node | null | undefined, lang: Language): bool
       return !n.namedChildren.some((c) => c?.type === 'template_substitution');
     case 'encapsed_string':
     case 'heredoc':
-      return n.namedChildren.every((c) => !c || c.type === 'string_content' || c.type === 'escape_sequence' || c.type === 'heredoc_start' || c.type === 'heredoc_end' || c.type === 'heredoc_body');
+      return n.namedChildren.every(
+        (c) =>
+          !c ||
+          c.type === 'string_content' ||
+          c.type === 'escape_sequence' ||
+          c.type === 'heredoc_start' ||
+          c.type === 'heredoc_end' ||
+          c.type === 'heredoc_body',
+      );
     case 'nowdoc':
       return true;
     case 'concatenated_string':
@@ -261,7 +303,10 @@ export function isStaticString(n: Node | null | undefined, lang: Language): bool
     case 'binary_operator': {
       const op = n.childForFieldName('operator')?.text;
       if (op !== '+' && op !== '.') return false;
-      return isStaticString(n.childForFieldName('left'), lang) && isStaticString(n.childForFieldName('right'), lang);
+      return (
+        isStaticString(n.childForFieldName('left'), lang) &&
+        isStaticString(n.childForFieldName('right'), lang)
+      );
     }
     case 'parenthesized_expression':
       return isStaticString(n.namedChildren[0], lang);
@@ -303,7 +348,11 @@ export function isDynamicString(n: Node | null | undefined, lang: Language): boo
     case 'call':
       if (lang === 'python') {
         const fn = n.childForFieldName('function');
-        return fn?.type === 'attribute' && fn.childForFieldName('attribute')?.text === 'format' && fn.childForFieldName('object')?.type === 'string';
+        return (
+          fn?.type === 'attribute' &&
+          fn.childForFieldName('attribute')?.text === 'format' &&
+          fn.childForFieldName('object')?.type === 'string'
+        );
       }
       return false;
     case 'parenthesized_expression':
@@ -317,7 +366,10 @@ function containsStringLiteral(n: Node | null | undefined, lang: Language): bool
   if (!n) return false;
   if (n.type === 'string' || n.type === 'template_string' || n.type === 'encapsed_string') return true;
   if (n.type === 'binary_expression' || n.type === 'binary_operator')
-    return containsStringLiteral(n.childForFieldName('left'), lang) || containsStringLiteral(n.childForFieldName('right'), lang);
+    return (
+      containsStringLiteral(n.childForFieldName('left'), lang) ||
+      containsStringLiteral(n.childForFieldName('right'), lang)
+    );
   return false;
 }
 
@@ -325,9 +377,15 @@ function containsStringLiteral(n: Node | null | undefined, lang: Language): bool
 export function stringValue(n: Node | null | undefined, lang: Language): string | undefined {
   if (!n || !isStaticString(n, lang)) return undefined;
   if (n.type === 'binary_expression' || n.type === 'binary_operator')
-    return (stringValue(n.childForFieldName('left'), lang) ?? '') + (stringValue(n.childForFieldName('right'), lang) ?? '');
-  if (n.type === 'concatenated_string') return n.namedChildren.map((c) => stringValue(c, lang) ?? '').join('');
-  const parts = n.namedChildren.filter((c) => c && (c.type === 'string_content' || c.type === 'string_fragment' || c.type === 'escape_sequence'));
+    return (
+      (stringValue(n.childForFieldName('left'), lang) ?? '') +
+      (stringValue(n.childForFieldName('right'), lang) ?? '')
+    );
+  if (n.type === 'concatenated_string')
+    return n.namedChildren.map((c) => stringValue(c, lang) ?? '').join('');
+  const parts = n.namedChildren.filter(
+    (c) => c && (c.type === 'string_content' || c.type === 'string_fragment' || c.type === 'escape_sequence'),
+  );
   if (parts.length) return parts.map((c) => c!.text).join('');
   // Single-quoted PHP strings and empty strings have no content child.
   return n.text.replace(/^[a-zA-Z]*(['"`]{1,3})([\s\S]*)\1$/, '$2');
@@ -363,21 +421,87 @@ const PY_SOURCES = [
 
 const SANITIZERS = new Set([
   // JS
-  'parseInt', 'parseFloat', 'Number', 'Boolean', 'encodeURIComponent', 'encodeURI', 'escape', 'escapeHtml',
-  'DOMPurify.sanitize', 'sanitize', 'sanitizeHtml', 'xss', 'validator.escape', 'path.basename', 'basename',
-  'mysql.escape', 'connection.escape', 'pool.escape', 'sqlstring.escape', 'SqlString.escape', 'Prisma.sql', 'sql',
-  'z.parse', 'Math.floor', 'Math.round', 'isNaN', 'shellescape', 'shellQuote.quote', 'quote',
+  'parseInt',
+  'parseFloat',
+  'Number',
+  'Boolean',
+  'encodeURIComponent',
+  'encodeURI',
+  'escape',
+  'escapeHtml',
+  'DOMPurify.sanitize',
+  'sanitize',
+  'sanitizeHtml',
+  'xss',
+  'validator.escape',
+  'path.basename',
+  'basename',
+  'mysql.escape',
+  'connection.escape',
+  'pool.escape',
+  'sqlstring.escape',
+  'SqlString.escape',
+  'Prisma.sql',
+  'sql',
+  'z.parse',
+  'Math.floor',
+  'Math.round',
+  'isNaN',
+  'shellescape',
+  'shellQuote.quote',
+  'quote',
   // PHP
-  'intval', 'floatval', 'boolval', 'abs', 'htmlspecialchars', 'htmlentities', 'e', 'strip_tags', 'escapeshellarg',
-  'escapeshellcmd', 'addslashes', 'mysqli_real_escape_string', 'filter_var', 'filter_input', 'urlencode', 'rawurlencode',
-  'is_numeric', 'ctype_digit', 'count', 'strlen', 'md5', 'sha1', 'hash', 'json_encode', 'Str::slug', 'Str::limit',
-  'preg_quote', 'realpath', 'route', 'action', 'to_route',
+  'intval',
+  'floatval',
+  'boolval',
+  'abs',
+  'htmlspecialchars',
+  'htmlentities',
+  'e',
+  'strip_tags',
+  'escapeshellarg',
+  'escapeshellcmd',
+  'addslashes',
+  'mysqli_real_escape_string',
+  'filter_var',
+  'filter_input',
+  'urlencode',
+  'rawurlencode',
+  'is_numeric',
+  'ctype_digit',
+  'count',
+  'strlen',
+  'md5',
+  'sha1',
+  'hash',
+  'json_encode',
+  'Str::slug',
+  'Str::limit',
+  'preg_quote',
+  'realpath',
+  'route',
+  'action',
+  'to_route',
   // Python
-  'int', 'float', 'bool', 'len', 'str.isdigit', 'shlex.quote', 'quote', 'escape', 'html.escape', 'markupsafe.escape',
-  'secure_filename', 'werkzeug.utils.secure_filename', 'os.path.basename', 'uuid.UUID', 'bleach.clean',
+  'int',
+  'float',
+  'bool',
+  'len',
+  'str.isdigit',
+  'shlex.quote',
+  'quote',
+  'escape',
+  'html.escape',
+  'markupsafe.escape',
+  'secure_filename',
+  'werkzeug.utils.secure_filename',
+  'os.path.basename',
+  'uuid.UUID',
+  'bleach.clean',
 ]);
 
-const PHP_REQUEST_NON_INPUT = /^(?:user|session|route|method|isMethod|ip|ajax|wantsJson|expectsJson|has|filled|missing|boolean|integer|float|date|enum|hasFile|isJson|accepts|bearerToken|fingerprint|signature|validate)$/;
+const PHP_REQUEST_NON_INPUT =
+  /^(?:user|session|route|method|isMethod|ip|ajax|wantsJson|expectsJson|has|filled|missing|boolean|integer|float|date|enum|hasFile|isJson|accepts|bearerToken|fingerprint|signature|validate)$/;
 
 export function isSourceText(text: string, lang: Language): boolean {
   const t = compact(text);
@@ -392,14 +516,20 @@ export function isSourceText(text: string, lang: Language): boolean {
 }
 
 /** Functions whose name says they validate/allowlist their input; their result is treated as checked. */
-const VALIDATOR_NAME = /^(?:is_?)?(?:allowed|permitted|safe|trusted|whitelisted|allowlisted)\w*$|^(?:validate|sanitize|sanitise|check|verify|guard|assert|ensure|clean|escape|normalize)[A-Z_]\w*$|^(?:resolveInside|safeJoin|safe_join|secure_filename)\w*$/;
+const VALIDATOR_NAME =
+  /^(?:is_?)?(?:allowed|permitted|safe|trusted|whitelisted|allowlisted)\w*$|^(?:validate|sanitize|sanitise|check|verify|guard|assert|ensure|clean|escape|normalize)[A-Z_]\w*$|^(?:resolveInside|safeJoin|safe_join|secure_filename)\w*$/;
 
 function isSanitizerCall(n: Node, lang: Language): boolean {
-  if (lang === 'php' && n.type === 'cast_expression') return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
+  if (lang === 'php' && n.type === 'cast_expression')
+    return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
   const info = CALL_TYPES[lang].has(n.type) ? callInfo(n, lang) : null;
   if (!info) return false;
   if (SANITIZERS.has(info.callee) || SANITIZERS.has(info.name) || VALIDATOR_NAME.test(info.name)) return true;
-  if (lang === 'php' && /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info.callee)) return true;
+  if (
+    lang === 'php' &&
+    /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info.callee)
+  )
+    return true;
   return false;
 }
 
@@ -415,7 +545,8 @@ export function taintedNames(fn: Node | null, lang: Language): Set<string> {
       const pair = assignmentParts(n, lang);
       if (!pair) return;
       const [target, value] = pair;
-      if (value && isTaintedExpr(value, lang, tainted)) for (const name of boundNames(target, lang)) tainted.add(name);
+      if (value && isTaintedExpr(value, lang, tainted))
+        for (const name of boundNames(target, lang)) tainted.add(name);
     });
     if (tainted.size === before) break;
   }
@@ -462,10 +593,15 @@ function assignmentParts(n: Node, lang: Language): [Node, Node | null] | null {
 
 function boundNames(target: Node, lang: Language): string[] {
   const out: string[] = [];
-  if (target.type === 'identifier' || target.type === 'shorthand_property_identifier_pattern') return [target.text];
+  if (target.type === 'identifier' || target.type === 'shorthand_property_identifier_pattern')
+    return [target.text];
   if (lang === 'php' && target.type === 'variable_name') return [target.text];
   walk(target, (n) => {
-    if (n.type === 'identifier' || n.type === 'shorthand_property_identifier_pattern' || (lang === 'php' && n.type === 'variable_name')) {
+    if (
+      n.type === 'identifier' ||
+      n.type === 'shorthand_property_identifier_pattern' ||
+      (lang === 'php' && n.type === 'variable_name')
+    ) {
       // Skip object-pattern keys (`{ x: y }` binds y, not x).
       if (n.parent?.type === 'pair_pattern' && n.parent.childForFieldName('key')?.id === n.id) return;
       out.push(n.text);
@@ -486,12 +622,29 @@ export function isTaintedExpr(expr: Node | null | undefined, lang: Language, tai
     if (found) return false;
     if (isSanitizerCall(n, lang)) return false;
     // Comparisons and type checks yield booleans, not the user's value.
-    if ((n.type === 'binary_expression' || n.type === 'comparison_operator' || n.type === 'boolean_operator') && /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(n.childForFieldName('operator')?.text ?? n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ?? ''))
-      return n.childForFieldName('operator')?.text === '&&' || n.childForFieldName('operator')?.text === '||' || n.childForFieldName('operator')?.text === '??' ? undefined : false;
+    if (
+      (n.type === 'binary_expression' || n.type === 'comparison_operator' || n.type === 'boolean_operator') &&
+      /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(
+        n.childForFieldName('operator')?.text ??
+          n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ??
+          '',
+      )
+    )
+      return n.childForFieldName('operator')?.text === '&&' ||
+        n.childForFieldName('operator')?.text === '||' ||
+        n.childForFieldName('operator')?.text === '??'
+        ? undefined
+        : false;
     if (n.type === 'unary_expression' && /^!/.test(n.text)) return false;
     if (n.type === 'ternary_expression' || n.type === 'conditional_expression') {
       // Only the branches carry a value; the condition does not.
-      const branches = isJs(lang) || lang === 'php' ? [n.childForFieldName('consequence') ?? n.childForFieldName('body'), n.childForFieldName('alternative')] : [n.namedChildren[0], n.namedChildren[2]];
+      const branches =
+        isJs(lang) || lang === 'php'
+          ? [
+              n.childForFieldName('consequence') ?? n.childForFieldName('body'),
+              n.childForFieldName('alternative'),
+            ]
+          : [n.namedChildren[0], n.namedChildren[2]];
       if (branches.some((b) => b && isTaintedExpr(b, lang, tainted))) found = true;
       return false;
     }
@@ -532,7 +685,11 @@ function isPropertyName(n: Node): boolean {
 }
 
 /** Convenience: is `expr` tainted in the context of its enclosing function (or the module for top-level code)? */
-export function taintedAt(expr: Node | null | undefined, lang: Language, cache: Map<number, Set<string>>): boolean {
+export function taintedAt(
+  expr: Node | null | undefined,
+  lang: Language,
+  cache: Map<number, Set<string>>,
+): boolean {
   if (!expr) return false;
   const fn = enclosingFunction(expr, lang) ?? rootOf(expr);
   let names = cache.get(fn.id);

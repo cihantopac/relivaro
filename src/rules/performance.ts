@@ -1,29 +1,59 @@
-import { type CallInfo, callInfo, collect, compact, enclosingFunction, enclosingLoop, functionName, isJs, parameterNames, stringValue, walk } from '../parse/ast.js';
+import {
+  type CallInfo,
+  callInfo,
+  collect,
+  compact,
+  enclosingFunction,
+  enclosingLoop,
+  functionName,
+  isJs,
+  parameterNames,
+  stringValue,
+  walk,
+} from '../parse/ast.js';
 import type { Node } from '../parse/treesitter.js';
 import { API } from './helpers.js';
 import { ALL_LANGS, type AstRule, type Hit, JS_LANGS } from './types.js';
 
-const JS_DB_ROOT = /^(?:this\.)?(?:prisma|db|database|knex|sql|pool|client|conn|connection|repo|repository|\w+Repository|\w+Repo|model|redis|cache|supabase|mongoose|collection|em|entityManager|dataSource|tx|trx|drizzle|sequelize|\w+Model|\w+Service|api|http|axios)\b/;
-const JS_DB_METHOD = /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|findOne|findById|findAll|findByPk|findOneBy|findBy|countDocuments|aggregate|query|execute|\$queryRaw|\$executeRaw|raw|upsert|create|update|delete|insert|select|save|get|set|hget|exists)$/;
-const ORM_FIND = /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|findOne|findById|findAll|findByPk|findOneBy|findBy|countDocuments|aggregate|query)$/;
+const JS_DB_ROOT =
+  /^(?:this\.)?(?:prisma|db|database|knex|sql|pool|client|conn|connection|repo|repository|\w+Repository|\w+Repo|model|redis|cache|supabase|mongoose|collection|em|entityManager|dataSource|tx|trx|drizzle|sequelize|\w+Model|\w+Service|api|http|axios)\b/;
+const JS_DB_METHOD =
+  /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|findOne|findById|findAll|findByPk|findOneBy|findBy|countDocuments|aggregate|query|execute|\$queryRaw|\$executeRaw|raw|upsert|create|update|delete|insert|select|save|get|set|hget|exists)$/;
+const ORM_FIND =
+  /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|findOne|findById|findAll|findByPk|findOneBy|findBy|countDocuments|aggregate|query)$/;
 
-const PHP_FACADES = /^(?:Str|Arr|Carbon|CarbonImmutable|Cache|Log|Config|Http|Storage|Collection|Validator|Auth|Gate|Hash|Crypt|Session|Lang|URL|Route|View|Event|Queue|Mail|Notification|Response|Request|File|Date|Number|Js|App|Artisan|Bus|Cookie|Process|RateLimiter|Redirect|Schema|Blade|Broadcast|Password|Vite|Sleep|Context|Concurrency|Pipeline|Illuminate|parent|self|static|Inertia|Livewire|Filament|Notification|Exception|DateTime|DateTimeImmutable|Uuid|Ulid|Money|Carbon\\\w+)$/;
-const PHP_QUERY_TERMINAL = /^(?:get|first|firstOrFail|firstWhere|find|findOrFail|findMany|count|exists|doesntExist|sum|avg|max|min|pluck|paginate|simplePaginate|cursorPaginate|value|sole|update|delete|increment|decrement|insert|create|firstOrCreate|updateOrCreate)$/;
+const PHP_FACADES =
+  /^(?:Str|Arr|Carbon|CarbonImmutable|Cache|Log|Config|Http|Storage|Collection|Validator|Auth|Gate|Hash|Crypt|Session|Lang|URL|Route|View|Event|Queue|Mail|Notification|Response|Request|File|Date|Number|Js|App|Artisan|Bus|Cookie|Process|RateLimiter|Redirect|Schema|Blade|Broadcast|Password|Vite|Sleep|Context|Concurrency|Pipeline|Illuminate|parent|self|static|Inertia|Livewire|Filament|Notification|Exception|DateTime|DateTimeImmutable|Uuid|Ulid|Money|Carbon\\\w+)$/;
+const PHP_QUERY_TERMINAL =
+  /^(?:get|first|firstOrFail|firstWhere|find|findOrFail|findMany|count|exists|doesntExist|sum|avg|max|min|pluck|paginate|simplePaginate|cursorPaginate|value|sole|update|delete|increment|decrement|insert|create|firstOrCreate|updateOrCreate)$/;
 
-const NOT_RELATIONSHIP = /^(?:toArray|get|all|values|keys|collect|fresh|refresh|errors|messages|getMessages|failed|items|toBase|getCollection|lazy|cursor|sortBy|filter|map|unique|flatten|reverse|session|user|attributes|getAttributes|getChanges|getDirty|jsonSerialize|toJson)$/;
+const NOT_RELATIONSHIP =
+  /^(?:toArray|get|all|values|keys|collect|fresh|refresh|errors|messages|getMessages|failed|items|toBase|getCollection|lazy|cursor|sortBy|filter|map|unique|flatten|reverse|session|user|attributes|getAttributes|getChanges|getDirty|jsonSerialize|toJson)$/;
 
 function phpQueryInLoop(c: CallInfo): string | null {
   // Model::find($id) / Model::where(...)->first() / DB::table(...)->get() / $item->relation()->get()
-  if (/^DB::(?:table|select|selectOne|insert|update|delete|statement|scalar)$/.test(c.callee)) return c.callee;
+  if (/^DB::(?:table|select|selectOne|insert|update|delete|statement|scalar)$/.test(c.callee))
+    return c.callee;
   if (/::/.test(c.callee) && !c.node.parent?.type.includes('member_call')) {
     const scope = c.receiver ?? '';
-    if (/^[A-Z]\w*$/.test(scope) && !PHP_FACADES.test(scope) && /^(?:find|findOrFail|findMany|where\w*|first|firstWhere|all|create|firstOrCreate|updateOrCreate|count|exists|query|with|whereIn)$/.test(c.name))
+    if (
+      /^[A-Z]\w*$/.test(scope) &&
+      !PHP_FACADES.test(scope) &&
+      /^(?:find|findOrFail|findMany|where\w*|first|firstWhere|all|create|firstOrCreate|updateOrCreate|count|exists|query|with|whereIn)$/.test(
+        c.name,
+      )
+    )
       return c.callee;
   }
   if (c.node.type === 'member_call_expression' && PHP_QUERY_TERMINAL.test(c.name)) {
     // Walk down the receiver chain.
     let obj = c.node.childForFieldName('object');
-    while (obj && (obj.type === 'member_call_expression' || obj.type === 'scoped_call_expression' || obj.type === 'nullsafe_member_call_expression')) {
+    while (
+      obj &&
+      (obj.type === 'member_call_expression' ||
+        obj.type === 'scoped_call_expression' ||
+        obj.type === 'nullsafe_member_call_expression')
+    ) {
       if (obj.type === 'scoped_call_expression') {
         const scope = obj.childForFieldName('scope')?.text ?? '';
         if (/^[A-Z]\w*$/.test(scope) && !PHP_FACADES.test(scope)) return compact(c.node.text).slice(0, 60);
@@ -33,7 +63,14 @@ function phpQueryInLoop(c: CallInfo): string | null {
       // `$post->comments()->get()`: relationship method with no args returns a query builder.
       const inner = obj.childForFieldName('object');
       const args = obj.childForFieldName('arguments');
-      if (inner?.type === 'variable_name' && args && args.namedChildren.length === 0 && /^[a-z]\w*$/.test(obj.childForFieldName('name')?.text ?? '') && !NOT_RELATIONSHIP.test(obj.childForFieldName('name')?.text ?? '') && !/^\$(?:validator|errors|bag|page|response|collection|items|request)$/.test(inner.text))
+      if (
+        inner?.type === 'variable_name' &&
+        args &&
+        args.namedChildren.length === 0 &&
+        /^[a-z]\w*$/.test(obj.childForFieldName('name')?.text ?? '') &&
+        !NOT_RELATIONSHIP.test(obj.childForFieldName('name')?.text ?? '') &&
+        !/^\$(?:validator|errors|bag|page|response|collection|items|request)$/.test(inner.text)
+      )
         return compact(c.node.text).slice(0, 60);
       obj = inner;
     }
@@ -52,9 +89,12 @@ const queryInLoop: AstRule = {
   cwe: ['CWE-1050'],
   owasp: [API.API4],
   description: 'A query or remote call is executed once per loop iteration.',
-  impact: 'Latency and database load grow linearly with the number of items (N+1 queries): fine in development, slow pages and exhausted connection pools in production.',
-  recommendation: 'Load related data in one query (eager loading `with()`, `include`, `select_related`/`prefetch_related`, `WHERE id IN (...)`), batch writes (`createMany`, `insert`, `bulk_create`), or run independent calls concurrently with a bounded pool.',
-  verification: 'Count queries for the code path in a test (query log, `DB::getQueryLog`, `assertNumQueries`, Prisma query events) with 1 vs. 50 items; the count must stay constant.',
+  impact:
+    'Latency and database load grow linearly with the number of items (N+1 queries): fine in development, slow pages and exhausted connection pools in production.',
+  recommendation:
+    'Load related data in one query (eager loading `with()`, `include`, `select_related`/`prefetch_related`, `WHERE id IN (...)`), batch writes (`createMany`, `insert`, `bulk_create`), or run independent calls concurrently with a bounded pool.',
+  verification:
+    'Count queries for the code path in a test (query log, `DB::getQueryLog`, `assertNumQueries`, Prisma query events) with 1 vs. 50 items; the count must stay constant.',
   check(ctx) {
     const out: Hit[] = [];
     const lang = ctx.lang;
@@ -78,9 +118,17 @@ const queryInLoop: AstRule = {
         what = phpQueryInLoop(c);
         if (what && c.node.parent && /member_call|nullsafe/.test(c.node.parent.type)) continue;
       } else {
-        if (/\.objects\.(?:get|create|get_or_create|update_or_create)$/.test(c.callee) || /\.objects\.[\s\S]*\.(?:first|last|count|exists|get|values_list|update|delete)$/.test(c.callee))
+        if (
+          /\.objects\.(?:get|create|get_or_create|update_or_create)$/.test(c.callee) ||
+          /\.objects\.[\s\S]*\.(?:first|last|count|exists|get|values_list|update|delete)$/.test(c.callee)
+        )
           what = c.callee;
-        else if (/^(?:self\.)?(?:session|db\.session|cursor|conn|connection)\.(?:execute|query|get|scalar|scalars)$/.test(c.callee)) what = c.callee;
+        else if (
+          /^(?:self\.)?(?:session|db\.session|cursor|conn|connection)\.(?:execute|query|get|scalar|scalars)$/.test(
+            c.callee,
+          )
+        )
+          what = c.callee;
         if (what && c.node.parent?.type === 'attribute') continue;
       }
       if (!what) continue;
@@ -89,8 +137,16 @@ const queryInLoop: AstRule = {
       if (reported.has(key)) continue;
       reported.add(key);
       // Seeders, console commands and scripts run offline: N+1 there costs time, not user latency.
-      const offline = /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(ctx.file.path) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
-      out.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what }, ...(offline ? { severity: 'low' as const, confidence: 'low' as const } : {}) });
+      const offline =
+        /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(
+          ctx.file.path,
+        ) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
+      out.push({
+        node: c.node,
+        message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`,
+        facts: { call: what },
+        ...(offline ? { severity: 'low' as const, confidence: 'low' as const } : {}),
+      });
     }
     return out;
   },
@@ -106,28 +162,62 @@ const inefficientCount: AstRule = {
   languages: ALL_LANGS,
   cwe: ['CWE-1046'],
   owasp: [API.API4],
-  description: 'All matching rows are fetched and hydrated just to count them, check emptiness or take the first one (`->get()->count()`, `::all()->count()`, `len(qs)`, `(await findMany()).length`).',
+  description:
+    'All matching rows are fetched and hydrated just to count them, check emptiness or take the first one (`->get()->count()`, `::all()->count()`, `len(qs)`, `(await findMany()).length`).',
   impact: 'Memory and query time grow with table size; large tables cause timeouts and out-of-memory errors.',
-  recommendation: 'Let the database do it: `->count()`, `->exists()`, `->first()`, `qs.count()`/`qs.exists()`, `prisma.x.count()`.',
-  verification: 'Inspect the generated SQL (query log) — it must be `SELECT COUNT(*)`/`EXISTS` instead of selecting all columns.',
+  recommendation:
+    'Let the database do it: `->count()`, `->exists()`, `->first()`, `qs.count()`/`qs.exists()`, `prisma.x.count()`.',
+  verification:
+    'Inspect the generated SQL (query log) — it must be `SELECT COUNT(*)`/`EXISTS` instead of selecting all columns.',
   check(ctx) {
     const out: Hit[] = [];
     const lang = ctx.lang;
     for (const c of ctx.calls) {
-      if (lang === 'php' && /^(?:count|isEmpty|isNotEmpty|first)$/.test(c.name) && c.node.type === 'member_call_expression') {
+      if (
+        lang === 'php' &&
+        /^(?:count|isEmpty|isNotEmpty|first)$/.test(c.name) &&
+        c.node.type === 'member_call_expression'
+      ) {
         const obj = c.node.childForFieldName('object');
         const inner = obj ? callInfo(obj, lang) : null;
         if (!inner) continue;
-        const loadsAll = (inner.name === 'get' && inner.args.length === 0 && /->|::/.test(inner.callee)) || (inner.name === 'all' && /::all$/.test(inner.callee) && /^[A-Z]/.test(inner.receiver ?? '') && !PHP_FACADES.test(inner.receiver ?? ''));
+        const loadsAll =
+          (inner.name === 'get' && inner.args.length === 0 && /->|::/.test(inner.callee)) ||
+          (inner.name === 'all' &&
+            /::all$/.test(inner.callee) &&
+            /^[A-Z]/.test(inner.receiver ?? '') &&
+            !PHP_FACADES.test(inner.receiver ?? ''));
         if (!loadsAll) continue;
         // `$request->get()` / collections built in memory are not queries.
         if (/^\$(?:request|this->request|collection|items|data)\b/.test(inner.receiver ?? '')) continue;
         const fixable = c.name === 'count' && c.args.length === 0;
-        out.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to call \`${c.name}()\`.`, fixer: fixable ? 'php-count-query' : null });
-      } else if (lang === 'php' && c.callee === 'count' && c.args[0] && /(?:->get\(\)|::all\(\))$/.test(compact(c.args[0].text))) {
-        out.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to count it.` });
-      } else if (lang === 'python' && c.callee === 'len' && c.args[0] && /\.objects\.(?:all|filter|exclude)\(/.test(c.args[0].text) && !/\.(?:values_list|values)\(/.test(c.args[0].text)) {
-        out.push({ node: c.node, message: `\`${compact(c.node.text).slice(0, 70)}\` evaluates the whole queryset to count it.`, fixer: 'py-queryset-count' });
+        out.push({
+          node: c.node,
+          message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to call \`${c.name}()\`.`,
+          fixer: fixable ? 'php-count-query' : null,
+        });
+      } else if (
+        lang === 'php' &&
+        c.callee === 'count' &&
+        c.args[0] &&
+        /(?:->get\(\)|::all\(\))$/.test(compact(c.args[0].text))
+      ) {
+        out.push({
+          node: c.node,
+          message: `\`${compact(c.node.text).slice(0, 70)}\` loads every row to count it.`,
+        });
+      } else if (
+        lang === 'python' &&
+        c.callee === 'len' &&
+        c.args[0] &&
+        /\.objects\.(?:all|filter|exclude)\(/.test(c.args[0].text) &&
+        !/\.(?:values_list|values)\(/.test(c.args[0].text)
+      ) {
+        out.push({
+          node: c.node,
+          message: `\`${compact(c.node.text).slice(0, 70)}\` evaluates the whole queryset to count it.`,
+          fixer: 'py-queryset-count',
+        });
       }
     }
     if (isJs(lang))
@@ -135,7 +225,11 @@ const inefficientCount: AstRule = {
         if (n.type !== 'member_expression' || n.childForFieldName('property')?.text !== 'length') return;
         const obj = n.childForFieldName('object');
         const inner = obj?.type === 'parenthesized_expression' ? obj.namedChildren[0] : null;
-        if (inner?.type === 'await_expression' && /\.(?:findMany|find|findAll)\(/.test(inner.text)) out.push({ node: n, message: `\`${compact(n.text).slice(0, 70)}\` loads all records only to count them.` });
+        if (inner?.type === 'await_expression' && /\.(?:findMany|find|findAll)\(/.test(inner.text))
+          out.push({
+            node: n,
+            message: `\`${compact(n.text).slice(0, 70)}\` loads all records only to count them.`,
+          });
       });
     return out;
   },
@@ -151,16 +245,26 @@ const unboundedQuery: AstRule = {
   languages: [...JS_LANGS, 'php'],
   cwe: ['CWE-770'],
   owasp: [API.API4],
-  description: 'A request handler loads an entire table (`Model::all()`, `findMany()` without `take`) without pagination or a limit.',
-  impact: 'Response time and memory grow without bound as data grows; a single request can exhaust the server (OWASP API4:2023 Unrestricted Resource Consumption).',
-  recommendation: 'Paginate (`paginate()`, `cursorPaginate()`, `take`/`skip`, cursor-based pagination) or apply an explicit upper limit.',
-  verification: 'Seed a large table in a test environment and confirm the endpoint returns a bounded page quickly.',
+  description:
+    'A request handler loads an entire table (`Model::all()`, `findMany()` without `take`) without pagination or a limit.',
+  impact:
+    'Response time and memory grow without bound as data grows; a single request can exhaust the server (OWASP API4:2023 Unrestricted Resource Consumption).',
+  recommendation:
+    'Paginate (`paginate()`, `cursorPaginate()`, `take`/`skip`, cursor-based pagination) or apply an explicit upper limit.',
+  verification:
+    'Seed a large table in a test environment and confirm the endpoint returns a bounded page quickly.',
   check(ctx) {
     if (!ctx.serverSide) return [];
     const out: Hit[] = [];
     for (const c of ctx.calls) {
       if (ctx.lang === 'php') {
-        if (c.name !== 'all' || !/::all$/.test(c.callee) || !/^[A-Z]\w*$/.test(c.receiver ?? '') || PHP_FACADES.test(c.receiver ?? '')) continue;
+        if (
+          c.name !== 'all' ||
+          !/::all$/.test(c.callee) ||
+          !/^[A-Z]\w*$/.test(c.receiver ?? '') ||
+          PHP_FACADES.test(c.receiver ?? '')
+        )
+          continue;
         if (!/(?:Controller|Http\/|Livewire|Resources)/.test(ctx.file.path)) continue;
         if (c.node.parent?.type === 'member_call_expression') continue;
         out.push({ node: c.node, message: `\`${c.callee}()\` loads the whole table in request code.` });
@@ -168,26 +272,40 @@ const unboundedQuery: AstRule = {
         const arg = c.args[0];
         if (arg && /\b(?:take|first|cursor)\s*:/.test(arg.text)) continue;
         if (arg && /\bwhere\s*:/.test(arg.text)) continue;
-        out.push({ node: c.node, message: `\`${c.callee}()\` without \`take\` or a filter returns every row.`, confidence: 'low' });
+        out.push({
+          node: c.node,
+          message: `\`${c.callee}()\` without \`take\` or a filter returns every row.`,
+          confidence: 'low',
+        });
       }
     }
     return out;
   },
 };
 
-const ROUTE_EXPORT = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|loader|action|getServerSideProps|handler|middleware)$/;
+const ROUTE_EXPORT =
+  /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|loader|action|getServerSideProps|handler|middleware)$/;
 
 function isRequestHandler(fn: Node, lang: Parameters<typeof enclosingFunction>[1], source: string): boolean {
   const params = parameterNames(fn, lang);
   if (params.some((p) => /^(?:req|request|res|response|reply)$/.test(p))) return true;
-  if (params.some((p) => /^(?:ctx|c|context)$/.test(p)) && /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source)) return true;
+  if (
+    params.some((p) => /^(?:ctx|c|context)$/.test(p)) &&
+    /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source)
+  )
+    return true;
   const name = functionName(fn);
   if (name && ROUTE_EXPORT.test(name)) return true;
   // app.get('/x', (…) => …)
   const call = fn.parent?.parent;
   if (call?.type === 'call_expression') {
     const info = callInfo(call, lang);
-    if (info && /^(?:get|post|put|patch|delete|all|use|route|handle)$/.test(info.name) && /^(?:app|router|server|fastify|api|r)$/.test(info.receiver ?? '')) return true;
+    if (
+      info &&
+      /^(?:get|post|put|patch|delete|all|use|route|handle)$/.test(info.name) &&
+      /^(?:app|router|server|fastify|api|r)$/.test(info.receiver ?? '')
+    )
+      return true;
   }
   return false;
 }
@@ -201,18 +319,31 @@ const syncIo: AstRule = {
   confidence: 'medium',
   languages: JS_LANGS,
   cwe: ['CWE-1050'],
-  description: 'A request handler uses synchronous file system or child-process APIs (`readFileSync`, `execSync`, …).',
-  impact: 'Synchronous calls block the Node.js event loop: every concurrent request waits, so throughput collapses under load.',
-  recommendation: 'Use the async variants (`fs.promises.readFile`, `execFile` with `await`), or move the work to startup/caching.',
-  verification: 'Load-test the endpoint (`relivaro load`) before and after; p95 latency under concurrency must improve.',
+  description:
+    'A request handler uses synchronous file system or child-process APIs (`readFileSync`, `execSync`, …).',
+  impact:
+    'Synchronous calls block the Node.js event loop: every concurrent request waits, so throughput collapses under load.',
+  recommendation:
+    'Use the async variants (`fs.promises.readFile`, `execFile` with `await`), or move the work to startup/caching.',
+  verification:
+    'Load-test the endpoint (`relivaro load`) before and after; p95 latency under concurrency must improve.',
   check(ctx) {
     if (!ctx.serverSide || /(?:^|\/)(?:cli|bin|scripts?|tools?|commands?)\//.test(ctx.file.path)) return [];
     const out: Hit[] = [];
     for (const c of ctx.calls) {
-      if (!/Sync$/.test(c.name) || !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(c.callee)) continue;
+      if (
+        !/Sync$/.test(c.name) ||
+        !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(
+          c.callee,
+        )
+      )
+        continue;
       const fn = enclosingFunction(c.node, ctx.lang);
       if (!fn || !isRequestHandler(fn, ctx.lang, ctx.source)) continue;
-      out.push({ node: c.node, message: `\`${c.callee}()\` blocks the event loop inside a request handler.` });
+      out.push({
+        node: c.node,
+        message: `\`${c.callee}()\` blocks the event loop inside a request handler.`,
+      });
     }
     return out;
   },
@@ -269,7 +400,9 @@ function classSet(raw: string): CharSet {
     } else c = body.charCodeAt(i);
     if (body[i + 1] === '-' && i + 2 < body.length) {
       const endEsc = body[i + 2] === '\\';
-      const end = endEsc ? ([...(escapeSet(body[i + 3] ?? '')?.set ?? new Set([0]))][0] ?? 0) : body.charCodeAt(i + 2);
+      const end = endEsc
+        ? ([...(escapeSet(body[i + 3] ?? '')?.set ?? new Set([0]))][0] ?? 0)
+        : body.charCodeAt(i + 2);
       for (let x = c; x <= end && x < 0x3000; x++) set.add(x);
       i += endEsc ? 3 : 2;
     } else set.add(c);
@@ -316,7 +449,14 @@ export function redosRisk(pattern: string): boolean {
     altFirst: (CharSet | undefined)[];
     atAltStart: boolean;
   }
-  const newFrame = (): Frame => ({ unbounded: false, repeated: pos([]), separators: [], alternation: false, altFirst: [], atAltStart: true });
+  const newFrame = (): Frame => ({
+    unbounded: false,
+    repeated: pos([]),
+    separators: [],
+    alternation: false,
+    altFirst: [],
+    atAltStart: true,
+  });
   const stack: Frame[] = [newFrame()];
   const isUnboundedAt = (j: number) => {
     const ch = pattern[j];
@@ -326,14 +466,16 @@ export function redosRisk(pattern: string): boolean {
   };
   const quantLen = (j: number) => {
     const ch = pattern[j];
-    if (ch === '*' || ch === '+' || ch === '?') return 1 + (pattern[j + 1] === '?' || pattern[j + 1] === '+' ? 1 : 0);
+    if (ch === '*' || ch === '+' || ch === '?')
+      return 1 + (pattern[j + 1] === '?' || pattern[j + 1] === '+' ? 1 : 0);
     if (ch === '{') {
       const m = /^\{\d*(?:,\d*)?\}/.exec(pattern.slice(j));
       return m ? m[0].length : 0;
     }
     return 0;
   };
-  const mandatory = (j: number) => quantLen(j) === 0 || /^\{[1-9]\d*(?:,\d*)?\}/.test(pattern.slice(j)) || pattern[j] === '+';
+  const mandatory = (j: number) =>
+    quantLen(j) === 0 || /^\{[1-9]\d*(?:,\d*)?\}/.test(pattern.slice(j)) || pattern[j] === '+';
   let i = 0;
   const groupSets: CharSet[] = [];
   while (i < pattern.length) {
@@ -363,7 +505,15 @@ export function redosRisk(pattern: string): boolean {
       stack.push(newFrame());
       groupSets.push(null);
       const rest = pattern.slice(i);
-      i += /^\(\?<[=!]/.test(rest) ? 4 : /^\(\?[:=!>]/.test(rest) ? 3 : /^\(\?<\w+>/.test(rest) ? rest.indexOf('>') + 1 : /^\(\?P<\w+>/.test(rest) ? rest.indexOf('>') + 1 : 1;
+      i += /^\(\?<[=!]/.test(rest)
+        ? 4
+        : /^\(\?[:=!>]/.test(rest)
+          ? 3
+          : /^\(\?<\w+>/.test(rest)
+            ? rest.indexOf('>') + 1
+            : /^\(\?P<\w+>/.test(rest)
+              ? rest.indexOf('>') + 1
+              : 1;
       continue;
     } else if (ch === ')') {
       const frame = stack.length > 1 ? stack.pop()! : top;
@@ -381,7 +531,10 @@ export function redosRisk(pattern: string): boolean {
             if (fx !== undefined && fy !== undefined && !disjoint(fx, fy)) return true;
           }
       }
-      const frameSet = union(frame.repeated, frame.separators.reduce<CharSet>((acc, s) => union(acc, s), pos([])));
+      const frameSet = union(
+        frame.repeated,
+        frame.separators.reduce<CharSet>((acc, s) => union(acc, s), pos([])),
+      );
       if (frame.unbounded || outerUnbounded) {
         parent.unbounded = true;
         parent.repeated = union(parent.repeated, frameSet);
@@ -421,15 +574,24 @@ const redos: AstRule = {
   languages: ALL_LANGS,
   cwe: ['CWE-1333'],
   owasp: [API.API4],
-  description: 'A regular expression nests unbounded quantifiers without a separator (e.g. `(a+)+`, `(\\w+\\s?)*$`), which backtracks exponentially on non-matching input.',
-  impact: 'A short crafted string can pin a CPU core for seconds to hours (ReDoS); in Node.js this blocks all requests.',
-  recommendation: 'Rewrite the pattern without nested quantifiers (make the inner part unambiguous), use atomic groups/possessive quantifiers where supported, limit input length before matching, or use a linear-time engine (RE2).',
-  verification: 'Time the regex against a 50-character near-match (e.g. `"a".repeat(50) + "!"`) in a unit test; it must finish in milliseconds.',
+  description:
+    'A regular expression nests unbounded quantifiers without a separator (e.g. `(a+)+`, `(\\w+\\s?)*$`), which backtracks exponentially on non-matching input.',
+  impact:
+    'A short crafted string can pin a CPU core for seconds to hours (ReDoS); in Node.js this blocks all requests.',
+  recommendation:
+    'Rewrite the pattern without nested quantifiers (make the inner part unambiguous), use atomic groups/possessive quantifiers where supported, limit input length before matching, or use a linear-time engine (RE2).',
+  verification:
+    'Time the regex against a 50-character near-match (e.g. `"a".repeat(50) + "!"`) in a unit test; it must finish in milliseconds.',
   check(ctx) {
     const out: Hit[] = [];
     const lang = ctx.lang;
     const check = (node: Node, pattern: string | undefined) => {
-      if (pattern && pattern.length < 2000 && redosRisk(pattern)) out.push({ node, message: `Pattern \`${pattern.slice(0, 80)}\` contains nested unbounded quantifiers.`, facts: { pattern: pattern.slice(0, 200) } });
+      if (pattern && pattern.length < 2000 && redosRisk(pattern))
+        out.push({
+          node,
+          message: `Pattern \`${pattern.slice(0, 80)}\` contains nested unbounded quantifiers.`,
+          facts: { pattern: pattern.slice(0, 200) },
+        });
     };
     if (isJs(lang)) {
       for (const r of collect(ctx.tree.rootNode, 'regex')) check(r, r.childForFieldName('pattern')?.text);
@@ -442,7 +604,9 @@ const redos: AstRule = {
           check(c.node, m?.[2]);
         }
     } else {
-      for (const c of ctx.calls) if (/^re\.(?:compile|match|search|fullmatch|findall|finditer|sub|subn|split)$/.test(c.callee)) check(c.node, stringValue(c.args[0], lang));
+      for (const c of ctx.calls)
+        if (/^re\.(?:compile|match|search|fullmatch|findall|finditer|sub|subn|split)$/.test(c.callee))
+          check(c.node, stringValue(c.args[0], lang));
     }
     return out;
   },
@@ -456,9 +620,11 @@ const missingFkIndex: AstRule = {
   severity: 'low',
   confidence: 'medium',
   languages: ['php'],
-  description: 'A Laravel migration adds a `*_id` column with a plain integer/uuid type and no index, foreign key constraint or `constrained()`.',
-  impact: 'Joins and lookups by this column (relationship loading, cascades) become full table scans as data grows.',
-  recommendation: 'Use `foreignId(\'x_id\')->constrained()` or add `->index()` / `$table->index(\'x_id\')`.',
+  description:
+    'A Laravel migration adds a `*_id` column with a plain integer/uuid type and no index, foreign key constraint or `constrained()`.',
+  impact:
+    'Joins and lookups by this column (relationship loading, cascades) become full table scans as data grows.',
+  recommendation: "Use `foreignId('x_id')->constrained()` or add `->index()` / `$table->index('x_id')`.",
   verification: '`EXPLAIN` the relationship query on a production-sized copy; it should use an index.',
   check(ctx) {
     if (ctx.file.kind !== 'migration') return [];
@@ -470,16 +636,29 @@ const missingFkIndex: AstRule = {
       const body = compact(closure.text);
       for (const stmt of collect(closure, 'expression_statement')) {
         const chain = compact(stmt.text);
-        const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(chain);
+        const m =
+          /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(
+            chain,
+          );
         if (!m) continue;
         const col = m[1]!;
         if (/->(?:index|unique|primary|constrained|references)\(/.test(chain)) continue;
-        const indexed = new RegExp(`\\$table->(?:index|unique|primary|foreign)\\((?:\\[[^\\]]*)?['"]${col}['"]`).test(body);
-        if (!indexed) out.push({ node: stmt, message: `Column \`${col}\` has no index or foreign key constraint.` });
+        const indexed = new RegExp(
+          `\\$table->(?:index|unique|primary|foreign)\\((?:\\[[^\\]]*)?['"]${col}['"]`,
+        ).test(body);
+        if (!indexed)
+          out.push({ node: stmt, message: `Column \`${col}\` has no index or foreign key constraint.` });
       }
     }
     return out;
   },
 };
 
-export const performanceRules: AstRule[] = [queryInLoop, inefficientCount, unboundedQuery, syncIo, redos, missingFkIndex];
+export const performanceRules: AstRule[] = [
+  queryInLoop,
+  inefficientCount,
+  unboundedQuery,
+  syncIo,
+  redos,
+  missingFkIndex,
+];

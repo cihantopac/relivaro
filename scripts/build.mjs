@@ -79,7 +79,8 @@ console.log(`built ${join(outdir, 'relivaro.mjs')}`);
 // Generated docs: CLI and rule reference come from the registries so docs never drift from code.
 if (!process.argv[2]) {
   const { execFileSync } = await import('node:child_process');
-  const run = (arg) => execFileSync(process.execPath, [join(outdir, 'relivaro.mjs'), arg], { encoding: 'utf8' });
+  const run = (arg) =>
+    execFileSync(process.execPath, [join(outdir, 'relivaro.mjs'), arg], { encoding: 'utf8' });
   const cli = run('__cli-markdown');
   const rules = run('__rules-markdown');
   mkdirSync(join(root, 'docs'), { recursive: true });

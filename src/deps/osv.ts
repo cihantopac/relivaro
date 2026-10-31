@@ -23,9 +23,12 @@ export const OSV_RULE = registerExternalRule({
   cwe: ['CWE-1395'],
   owasp: ['A03:2025 Software Supply Chain Failures'],
   description: 'A resolved dependency version is affected by a published advisory in OSV.dev.',
-  impact: 'Known vulnerabilities have public details and often public exploits; whether this one is exploitable depends on how the package is used.',
-  recommendation: 'Upgrade to a fixed version (listed in the finding), or apply the advisory\'s mitigation. If the vulnerable code path is provably unreachable, document the exception with a suppression reason.',
-  verification: 'Re-run `relivaro security --online`; the advisory no longer matches the resolved version in the lockfile.',
+  impact:
+    'Known vulnerabilities have public details and often public exploits; whether this one is exploitable depends on how the package is used.',
+  recommendation:
+    "Upgrade to a fixed version (listed in the finding), or apply the advisory's mitigation. If the vulnerable code path is provably unreachable, document the exception with a suppression reason.",
+  verification:
+    'Re-run `relivaro security --online`; the advisory no longer matches the resolved version in the lockfile.',
   references: ['https://osv.dev'],
 });
 
@@ -38,7 +41,12 @@ export interface OsvVuln {
   aliases?: string[];
   severity?: { type: string; score: string }[];
   database_specific?: { severity?: string; cwe_ids?: string[] };
-  affected?: { package?: { name?: string; ecosystem?: string }; ranges?: { type: string; events: Record<string, string>[] }[]; versions?: string[]; ecosystem_specific?: { severity?: string } }[];
+  affected?: {
+    package?: { name?: string; ecosystem?: string };
+    ranges?: { type: string; events: Record<string, string>[] }[];
+    versions?: string[];
+    ecosystem_specific?: { severity?: string };
+  }[];
   withdrawn?: string;
 }
 
@@ -52,20 +60,33 @@ export interface OsvResult {
 type FetchLike = typeof fetch;
 
 async function postJson(fetchImpl: FetchLike, url: string, body: unknown): Promise<unknown> {
-  const res = await fetchImpl(url, { method: 'POST', headers: { 'content-type': 'application/json', 'user-agent': 'relivaro' }, body: JSON.stringify(body), signal: AbortSignal.timeout(30_000) });
+  const res = await fetchImpl(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'user-agent': 'relivaro' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!res.ok) throw new RelivaroError('NETWORK_FAILED', `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
 
 async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
-  const res = await fetchImpl(url, { headers: { 'user-agent': 'relivaro' }, signal: AbortSignal.timeout(30_000) });
+  const res = await fetchImpl(url, {
+    headers: { 'user-agent': 'relivaro' },
+    signal: AbortSignal.timeout(30_000),
+  });
   if (!res.ok) throw new RelivaroError('NETWORK_FAILED', `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
 
 /** CVSS v3.x base score from a vector string (FIRST specification). */
 export function cvss3Score(vector: string): number | undefined {
-  const m = Object.fromEntries(vector.split('/').slice(1).map((p) => p.split(':') as [string, string]));
+  const m = Object.fromEntries(
+    vector
+      .split('/')
+      .slice(1)
+      .map((p) => p.split(':') as [string, string]),
+  );
   const AV = { N: 0.85, A: 0.62, L: 0.55, P: 0.2 }[m.AV as 'N'];
   const AC = { L: 0.77, H: 0.44 }[m.AC as 'L'];
   const UI = { N: 0.85, R: 0.62 }[m.UI as 'N'];
@@ -85,7 +106,11 @@ export function cvss3Score(vector: string): number | undefined {
 }
 
 export function severityOf(v: OsvVuln): Severity {
-  const label = (v.database_specific?.severity ?? v.affected?.[0]?.ecosystem_specific?.severity ?? '').toUpperCase();
+  const label = (
+    v.database_specific?.severity ??
+    v.affected?.[0]?.ecosystem_specific?.severity ??
+    ''
+  ).toUpperCase();
   if (label === 'CRITICAL') return 'critical';
   if (label === 'HIGH') return 'high';
   if (label === 'MODERATE' || label === 'MEDIUM') return 'medium';
@@ -108,7 +133,10 @@ export function fixedVersions(v: OsvVuln, pkg: string): string[] {
   return [...out];
 }
 
-export async function queryOsv(lockfiles: LockfileInfo[], opts: { cacheFile?: string; fetchImpl?: FetchLike; onProgress?: (m: string) => void } = {}): Promise<OsvResult> {
+export async function queryOsv(
+  lockfiles: LockfileInfo[],
+  opts: { cacheFile?: string; fetchImpl?: FetchLike; onProgress?: (m: string) => void } = {},
+): Promise<OsvResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = new Map<string, { pkg: ResolvedPackage; files: Set<string> }>();
   for (const l of lockfiles)
@@ -126,7 +154,8 @@ export async function queryOsv(lockfiles: LockfileInfo[], opts: { cacheFile?: st
   let cache: Record<string, { at: number; vuln: OsvVuln }> = {};
   if (opts.cacheFile && existsSync(opts.cacheFile)) {
     try {
-      if (Date.now() - statSync(opts.cacheFile).mtimeMs < 24 * 3600_000) cache = JSON.parse(readFileSync(opts.cacheFile, 'utf8'));
+      if (Date.now() - statSync(opts.cacheFile).mtimeMs < 24 * 3600_000)
+        cache = JSON.parse(readFileSync(opts.cacheFile, 'utf8'));
     } catch {
       cache = {};
     }
@@ -136,9 +165,16 @@ export async function queryOsv(lockfiles: LockfileInfo[], opts: { cacheFile?: st
   for (let i = 0; i < entries.length; i += BATCH) {
     const slice = entries.slice(i, i + BATCH);
     opts.onProgress?.(`OSV: querying ${i + slice.length}/${entries.length} packages`);
-    const body = { queries: slice.map((e) => ({ package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem }, version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === 'Go' ? 'v' : '') })) };
+    const body = {
+      queries: slice.map((e) => ({
+        package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem },
+        version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === 'Go' ? 'v' : ''),
+      })),
+    };
     try {
-      const res = (await postJson(fetchImpl, `${API}/querybatch`, body)) as { results?: { vulns?: { id: string }[] }[] };
+      const res = (await postJson(fetchImpl, `${API}/querybatch`, body)) as {
+        results?: { vulns?: { id: string }[] }[];
+      };
       (res.results ?? []).forEach((r, j) => {
         idsPer[i + j] = (r.vulns ?? []).map((v) => v.id);
       });
@@ -188,14 +224,22 @@ export async function queryOsv(lockfiles: LockfileInfo[], opts: { cacheFile?: st
       const fixed = fixedVersions(v, e.pkg.name);
       const aliases = (v.aliases ?? []).filter((a) => a.startsWith('CVE-')).slice(0, 2);
       const dev = e.pkg.dev === true;
-      if (dev && severity !== 'info') severity = severity === 'critical' ? 'high' : severity === 'high' ? 'medium' : 'low';
+      if (dev && severity !== 'info')
+        severity = severity === 'critical' ? 'high' : severity === 'high' ? 'medium' : 'low';
       const file = [...e.files][0]!;
       result.hits.push({
         file,
         message: `${e.pkg.name}@${e.pkg.version}${dev ? ' (dev)' : ''}: ${v.id}${aliases.length ? ` (${aliases.join(', ')})` : ''} — ${(v.summary ?? 'see advisory').slice(0, 140)}.${fixed.length ? ` Fixed in ${fixed.slice(0, 3).join(', ')}.` : ' No fixed version published.'}`,
         severity,
         anchor: `${e.pkg.ecosystem}:${e.pkg.name}@${e.pkg.version}:${v.id}`,
-        facts: { package: e.pkg.name, version: e.pkg.version, ecosystem: e.pkg.ecosystem, advisory: v.id, fixed: fixed.join(', ') || null, dev },
+        facts: {
+          package: e.pkg.name,
+          version: e.pkg.version,
+          ecosystem: e.pkg.ecosystem,
+          advisory: v.id,
+          fixed: fixed.join(', ') || null,
+          dev,
+        },
       });
     }
   });
