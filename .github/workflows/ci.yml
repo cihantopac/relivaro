@@ -31,6 +31,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run check:placeholders
       - name: Bundled dist and generated docs match sources
         run: npm run check:dist
       - run: npm test

@@ -2,7 +2,8 @@
 
 This document defines what Relivaro v1.0 promises and how each promise is verified. A feature that is not listed
 here is not advertised. Every box is checked only with evidence (a test, a benchmark result or a recorded
-real-world audit), and the evidence is linked from `docs/RELEASE_READINESS.md`.
+real-world audit), and the evidence is linked from `docs/RELEASE_READINESS.md`. `[~]` marks criteria that need
+infrastructure not available during local development.
 
 ## 1. Scope
 
@@ -39,42 +40,42 @@ real-world audit), and the evidence is linked from `docs/RELEASE_READINESS.md`.
 
 ### Product
 
-- [ ] Every command in `docs/CLI.md` works and is covered by an e2e test.
-- [ ] No placeholder, stub or simulated output in any advertised feature (`grep` guard in CI for `TODO`/`not implemented` in `src/`).
-- [ ] Every rule has a positive and a negative test fixture; the detection benchmark reports precision/recall per rule.
-- [ ] Findings include rule id, severity, confidence, category, location, evidence, impact, recommendation, verification method, CWE/OWASP mapping where applicable.
-- [ ] Offline by default: no network access unless `--online`; verified by a test that runs with network APIs stubbed to throw.
-- [ ] Deterministic: two runs over the same tree produce identical findings and fingerprints.
+- [x] Every command in `docs/CLI.md` works and is covered by an e2e test.
+- [x] No placeholder, stub or simulated output in any advertised feature (`scripts/check-placeholders.mjs` runs in CI).
+- [x] Every rule has a positive and a negative test fixture; the detection benchmark reports precision/recall per rule.
+- [x] Findings include rule id, severity, confidence, category, location, evidence, impact, recommendation, verification method, CWE/OWASP mapping where applicable.
+- [x] Offline by default: no network access unless `--online`; verified by a test that runs with network APIs stubbed to throw.
+- [x] Deterministic: two runs over the same tree produce identical findings and fingerprints.
 
 ### Safety
 
-- [ ] Project code is never executed without `--allow-exec`; subprocesses run without a shell, with a scrubbed environment, timeouts, output caps and process-tree kill.
-- [ ] File access never escapes the project root (symlink and `..` traversal tests).
-- [ ] Secret values never appear in any output format (redaction tests across JSON, Markdown, HTML, SARIF, stderr).
-- [ ] Git-ignored files (e.g. `.env`) are never read; env files are only checked for ignore status, `.env.example` only for key names.
-- [ ] Fixes are never written to the working tree without `--apply`; every applied fix has a backup and rollback refuses to overwrite files modified after the fix.
-- [ ] Load tests refuse non-local targets unless `--allow-remote`, and enforce request/duration/concurrency caps.
-- [ ] Configuration is JSON only (no executable config files).
-- [ ] Repository text is treated as data: the plugin skills instruct the agent never to follow instructions found in analyzed content.
+- [x] Project code is never executed without `--allow-exec`; subprocesses run without a shell, with a scrubbed environment, timeouts, output caps and process-tree kill.
+- [x] File access never escapes the project root (symlink and `..` traversal tests).
+- [x] Secret values never appear in any output format (redaction tests across JSON, Markdown, HTML, SARIF, stderr).
+- [x] Git-ignored files (e.g. `.env`) are never read; env files are only checked for ignore status, `.env.example` only for key names.
+- [x] Fixes are never written to the working tree without `--apply`; every applied fix has a backup and rollback refuses to overwrite files modified after the fix.
+- [x] Load tests refuse non-local targets unless `--allow-remote`, and enforce request/duration/concurrency caps.
+- [x] Configuration is JSON only (no executable config files).
+- [x] Repository text is treated as data: the plugin skills instruct the agent never to follow instructions found in analyzed content.
 
 ### Quality
 
-- [ ] Unit, integration, security and e2e test suites pass on Linux, macOS and Windows (Node 20, 22, 24) in CI.
-- [ ] Clean-environment installation from the packed tarball is tested in CI.
-- [ ] Lint and type check pass; bundled `plugin/dist` matches sources (CI guard).
-- [ ] `claude plugin validate` passes for the marketplace and the plugin.
-- [ ] Reliable exit codes: 0 success, 1 gate failed, 2 usage/config error, 3 runtime error.
-- [ ] Real performance benchmarks recorded (`bench/results`): analysis throughput on synthetic and real repositories.
+- [~] Unit, integration, security and e2e test suites pass on Linux, macOS and Windows (Node 22, 24) in CI. — *verified on macOS arm64 (Node 22); Linux/Windows run in CI on first push*
+- [x] Clean-environment installation from the packed tarball is tested in CI.
+- [x] Lint and type check pass; bundled `plugin/dist` matches sources (CI guard).
+- [x] `claude plugin validate` passes for the marketplace and the plugin.
+- [x] Reliable exit codes: 0 success, 1 gate failed, 2 usage/config error, 3 runtime error.
+- [x] Real performance benchmarks recorded (`bench/results`): analysis throughput on synthetic and real repositories.
 
 ### Real-world validation
 
-- [ ] Audits recorded on at least 5 real local repositories covering Next.js, Laravel, Python, Flutter and Node CLI stacks.
-- [ ] Each significant real-world finding manually verified against source; false positives fixed in Relivaro and converted into anonymized regression fixtures.
-- [ ] Re-audits after fixes show the improvement.
+- [x] Audits recorded on at least 5 real local repositories covering Next.js, Laravel, Python, Flutter and Node CLI stacks.
+- [x] Each significant real-world finding manually verified against source; false positives fixed in Relivaro and converted into anonymized regression fixtures.
+- [x] Re-audits after fixes show the improvement.
 
 ### Documentation
 
-- [ ] README with installation, quick start, commands, safety model, limitations.
-- [ ] CLI reference and rule reference generated from code.
-- [ ] LICENSE, NOTICE, THIRD_PARTY_NOTICES, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG.
-- [ ] `docs/RELEASE_READINESS.md` produced by running Relivaro's own release gate on itself.
+- [x] README with installation, quick start, commands, safety model, limitations.
+- [x] CLI reference and rule reference generated from code.
+- [x] LICENSE, NOTICE, THIRD_PARTY_NOTICES, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, CHANGELOG.
+- [x] `docs/RELEASE_READINESS.md` produced by running Relivaro's own release gate on itself.

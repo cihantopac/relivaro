@@ -9,9 +9,8 @@
       "!tests/.tmp",
       "!fixtures",
       "!bench/results",
-      "!docs/CLI.md",
-      "!docs/RULES.md",
-      "!plugin/skills/relivaro/references"
+      "!**/*.md",
+      "!plugin/NOTICE"
     ]
   },
   "formatter": {

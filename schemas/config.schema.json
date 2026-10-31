@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/config.schema.json",
+  "title": "Relivaro configuration",
+  "type": "object",
+  "additionalProperties": false,
+  "$defs": {
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "globs": { "type": "array", "items": { "type": "string" } }
+  },
+  "properties": {
+    "$schema": { "type": "string" },
+    "exclude": { "$ref": "#/$defs/globs" },
+    "include": { "$ref": "#/$defs/globs" },
+    "failOn": { "anyOf": [{ "$ref": "#/$defs/severity" }, { "const": "none" }] },
+    "maxFileSizeKb": { "type": "number", "minimum": 1, "maximum": 20480 },
+    "rules": {
+      "type": "object",
+      "additionalProperties": {
+        "anyOf": [
+          { "const": "off" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "severity": { "$ref": "#/$defs/severity" },
+              "exclude": { "$ref": "#/$defs/globs" }
+            }
+          }
+        ]
+      }
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "build": { "type": "string", "minLength": 1 },
+        "test": { "type": "string", "minLength": 1 },
+        "typecheck": { "type": "string", "minLength": 1 },
+        "lint": { "type": "string", "minLength": 1 }
+      }
+    },
+    "timeouts": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "commandSeconds": { "type": "number", "minimum": 1, "maximum": 7200 } }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "requireTests": { "type": "boolean" },
+        "requireCi": { "type": "boolean" },
+        "minCoverage": { "type": "number", "minimum": 0, "maximum": 100 },
+        "blockOn": { "enum": ["critical", "high", "medium"] }
+      }
+    },
+    "performance": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "budgets": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "meanMs": { "type": "number", "minimum": 0 },
+              "p95Ms": { "type": "number", "minimum": 0 },
+              "p99Ms": { "type": "number", "minimum": 0 },
+              "errorRate": { "type": "number", "minimum": 0 },
+              "maxRegressionPct": { "type": "number", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "optional": { "type": "array", "items": { "type": "string" } } }
+    }
+  }
+}

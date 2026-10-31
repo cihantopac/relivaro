@@ -2,8 +2,21 @@
   "$schema": "./schemas/config.schema.json",
   "exclude": ["fixtures/**", "bench/results/**"],
   "failOn": "high",
-  "release": { "requireTests": true, "requireCi": true, "blockOn": "high" },
+  "release": {
+    "requireTests": true,
+    "requireCi": true,
+    "blockOn": "high"
+  },
   "env": {
     "optional": ["RELIVARO_DEBUG", "RELIVARO_PROGRESS", "RELIVARO_VERSION_OVERRIDE", "RELIVARO_BENCH_REPOS"]
+  },
+  "performance": {
+    "budgets": {
+      "self-audit-node-api": {
+        "meanMs": 1500,
+        "p95Ms": 2500,
+        "maxRegressionPct": 25
+      }
+    }
   }
 }

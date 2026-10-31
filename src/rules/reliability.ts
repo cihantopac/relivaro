@@ -122,7 +122,7 @@ const swallowed: AstRule = {
         const stmts = block.namedChildren.filter((x) => x && x.type !== 'comment');
         const explained = collect(e, 'comment').some((x) => x.startPosition.row !== e.startPosition.row);
         const benign =
-          /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError|NotImplementedError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(
+          /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(
             e.text,
           );
         if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0]!.text.trim()) && !explained && !benign)

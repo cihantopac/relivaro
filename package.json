@@ -4,7 +4,7 @@
   "description": "Open-source software quality, security, reliability, performance and release engineering platform: evidence-based audits, verified safe fixes with rollback, and release-readiness reports.",
   "license": "Apache-2.0",
   "type": "module",
-  "author": "Cihan Topaç (https://github.com/cihantopac)",
+  "author": "Cihan Topa\u00e7 (https://github.com/cihantopac)",
   "homepage": "https://github.com/cihantopac/relivaro#readme",
   "repository": {
     "type": "git",
@@ -54,7 +54,8 @@
     "bench": "node scripts/bench.mjs",
     "check:dist": "node scripts/check-dist.mjs",
     "validate:plugin": "claude plugin validate . && claude plugin validate plugin",
-    "ci": "npm run lint && npm run typecheck && npm run build && npm test && npm run check:dist"
+    "ci": "npm run lint && npm run typecheck && npm run check:placeholders && npm run build && npm test && npm run check:dist",
+    "check:placeholders": "node scripts/check-placeholders.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.4",
