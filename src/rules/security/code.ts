@@ -1,8 +1,8 @@
 import type { Language } from '../../core/types.js';
-import { type CallInfo, collect, compact, isJs, isLiteral, isStaticString, stringValue, walk } from '../../parse/ast.js';
+import { type CallInfo, collect, compact, enclosingFunction as enclosingFunctionOf, isJs, isLiteral, isStaticString, stringValue, walk } from '../../parse/ast.js';
 import type { Node } from '../../parse/treesitter.js';
-import { importsModule, isFalse, isTrue, OWASP, API, objectArg, pairs, pairValue, purposeName, SECRET_PURPOSE, unsafeDynamicParts } from '../helpers.js';
-import { ALL_LANGS, type AstContext, type AstRule, type Hit, JS_LANGS } from '../types.js';
+import { importsModule, isFalse, isSafePart, isTrue, OWASP, objectArg, pairs, pairValue, purposeName, SECRET_PURPOSE, unsafeDynamicParts } from '../helpers.js';
+import { ALL_LANGS, type AstRule, type Hit, JS_LANGS } from '../types.js';
 
 const SQL_KEYWORDS = /\b(?:select\s[\s\S]*\bfrom|insert\s+into|update\s+[\w`"[\].]+\s+set|delete\s+from|where\s|order\s+by|group\s+by|create\s+table|drop\s+table|alter\s+table|union\s+select|values\s*\()/i;
 
@@ -165,8 +165,8 @@ const codeInjection: AstRule = {
       out.push({
         node: c.node,
         message: tainted ? `User input is evaluated as code by \`${c.callee}()\`.` : `\`${c.callee}()\` evaluates a non-constant expression as code.`,
-        severity: tainted ? 'critical' : lang === 'python' ? 'medium' : 'high',
-        confidence: tainted ? 'high' : 'medium',
+        severity: tainted ? 'critical' : 'medium',
+        confidence: tainted ? 'high' : isJs(lang) && /^(?:Function|new Function)$/.test(c.callee) ? 'low' : 'medium',
         facts: { sink: c.callee, userInput: tainted },
       });
     }
@@ -210,7 +210,7 @@ const xss: AstRule = {
         if (SANITIZE_CALL.test(html.text)) continue;
         const tainted = ctx.tainted(html);
         // JSON-LD / serialized state built by the app itself is common and low risk unless user input reaches it.
-        if (!tainted && /^JSON\.stringify\(/.test(html.text)) continue;
+        if (!tainted && (/^(?:JSON\.stringify|\w*(?:[jJ]son|Ld|Schema|[sS]erializ)\w*)\(/.test(html.text) || (html.type === 'identifier' && !unsafeDynamicParts(html, lang).length && isSafePart(html, lang)))) continue;
         out.push({ node: attr, message: tainted ? 'User input is rendered as raw HTML via `dangerouslySetInnerHTML`.' : `\`dangerouslySetInnerHTML\` renders \`${compact(html.text).slice(0, 60)}\` without sanitization.`, severity: tainted ? 'high' : 'medium', confidence: tainted ? 'high' : 'low' });
       }
       walk(ctx.tree.rootNode, (n) => {
@@ -220,6 +220,7 @@ const xss: AstRule = {
         if (left?.type !== 'member_expression' || !/^(?:innerHTML|outerHTML)$/.test(left.childForFieldName('property')?.text ?? '')) return;
         if (!right || isStaticString(right, lang) || SANITIZE_CALL.test(right.text) || right.text === "''" || right.text === '""') return;
         const tainted = ctx.tainted(right);
+        if (!tainted && (right.type === 'binary_expression' || right.type === 'template_string') && !unsafeDynamicParts(right, lang).length) return;
         out.push({ node: n, message: tainted ? 'User input is assigned to `innerHTML`.' : `Non-constant HTML assigned to \`${left.text}\`.`, severity: tainted ? 'high' : 'medium', confidence: tainted ? 'high' : 'low' });
       });
       for (const c of ctx.calls) {
@@ -323,8 +324,9 @@ const pathTraversal: AstRule = {
       const arg = c.args[0];
       if (!arg || isStaticString(arg, lang)) continue;
       if (!ctx.tainted(arg)) continue;
-      // Joining with a base directory and normalising does not prevent traversal; only basename does.
+      // Joining with a base directory and normalising does not prevent traversal; basename or a containment check does.
       if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
+      if (pathGuarded(arg, c.node, lang)) continue;
       out.push({ node: c.node, message: `Path passed to \`${c.callee}()\` contains user input.`, facts: { sink: c.callee } });
     }
     if (lang === 'php')
@@ -333,6 +335,27 @@ const pathTraversal: AstRule = {
     return out;
   },
 };
+
+const PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
+
+/** A containment check on the path variable precedes the sink in the same function. */
+function pathGuarded(arg: Node, call: Node, lang: Language): boolean {
+  const fn = enclosingFunctionOf(call, lang);
+  if (!fn) return false;
+  const vars = new Set<string>();
+  walk(arg, (n) => {
+    if (n.type === 'identifier' || n.type === 'variable_name') vars.add(n.text);
+  });
+  let guarded = false;
+  walk(fn, (n) => {
+    if (guarded || n.startIndex >= call.startIndex) return false;
+    if (n.type === 'if_statement' || n.type === 'return_statement' || n.type === 'expression_statement') {
+      const t = n.type === 'if_statement' ? (n.childForFieldName('condition')?.text ?? '') : n.text;
+      if (PATH_GUARD.test(t) && [...vars].some((v) => t.includes(v))) guarded = true;
+    }
+  });
+  return guarded;
+}
 
 const openRedirect: AstRule = {
   kind: 'ast',
@@ -362,7 +385,7 @@ const openRedirect: AstRule = {
       } else if (/^(?:redirect|HttpResponseRedirect|RedirectResponse|flask\.redirect)$/.test(c.callee)) arg = c.args[0];
       if (!arg || isStaticString(arg, lang)) continue;
       if (/^new URL\(\s*['"`]\//.test(arg.text)) continue;
-      if (!ctx.tainted(arg)) continue;
+      if (!ctx.tainted(arg) || redirectValidated(arg, c.node) || fixedBase(arg, lang, ctx.tainted)) continue;
       out.push({ node: c.node, message: `Redirect target of \`${c.callee}()\` comes from user input.` });
     }
     if (isJs(lang))
@@ -376,6 +399,30 @@ const openRedirect: AstRule = {
     return out;
   },
 };
+
+const REDIRECT_GUARD = /startsWith\(\s*['"`]\/['"`]|str_starts_with\([^)]*['"]\/['"]|url_has_allowed_host_and_scheme|is_safe_url|isSafeRedirect|isRelativeUrl|isSafeUrl|isAllowed\w*\(|ALLOWED_\w+|allowlist|whitelist|\.has\(|in_array\(|->isValidUrl|URL::isValidUrl|parse_url\(/i;
+
+/** Leftmost operand of a concatenation / template: when it is app-controlled, user input only adds path/query. */
+function fixedBase(arg: Node, lang: Language, tainted: (n: Node) => boolean): boolean {
+  let left: Node | null = arg;
+  while (left && (left.type === 'binary_expression' || left.type === 'binary_operator') && /^[.+]$/.test(left.childForFieldName('operator')?.text ?? '')) left = left.childForFieldName('left');
+  if (!left || left === arg) {
+    if (arg.type === 'template_string' || arg.type === 'encapsed_string') return /^[`"](?:\/[^/]|https?:\/\/[^/$`"{]+\/)/.test(arg.text);
+    return false;
+  }
+  if (isStaticString(left, lang)) return /^(?:\/(?!\/)|https?:\/\/[^/]+\/)/.test(stringValue(left, lang) ?? '');
+  return !tainted(left);
+}
+
+/** The redirect value is chosen by a condition that validates it (ternary or enclosing `if`). */
+function redirectValidated(arg: Node, call: Node): boolean {
+  if ((arg.type === 'ternary_expression' || arg.type === 'conditional_expression') && REDIRECT_GUARD.test(arg.childForFieldName('condition')?.text ?? arg.namedChildren[0]?.text ?? '')) return true;
+  for (let p = call.parent; p; p = p.parent) {
+    if (p.type === 'if_statement' && REDIRECT_GUARD.test(p.childForFieldName('condition')?.text ?? '')) return true;
+    if (/function|method|arrow/.test(p.type)) break;
+  }
+  return false;
+}
 
 const unsafeDeserialization: AstRule = {
   kind: 'ast',
@@ -1155,5 +1202,3 @@ export const securityCodeRules: AstRule[] = [
   buffer,
 ];
 
-export type { AstContext };
-void API;

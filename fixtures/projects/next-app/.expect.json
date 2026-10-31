@@ -1,0 +1,7 @@
+{
+  "findings": [
+    { "rule": "sec/secret-exposed-to-client", "file": ".env.example" },
+    { "rule": "qual/type-checking-disabled", "file": "lib/legacy.ts", "line": 1 },
+    { "rule": "rel/no-error-monitoring", "file": "package.json" }
+  ]
+}

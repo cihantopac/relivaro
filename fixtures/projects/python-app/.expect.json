@@ -1,0 +1,6 @@
+{
+  "findings": [
+    { "rule": "sc/unpinned-dependency", "file": "requirements.txt" },
+    { "rule": "rel/no-error-monitoring", "file": "requirements.txt" }
+  ]
+}

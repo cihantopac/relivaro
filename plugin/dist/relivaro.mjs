@@ -1039,7 +1039,7 @@ function isSanitizerCall(n, lang) {
   if (lang === "php" && n.type === "cast_expression") return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
   const info2 = CALL_TYPES[lang].has(n.type) ? callInfo(n, lang) : null;
   if (!info2) return false;
-  if (SANITIZERS.has(info2.callee) || SANITIZERS.has(info2.name)) return true;
+  if (SANITIZERS.has(info2.callee) || SANITIZERS.has(info2.name) || VALIDATOR_NAME.test(info2.name)) return true;
   if (lang === "php" && /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info2.callee)) return true;
   return false;
 }
@@ -1118,6 +1118,14 @@ function isTaintedExpr(expr, lang, tainted) {
   walk2(expr, (n) => {
     if (found) return false;
     if (isSanitizerCall(n, lang)) return false;
+    if ((n.type === "binary_expression" || n.type === "comparison_operator" || n.type === "boolean_operator") && /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(n.childForFieldName("operator")?.text ?? n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ?? ""))
+      return n.childForFieldName("operator")?.text === "&&" || n.childForFieldName("operator")?.text === "||" || n.childForFieldName("operator")?.text === "??" ? void 0 : false;
+    if (n.type === "unary_expression" && /^!/.test(n.text)) return false;
+    if (n.type === "ternary_expression" || n.type === "conditional_expression") {
+      const branches = isJs(lang) || lang === "php" ? [n.childForFieldName("consequence") ?? n.childForFieldName("body"), n.childForFieldName("alternative")] : [n.namedChildren[0], n.namedChildren[2]];
+      if (branches.some((b) => b && isTaintedExpr(b, lang, tainted))) found = true;
+      return false;
+    }
     if (n.type === "identifier" || lang === "php" && n.type === "variable_name") {
       if (tainted.has(n.text) && !isPropertyName(n)) found = true;
       return;
@@ -1178,7 +1186,7 @@ function parameterNames(fn, lang) {
   });
   return out2;
 }
-var CALL_TYPES, FUNCTION_TYPES, LOOP_TYPES, JS_SOURCES, PHP_SOURCES, PY_SOURCES, SANITIZERS, PHP_REQUEST_NON_INPUT;
+var CALL_TYPES, FUNCTION_TYPES, LOOP_TYPES, JS_SOURCES, PHP_SOURCES, PY_SOURCES, SANITIZERS, PHP_REQUEST_NON_INPUT, VALIDATOR_NAME;
 var init_ast = __esm({
   "src/parse/ast.ts"() {
     "use strict";
@@ -1221,7 +1229,7 @@ var init_ast = __esm({
     ];
     PHP_SOURCES = [
       /^\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)\b/,
-      /^\$(?:this->)?request->(?:input|get|query|post|all|only|except|json|cookie|header|route|file|files|validated|safe|string|str|keys|collect|getContent|getQueryString|server|fullUrl|url|path)\(/,
+      /^\$(?:this->)?request->(?:input|get|query|post|all|only|except|json|cookie|header|route(?=\(\s*['"$])|file|files|validated|safe|string|str|keys|collect|getContent|getQueryString|server|fullUrl|url|path)\(/,
       /^request\(\)->(?:input|get|query|post|all|only|except|json|cookie|header|route|file|validated|string|str|collect)\(/,
       /^request\(['"]/,
       /^Request::(?:input|get|query|post|all|only|except|json|cookie|header|route|file)\(/,
@@ -1291,6 +1299,9 @@ var init_ast = __esm({
       "Str::limit",
       "preg_quote",
       "realpath",
+      "route",
+      "action",
+      "to_route",
       // Python
       "int",
       "float",
@@ -1309,6 +1320,7 @@ var init_ast = __esm({
       "bleach.clean"
     ]);
     PHP_REQUEST_NON_INPUT = /^(?:user|session|route|method|isMethod|ip|ajax|wantsJson|expectsJson|has|filled|missing|boolean|integer|float|date|enum|hasFile|isJson|accepts|bearerToken|fingerprint|signature|validate)$/;
+    VALIDATOR_NAME = /^(?:is_?)?(?:allowed|permitted|safe|trusted|whitelisted|allowlisted)\w*$|^(?:validate|sanitize|sanitise|check|verify|guard|assert|ensure|clean|escape|normalize)[A-Z_]\w*$|^(?:resolveInside|safeJoin|safe_join|secure_filename)\w*$/;
   }
 });
 
@@ -1370,7 +1382,22 @@ function isSafePart(part, lang) {
   if (lang === "php" && part.type === "cast_expression" && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t2)) return true;
   if (SAFE_PART_CALL.test(t2.replace(/\s+/g, ""))) return true;
   if (/\.(?:length|size|count)\s*$/.test(t2)) return true;
+  if (/\.replace\(\s*\/\[\^[^\]<>"'&`]*\]\+?\/g\w*\s*,\s*(['"`])\1\s*\)$/.test(t2)) return true;
   if ((part.type === "identifier" || part.type === "variable_name") && boundToLiteral(part, lang)) return true;
+  return false;
+}
+function isConstantExpression(n, lang) {
+  if (!n) return false;
+  if (isLiteral(n, lang)) return true;
+  if (n.type === "parenthesized_expression") return isConstantExpression(n.namedChildren[0], lang);
+  if ((n.type === "binary_expression" || n.type === "binary_operator") && /^[.+]$/.test(n.childForFieldName("operator")?.text ?? ""))
+    return isConstantExpression(n.childForFieldName("left"), lang) && isConstantExpression(n.childForFieldName("right"), lang);
+  if (n.type === "array" || n.type === "list" || n.type === "array_creation_expression")
+    return n.namedChildren.every((c) => !c || c.type === "comment" || isConstantExpression(c.type === "array_element_initializer" ? c.namedChildren[c.namedChildren.length - 1] : c, lang));
+  if (n.type === "call_expression") {
+    const fn = n.childForFieldName("function");
+    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "join") return isConstantExpression(fn.childForFieldName("object"), lang);
+  }
   return false;
 }
 function boundToLiteral(id, lang) {
@@ -1378,20 +1405,19 @@ function boundToLiteral(id, lang) {
   let scope = id.parent;
   while (scope && !FUNCTION_SCOPE.has(scope.type) && scope.parent) scope = scope.parent;
   for (let s = scope; s; s = s.parent) {
-    let literal;
+    let allConstant = true;
     let assignments = 0;
     walk2(s, (n) => {
       if (n.id !== s.id && FUNCTION_SCOPE.has(n.type)) return false;
       if (n.type === "variable_declarator" && n.childForFieldName("name")?.text === name2) {
         assignments++;
-        literal = isLiteral(n.childForFieldName("value"), lang) && n.parent?.childForFieldName("kind")?.text !== "let" ? true : literal ?? false;
-        if (!isLiteral(n.childForFieldName("value"), lang)) literal = false;
-      } else if ((n.type === "assignment_expression" || n.type === "assignment") && n.childForFieldName("left")?.text === name2) {
+        if (!isConstantExpression(n.childForFieldName("value"), lang)) allConstant = false;
+      } else if ((n.type === "assignment_expression" || n.type === "assignment" || n.type === "augmented_assignment_expression") && n.childForFieldName("left")?.text === name2) {
         assignments++;
-        literal = isLiteral(n.childForFieldName("right"), lang) && literal !== false;
+        if (n.type.startsWith("augmented") || !isConstantExpression(n.childForFieldName("right"), lang)) allConstant = false;
       }
     });
-    if (assignments) return assignments === 1 && literal === true;
+    if (assignments) return allConstant;
     if (!s.parent) break;
   }
   return false;
@@ -1512,16 +1538,17 @@ function phpQueryInLoop(c) {
       }
       const inner = obj.childForFieldName("object");
       const args2 = obj.childForFieldName("arguments");
-      if (inner?.type === "variable_name" && args2 && args2.namedChildren.length === 0 && /^[a-z]\w*$/.test(obj.childForFieldName("name")?.text ?? "") && !/^(?:toArray|get|all|values|keys|collect|fresh|refresh)$/.test(obj.childForFieldName("name")?.text ?? ""))
+      if (inner?.type === "variable_name" && args2 && args2.namedChildren.length === 0 && /^[a-z]\w*$/.test(obj.childForFieldName("name")?.text ?? "") && !NOT_RELATIONSHIP.test(obj.childForFieldName("name")?.text ?? "") && !/^\$(?:validator|errors|bag|page|response|collection|items|request)$/.test(inner.text))
         return compact(c.node.text).slice(0, 60);
       obj = inner;
     }
   }
   return null;
 }
-function isRequestHandler(fn, lang) {
+function isRequestHandler(fn, lang, source) {
   const params = parameterNames(fn, lang);
-  if (params.some((p) => /^(?:req|request|res|response|reply|ctx|context|event)$/.test(p))) return true;
+  if (params.some((p) => /^(?:req|request|res|response|reply)$/.test(p))) return true;
+  if (params.some((p) => /^(?:ctx|c|context)$/.test(p)) && /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source)) return true;
   const name2 = functionName(fn);
   if (name2 && ROUTE_EXPORT.test(name2)) return true;
   const call = fn.parent?.parent;
@@ -1532,70 +1559,76 @@ function isRequestHandler(fn, lang) {
   return false;
 }
 function escapeSet(ch) {
-  const set = /* @__PURE__ */ new Set();
-  const add = (from, to) => {
-    for (let c = from; c <= to; c++) set.add(c);
-  };
   switch (ch) {
     case "d":
-      add(48, 57);
-      return set;
+      return pos(DIGIT);
     case "w":
-      add(48, 57);
-      add(65, 90);
-      add(97, 122);
-      set.add(95);
-      return set;
+      return pos(WORD);
     case "s":
-      for (const c of [9, 10, 11, 12, 13, 32]) set.add(c);
-      return set;
+      return pos(SPACE);
     case "D":
+      return { neg: true, set: new Set(DIGIT) };
     case "W":
+      return { neg: true, set: new Set(WORD) };
     case "S":
+      return { neg: true, set: new Set(SPACE) };
     case "p":
     case "P":
       return null;
     default: {
       const map = { n: 10, r: 13, t: 9, f: 12, v: 11, "0": 0 };
-      set.add(map[ch] ?? ch.charCodeAt(0));
-      return set;
+      return pos([map[ch] ?? ch.charCodeAt(0)]);
     }
   }
 }
-function classSet(body2) {
-  if (body2.startsWith("^")) return null;
+function classSet(raw) {
+  const neg = raw.startsWith("^");
+  const body2 = neg ? raw.slice(1) : raw;
   const set = /* @__PURE__ */ new Set();
   for (let i2 = 0; i2 < body2.length; i2++) {
     let c;
     if (body2[i2] === "\\") {
       const e = escapeSet(body2[i2 + 1] ?? "");
       i2++;
-      if (e === null) return null;
-      if (e.size !== 1) {
-        for (const x of e) set.add(x);
+      if (e === null || e.neg) return null;
+      if (e.set.size !== 1) {
+        for (const x of e.set) set.add(x);
         continue;
       }
-      c = [...e][0];
+      c = [...e.set][0];
     } else c = body2.charCodeAt(i2);
-    if (body2[i2 + 1] === "-" && i2 + 2 < body2.length && body2[i2 + 2] !== "]") {
-      const end = body2[i2 + 2] === "\\" ? [...escapeSet(body2[i2 + 3] ?? "") ?? /* @__PURE__ */ new Set([0])][0] ?? 0 : body2.charCodeAt(i2 + 2);
+    if (body2[i2 + 1] === "-" && i2 + 2 < body2.length) {
+      const endEsc = body2[i2 + 2] === "\\";
+      const end = endEsc ? [...escapeSet(body2[i2 + 3] ?? "")?.set ?? /* @__PURE__ */ new Set([0])][0] ?? 0 : body2.charCodeAt(i2 + 2);
       for (let x = c; x <= end && x < 12288; x++) set.add(x);
-      i2 += body2[i2 + 2] === "\\" ? 3 : 2;
+      i2 += endEsc ? 3 : 2;
     } else set.add(c);
   }
-  return set;
+  return { neg, set };
+}
+function subset(a, b) {
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
 }
 function disjoint(a, b) {
   if (a === null || b === null) return false;
-  for (const x of a) if (b.has(x)) return false;
-  return true;
+  if (!a.neg && !b.neg) {
+    for (const x of a.set) if (b.set.has(x)) return false;
+    return true;
+  }
+  if (!a.neg && b.neg) return subset(a.set, b.set);
+  if (a.neg && !b.neg) return subset(b.set, a.set);
+  return false;
 }
 function union(a, b) {
   if (a === null || b === null) return null;
-  return /* @__PURE__ */ new Set([...a, ...b]);
+  if (!a.neg && !b.neg) return pos([...a.set, ...b.set]);
+  if (a.neg && b.neg) return { neg: true, set: new Set([...a.set].filter((x) => b.set.has(x))) };
+  const [n, p] = a.neg ? [a, b] : [b, a];
+  return { neg: true, set: new Set([...n.set].filter((x) => !p.set.has(x))) };
 }
 function redosRisk(pattern) {
-  const newFrame = () => ({ unbounded: false, repeated: /* @__PURE__ */ new Set(), separators: [], alternation: false, altFirst: [], atAltStart: true });
+  const newFrame = () => ({ unbounded: false, repeated: pos([]), separators: [], alternation: false, altFirst: [], atAltStart: true });
   const stack = [newFrame()];
   const isUnboundedAt = (j) => {
     const ch = pattern[j];
@@ -1659,7 +1692,7 @@ function redosRisk(pattern) {
             if (fx !== void 0 && fy !== void 0 && !disjoint(fx, fy)) return true;
           }
       }
-      const frameSet = union(frame.repeated, frame.separators.reduce((acc, s) => union(acc, s), /* @__PURE__ */ new Set()));
+      const frameSet = union(frame.repeated, frame.separators.reduce((acc, s) => union(acc, s), pos([])));
       if (frame.unbounded || outerUnbounded) {
         parent.unbounded = true;
         parent.repeated = union(parent.repeated, frameSet);
@@ -1674,7 +1707,7 @@ function redosRisk(pattern) {
     } else if (ch === "^" || ch === "$") {
       i2++;
       continue;
-    } else set = ch === "." ? null : /* @__PURE__ */ new Set([ch.charCodeAt(0)]);
+    } else set = ch === "." ? { neg: true, set: /* @__PURE__ */ new Set([10]) } : pos([ch.charCodeAt(0)]);
     if (top.atAltStart) {
       top.altFirst.push(set);
       top.atAltStart = false;
@@ -1688,7 +1721,7 @@ function redosRisk(pattern) {
   }
   return false;
 }
-var JS_DB_ROOT, JS_DB_METHOD, ORM_FIND, PHP_FACADES, PHP_QUERY_TERMINAL, queryInLoop, inefficientCount, unboundedQuery, ROUTE_EXPORT, syncIo, redos, missingFkIndex, performanceRules;
+var JS_DB_ROOT, JS_DB_METHOD, ORM_FIND, PHP_FACADES, PHP_QUERY_TERMINAL, NOT_RELATIONSHIP, queryInLoop, inefficientCount, unboundedQuery, ROUTE_EXPORT, syncIo, pos, range, DIGIT, WORD, SPACE, redos, missingFkIndex, performanceRules;
 var init_performance = __esm({
   "src/rules/performance.ts"() {
     "use strict";
@@ -1700,6 +1733,7 @@ var init_performance = __esm({
     ORM_FIND = /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|findMany|findOne|findById|findAll|findByPk|findOneBy|findBy|countDocuments|aggregate|query)$/;
     PHP_FACADES = /^(?:Str|Arr|Carbon|CarbonImmutable|Cache|Log|Config|Http|Storage|Collection|Validator|Auth|Gate|Hash|Crypt|Session|Lang|URL|Route|View|Event|Queue|Mail|Notification|Response|Request|File|Date|Number|Js|App|Artisan|Bus|Cookie|Process|RateLimiter|Redirect|Schema|Blade|Broadcast|Password|Vite|Sleep|Context|Concurrency|Pipeline|Illuminate|parent|self|static|Inertia|Livewire|Filament|Notification|Exception|DateTime|DateTimeImmutable|Uuid|Ulid|Money|Carbon\\\w+)$/;
     PHP_QUERY_TERMINAL = /^(?:get|first|firstOrFail|firstWhere|find|findOrFail|findMany|count|exists|doesntExist|sum|avg|max|min|pluck|paginate|simplePaginate|cursorPaginate|value|sole|update|delete|increment|decrement|insert|create|firstOrCreate|updateOrCreate)$/;
+    NOT_RELATIONSHIP = /^(?:toArray|get|all|values|keys|collect|fresh|refresh|errors|messages|getMessages|failed|items|toBase|getCollection|lazy|cursor|sortBy|filter|map|unique|flatten|reverse|session|user|attributes|getAttributes|getChanges|getDirty|jsonSerialize|toJson)$/;
     queryInLoop = {
       kind: "ast",
       id: "perf/query-in-loop",
@@ -1745,7 +1779,8 @@ var init_performance = __esm({
           const key = loop.id * 31 + what.length;
           if (reported.has(key)) continue;
           reported.add(key);
-          out2.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what } });
+          const offline = /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(ctx.file.path) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
+          out2.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what }, ...offline ? { severity: "low", confidence: "low" } : {} });
         }
         return out2;
       }
@@ -1841,17 +1876,22 @@ var init_performance = __esm({
       recommendation: "Use the async variants (`fs.promises.readFile`, `execFile` with `await`), or move the work to startup/caching.",
       verification: "Load-test the endpoint (`relivaro load`) before and after; p95 latency under concurrency must improve.",
       check(ctx) {
-        if (!ctx.serverSide) return [];
+        if (!ctx.serverSide || /(?:^|\/)(?:cli|bin|scripts?|tools?|commands?)\//.test(ctx.file.path)) return [];
         const out2 = [];
         for (const c of ctx.calls) {
           if (!/Sync$/.test(c.name) || !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(c.callee)) continue;
           const fn = enclosingFunction(c.node, ctx.lang);
-          if (!fn || !isRequestHandler(fn, ctx.lang)) continue;
+          if (!fn || !isRequestHandler(fn, ctx.lang, ctx.source)) continue;
           out2.push({ node: c.node, message: `\`${c.callee}()\` blocks the event loop inside a request handler.` });
         }
         return out2;
       }
     };
+    pos = (codes) => ({ neg: false, set: new Set(codes) });
+    range = (a, b) => Array.from({ length: b - a + 1 }, (_, i2) => a + i2);
+    DIGIT = range(48, 57);
+    WORD = [...DIGIT, ...range(65, 90), ...range(97, 122), 95];
+    SPACE = [9, 10, 11, 12, 13, 32];
     redos = {
       kind: "ast",
       id: "perf/regex-catastrophic-backtracking",
@@ -1910,7 +1950,7 @@ var init_performance = __esm({
           const body2 = compact(closure.text);
           for (const stmt of collect(closure, "expression_statement")) {
             const chain = compact(stmt.text);
-            const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid|char|string)\(['"](\w+_id)['"]/.exec(chain);
+            const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(chain);
             if (!m) continue;
             const col = m[1];
             if (/->(?:index|unique|primary|constrained|references)\(/.test(chain)) continue;
@@ -2095,13 +2135,17 @@ var init_quality = __esm({
 function laravelUpMethod(root) {
   return collect(root, "method_declaration").find((m) => m.childForFieldName("name")?.text === "up") ?? null;
 }
+function shippedUnits(ctx) {
+  return ctx.profile.units.filter((u) => u.path === "." || !isTestPath(`${u.path}/`));
+}
 function serverUnits(ctx) {
-  return ctx.profile.units.filter((u) => u.kind === "web-backend" || u.kind === "fullstack");
+  return shippedUnits(ctx).filter((u) => u.kind === "web-backend" || u.kind === "fullstack");
 }
 var pyRequestsTimeout, swallowed, bareExcept, stripeIdempotency, RMW_FIELD, readModifyWrite, laravelJob, LARAVEL_COLUMN, migrationDestructive, sqlMigration, migrationNoDown, noGracefulShutdown, noHealthCheck, noErrorTracking, unhandledPromise, httpNoRetry, reliabilityAstRules, reliabilityFileRules, reliabilityProjectRules;
 var init_reliability = __esm({
   "src/rules/reliability.ts"() {
     "use strict";
+    init_files();
     init_ast();
     init_helpers();
     init_types();
@@ -2181,8 +2225,9 @@ var init_reliability = __esm({
             const block = e.namedChildren.find((x) => x?.type === "block");
             if (!block) continue;
             const stmts = block.namedChildren.filter((x) => x && x.type !== "comment");
-            const explained = block.namedChildren.some((x) => x?.type === "comment" && x.startPosition.row >= e.startPosition.row && x.startPosition.row <= block.endPosition.row && x.startPosition.row !== e.startPosition.row);
-            if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0].text.trim()) && !explained)
+            const explained = collect(e, "comment").some((x) => x.startPosition.row !== e.startPosition.row);
+            const benign = /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError|NotImplementedError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(e.text);
+            if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0].text.trim()) && !explained && !benign)
               out2.push({ node: e, message: `\`${e.text.split("\n")[0].trim()}\` followed only by \`pass\` discards the error.` });
           }
         }
@@ -2471,7 +2516,7 @@ var init_reliability = __esm({
       verification: "Trigger a test exception in staging and confirm it reaches the monitoring tool with the release version.",
       check(ctx) {
         const out2 = [];
-        for (const u of ctx.profile.units) {
+        for (const u of shippedUnits(ctx)) {
           if (!["web-backend", "fullstack", "mobile"].includes(u.kind)) continue;
           const obs = ctx.profile.technologies.some((t2) => t2.unit === u.path && t2.kind === "observability" && !/^(?:pino|winston|Monolog|structlog|zap|tracing|Laravel Telescope)$/.test(t2.name));
           if (!obs) out2.push({ file: u.manifests[0], message: `\`${u.path}\` (${u.frameworks.join(", ") || u.kind}) has no error monitoring integration.`, anchor: u.path });
@@ -2558,7 +2603,42 @@ function hostIsFixed(arg, lang) {
   const t2 = arg.text.replace(/^[fFbBrR]+(?=['"])/, "");
   return /^[`'"]https?:\/\/[^/$`'"{}]+\//.test(t2) || lang === "php" && /^['"]https?:\/\/[^/$'"{}]+\//.test(t2);
 }
-var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, openRedirect, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
+function pathGuarded(arg, call, lang) {
+  const fn = enclosingFunction(call, lang);
+  if (!fn) return false;
+  const vars = /* @__PURE__ */ new Set();
+  walk2(arg, (n) => {
+    if (n.type === "identifier" || n.type === "variable_name") vars.add(n.text);
+  });
+  let guarded = false;
+  walk2(fn, (n) => {
+    if (guarded || n.startIndex >= call.startIndex) return false;
+    if (n.type === "if_statement" || n.type === "return_statement" || n.type === "expression_statement") {
+      const t2 = n.type === "if_statement" ? n.childForFieldName("condition")?.text ?? "" : n.text;
+      if (PATH_GUARD.test(t2) && [...vars].some((v) => t2.includes(v))) guarded = true;
+    }
+  });
+  return guarded;
+}
+function fixedBase(arg, lang, tainted) {
+  let left = arg;
+  while (left && (left.type === "binary_expression" || left.type === "binary_operator") && /^[.+]$/.test(left.childForFieldName("operator")?.text ?? "")) left = left.childForFieldName("left");
+  if (!left || left === arg) {
+    if (arg.type === "template_string" || arg.type === "encapsed_string") return /^[`"](?:\/[^/]|https?:\/\/[^/$`"{]+\/)/.test(arg.text);
+    return false;
+  }
+  if (isStaticString(left, lang)) return /^(?:\/(?!\/)|https?:\/\/[^/]+\/)/.test(stringValue(left, lang) ?? "");
+  return !tainted(left);
+}
+function redirectValidated(arg, call) {
+  if ((arg.type === "ternary_expression" || arg.type === "conditional_expression") && REDIRECT_GUARD.test(arg.childForFieldName("condition")?.text ?? arg.namedChildren[0]?.text ?? "")) return true;
+  for (let p = call.parent; p; p = p.parent) {
+    if (p.type === "if_statement" && REDIRECT_GUARD.test(p.childForFieldName("condition")?.text ?? "")) return true;
+    if (/function|method|arrow/.test(p.type)) break;
+  }
+  return false;
+}
+var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
 var init_code = __esm({
   "src/rules/security/code.ts"() {
     "use strict";
@@ -2702,8 +2782,8 @@ var init_code = __esm({
           out2.push({
             node: c.node,
             message: tainted ? `User input is evaluated as code by \`${c.callee}()\`.` : `\`${c.callee}()\` evaluates a non-constant expression as code.`,
-            severity: tainted ? "critical" : lang === "python" ? "medium" : "high",
-            confidence: tainted ? "high" : "medium",
+            severity: tainted ? "critical" : "medium",
+            confidence: tainted ? "high" : isJs(lang) && /^(?:Function|new Function)$/.test(c.callee) ? "low" : "medium",
             facts: { sink: c.callee, userInput: tainted }
           });
         }
@@ -2744,7 +2824,7 @@ var init_code = __esm({
             if (!html || isStaticString(html, lang)) continue;
             if (SANITIZE_CALL.test(html.text)) continue;
             const tainted = ctx.tainted(html);
-            if (!tainted && /^JSON\.stringify\(/.test(html.text)) continue;
+            if (!tainted && (/^(?:JSON\.stringify|\w*(?:[jJ]son|Ld|Schema|[sS]erializ)\w*)\(/.test(html.text) || html.type === "identifier" && !unsafeDynamicParts(html, lang).length && isSafePart(html, lang))) continue;
             out2.push({ node: attr, message: tainted ? "User input is rendered as raw HTML via `dangerouslySetInnerHTML`." : `\`dangerouslySetInnerHTML\` renders \`${compact(html.text).slice(0, 60)}\` without sanitization.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
           }
           walk2(ctx.tree.rootNode, (n) => {
@@ -2754,6 +2834,7 @@ var init_code = __esm({
             if (left?.type !== "member_expression" || !/^(?:innerHTML|outerHTML)$/.test(left.childForFieldName("property")?.text ?? "")) return;
             if (!right || isStaticString(right, lang) || SANITIZE_CALL.test(right.text) || right.text === "''" || right.text === '""') return;
             const tainted = ctx.tainted(right);
+            if (!tainted && (right.type === "binary_expression" || right.type === "template_string") && !unsafeDynamicParts(right, lang).length) return;
             out2.push({ node: n, message: tainted ? "User input is assigned to `innerHTML`." : `Non-constant HTML assigned to \`${left.text}\`.`, severity: tainted ? "high" : "medium", confidence: tainted ? "high" : "low" });
           });
           for (const c of ctx.calls) {
@@ -2849,6 +2930,7 @@ var init_code = __esm({
           if (!arg || isStaticString(arg, lang)) continue;
           if (!ctx.tainted(arg)) continue;
           if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
+          if (pathGuarded(arg, c.node, lang)) continue;
           out2.push({ node: c.node, message: `Path passed to \`${c.callee}()\` contains user input.`, facts: { sink: c.callee } });
         }
         if (lang === "php") {
@@ -2858,6 +2940,7 @@ var init_code = __esm({
         return out2;
       }
     };
+    PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
     openRedirect = {
       kind: "ast",
       id: "sec/open-redirect",
@@ -2886,7 +2969,7 @@ var init_code = __esm({
           } else if (/^(?:redirect|HttpResponseRedirect|RedirectResponse|flask\.redirect)$/.test(c.callee)) arg = c.args[0];
           if (!arg || isStaticString(arg, lang)) continue;
           if (/^new URL\(\s*['"`]\//.test(arg.text)) continue;
-          if (!ctx.tainted(arg)) continue;
+          if (!ctx.tainted(arg) || redirectValidated(arg, c.node) || fixedBase(arg, lang, ctx.tainted)) continue;
           out2.push({ node: c.node, message: `Redirect target of \`${c.callee}()\` comes from user input.` });
         }
         if (isJs(lang))
@@ -2900,6 +2983,7 @@ var init_code = __esm({
         return out2;
       }
     };
+    REDIRECT_GUARD = /startsWith\(\s*['"`]\/['"`]|str_starts_with\([^)]*['"]\/['"]|url_has_allowed_host_and_scheme|is_safe_url|isSafeRedirect|isRelativeUrl|isSafeUrl|isAllowed\w*\(|ALLOWED_\w+|allowlist|whitelist|\.has\(|in_array\(|->isValidUrl|URL::isValidUrl|parse_url\(/i;
     unsafeDeserialization = {
       kind: "ast",
       id: "sec/unsafe-deserialization",
@@ -7319,28 +7403,28 @@ var require_errors = __commonJS({
   "node_modules/yaml/dist/errors.js"(exports) {
     "use strict";
     var YAMLError = class extends Error {
-      constructor(name2, pos, code, message) {
+      constructor(name2, pos2, code, message) {
         super();
         this.name = name2;
         this.code = code;
         this.message = message;
-        this.pos = pos;
+        this.pos = pos2;
       }
     };
     var YAMLParseError = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLParseError", pos, code, message);
+      constructor(pos2, code, message) {
+        super("YAMLParseError", pos2, code, message);
       }
     };
     var YAMLWarning = class extends YAMLError {
-      constructor(pos, code, message) {
-        super("YAMLWarning", pos, code, message);
+      constructor(pos2, code, message) {
+        super("YAMLWarning", pos2, code, message);
       }
     };
     var prettifyError = (src, lc) => (error) => {
       if (error.pos[0] === -1)
         return;
-      error.linePos = error.pos.map((pos) => lc.linePos(pos));
+      error.linePos = error.pos.map((pos2) => lc.linePos(pos2));
       const { line, col } = error.linePos[0];
       error.message += ` at line ${line}, column ${col}`;
       let ci = col - 1;
@@ -8324,7 +8408,7 @@ var require_resolve_flow_scalar = __commonJS({
       }
       let res = match[1].replace(trimEnd, "");
       let sep2 = " ";
-      let pos = line.lastIndex;
+      let pos2 = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
@@ -8336,10 +8420,10 @@ var require_resolve_flow_scalar = __commonJS({
           res += sep2 + lm;
           sep2 = " ";
         }
-        pos = line.lastIndex;
+        pos2 = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
-      last.lastIndex = pos;
+      last.lastIndex = pos2;
       match = last.exec(source);
       return res + sep2 + (match?.[1] ?? "");
     }
@@ -8463,7 +8547,7 @@ var require_compose_scalar = __commonJS({
     var resolveBlockScalar = require_resolve_block_scalar();
     var resolveFlowScalar = require_resolve_flow_scalar();
     function composeScalar(ctx, token, tagToken, onError) {
-      const { value, type, comment, range } = token.type === "block-scalar" ? resolveBlockScalar.resolveBlockScalar(ctx, token, onError) : resolveFlowScalar.resolveFlowScalar(token, ctx.options.strict, onError);
+      const { value, type, comment, range: range2 } = token.type === "block-scalar" ? resolveBlockScalar.resolveBlockScalar(ctx, token, onError) : resolveFlowScalar.resolveFlowScalar(token, ctx.options.strict, onError);
       const tagName = tagToken ? ctx.directives.tagName(tagToken.source, (msg) => onError(tagToken, "TAG_RESOLVE_FAILED", msg)) : null;
       let tag;
       if (ctx.options.stringKeys && ctx.atKey) {
@@ -8483,7 +8567,7 @@ var require_compose_scalar = __commonJS({
         onError(tagToken ?? token, "TAG_RESOLVE_FAILED", msg);
         scalar = new Scalar.Scalar(value);
       }
-      scalar.range = range;
+      scalar.range = range2;
       scalar.source = value;
       if (type)
         scalar.type = type;
@@ -8539,10 +8623,10 @@ var require_compose_scalar = __commonJS({
 var require_util_empty_scalar_position = __commonJS({
   "node_modules/yaml/dist/compose/util-empty-scalar-position.js"(exports) {
     "use strict";
-    function emptyScalarPosition(offset, before, pos) {
+    function emptyScalarPosition(offset, before, pos2) {
       if (before) {
-        pos ?? (pos = before.length);
-        for (let i2 = pos - 1; i2 >= 0; --i2) {
+        pos2 ?? (pos2 = before.length);
+        for (let i2 = pos2 - 1; i2 >= 0; --i2) {
           let st = before[i2];
           switch (st.type) {
             case "space":
@@ -8632,10 +8716,10 @@ var require_compose_node = __commonJS({
         node.srcToken = token;
       return node;
     }
-    function composeEmptyNode(ctx, offset, before, pos, { spaceBefore, comment, anchor, tag, end }, onError) {
+    function composeEmptyNode(ctx, offset, before, pos2, { spaceBefore, comment, anchor, tag, end }, onError) {
       const token = {
         type: "scalar",
-        offset: utilEmptyScalarPosition.emptyScalarPosition(offset, before, pos),
+        offset: utilEmptyScalarPosition.emptyScalarPosition(offset, before, pos2),
         indent: -1,
         source: ""
       };
@@ -8766,11 +8850,11 @@ var require_composer = __commonJS({
         this.errors = [];
         this.warnings = [];
         this.onError = (source, code, message, warning) => {
-          const pos = getErrorPos(source);
+          const pos2 = getErrorPos(source);
           if (warning)
-            this.warnings.push(new errors.YAMLWarning(pos, code, message));
+            this.warnings.push(new errors.YAMLWarning(pos2, code, message));
           else
-            this.errors.push(new errors.YAMLParseError(pos, code, message));
+            this.errors.push(new errors.YAMLParseError(pos2, code, message));
         };
         this.directives = new directives.Directives({ version: options.version || "1.2" });
         this.options = options;
@@ -8841,9 +8925,9 @@ ${cb}` : comment;
         switch (token.type) {
           case "directive":
             this.directives.add(token.source, (offset, message, warning) => {
-              const pos = getErrorPos(token);
-              pos[0] += offset;
-              this.onError(pos, "BAD_DIRECTIVE", message, warning);
+              const pos2 = getErrorPos(token);
+              pos2[0] += offset;
+              this.onError(pos2, "BAD_DIRECTIVE", message, warning);
             });
             this.prelude.push(token.source);
             this.atDirectives = true;
@@ -8932,8 +9016,8 @@ var require_cst_scalar = __commonJS({
     var stringifyString = require_stringifyString();
     function resolveAsScalar(token, strict = true, onError) {
       if (token) {
-        const _onError = (pos, code, message) => {
-          const offset = typeof pos === "number" ? pos : Array.isArray(pos) ? pos[0] : pos.offset;
+        const _onError = (pos2, code, message) => {
+          const offset = typeof pos2 === "number" ? pos2 : Array.isArray(pos2) ? pos2[0] : pos2.offset;
           if (onError)
             onError(offset, code, message);
           else
@@ -11087,6 +11171,7 @@ var init_files2 = __esm({
             }
           }
           if (matched) continue;
+          if (ctx.file.isTest) continue;
           GENERIC_SECRET_ASSIGNMENT.lastIndex = 0;
           for (const m of line.matchAll(GENERIC_SECRET_ASSIGNMENT)) {
             const name2 = m[1];
@@ -11130,6 +11215,7 @@ var init_files2 = __esm({
         const wf = loadWorkflow(ctx);
         if (!wf) return [];
         const out2 = [];
+        const seen = /* @__PURE__ */ new Set();
         for (const s of wf.steps) {
           if (!s.run) continue;
           UNTRUSTED_CONTEXT.lastIndex = 0;
@@ -11137,6 +11223,8 @@ var init_files2 = __esm({
             const expr = m[1];
             if (expr.startsWith("inputs.") && !wf.triggers.includes("workflow_dispatch") && !wf.triggers.includes("workflow_call")) continue;
             const line = findLine(ctx.lines, new RegExp(m[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), s.line - 1);
+            if (seen.has(`${line}:${expr}`)) continue;
+            seen.add(`${line}:${expr}`);
             out2.push({ line, message: `\`${m[0]}\` is expanded inside a \`run:\` script.`, severity: expr.startsWith("inputs.") ? "medium" : "high", confidence: expr.startsWith("inputs.") ? "medium" : "high", facts: { expression: expr } });
           }
         }
@@ -11521,12 +11609,13 @@ var init_files2 = __esm({
       appliesTo: (f) => f.kind === "template",
       check(ctx) {
         const out2 = [];
-        const SAFE_BLADE = /^\s*(?:csrf_field\(\)|method_field\(|\$slot\b|\$\w+->links\(|\$attributes|json_encode\(|Js::from|@json|\$__env|\$\w+->render\(|\$\w+->toHtml\(|nl2br\(\s*e\(|e\(|clean\(|Purifier::clean|\$errors|session\(|__\(|trans\(|Str::markdown|markdown\(|\$\w+(?:Html|_html|Svg|Icon)\b)/;
+        const SAFE_BLADE = /^\s*(?:csrf_field\(\)|method_field\(|\$slot\b|\$\w+->links\(|\$attributes|json_encode\(|Js::from|@json|\$__env|\$\w+->render\(|\$\w+->toHtml\(|nl2br\(\s*e\(|e\(|clean\(|Purifier::clean|\$errors|session\(|__\(|trans\(|\$\w+(?:Html|_html|Svg|Icon)\b)/;
+        const LITERAL_TERNARY = /^[^'"?]*\?\s*(['"])(?:(?!\1).)*\1\s*:\s*(['"])(?:(?!\2).)*\2\s*$/;
         for (let i2 = 0; i2 < ctx.lines.length; i2++) {
           const l = ctx.lines[i2];
           if (ctx.file.path.endsWith(".blade.php")) {
             for (const m of l.matchAll(/\{!!\s*([\s\S]*?)\s*!!\}/g))
-              if (!SAFE_BLADE.test(m[1])) out2.push({ line: i2 + 1, column: (m.index ?? 0) + 1, message: `Blade prints \`{!! ${m[1].slice(0, 50)} !!}\` without escaping.`, confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "low", severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "medium" });
+              if (!SAFE_BLADE.test(m[1]) && !LITERAL_TERNARY.test(m[1])) out2.push({ line: i2 + 1, column: (m.index ?? 0) + 1, message: `Blade prints \`{!! ${m[1].slice(0, 50)} !!}\` without escaping.`, confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "low", severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]) ? "high" : "medium" });
           } else if (/\.vue$/.test(ctx.file.path)) {
             for (const m of l.matchAll(/\sv-html\s*=\s*"([^"]+)"/g)) if (!/sanitize|purify|DOMPurify/i.test(m[1])) out2.push({ line: i2 + 1, message: `\`v-html="${m[1].slice(0, 50)}"\` renders raw HTML.` });
           } else if (/\.(?:html|jinja2?|j2|djhtml)$/.test(ctx.file.path)) {
@@ -11554,7 +11643,8 @@ var init_files2 = __esm({
       check(ctx) {
         const out2 = [];
         ctx.lines.forEach((l, i2) => {
-          if (/^\s*(?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*(?:true|1|True)\s*$/.test(l)) out2.push({ line: i2 + 1, message: `\`${l.trim()}\` in a production environment template.` });
+          const m = /^\s*((?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*["']?(?:true|1|True|on|yes)["']?)(?:\s|#|$)/.exec(l);
+          if (m) out2.push({ line: i2 + 1, message: `\`${m[1]}\` in a production environment template.` });
         });
         return out2;
       }
@@ -11605,14 +11695,28 @@ function dirOf(p) {
   const i2 = p.lastIndexOf("/");
   return i2 < 0 ? "." : p.slice(0, i2);
 }
+function workspaceGlobs(ctx, dir, manifestName) {
+  const root = ctx.profile.manifests.find((x) => dirOf(x.file) === dir && x.file.endsWith(manifestName));
+  const globs = [...root?.workspaces ?? []];
+  if (manifestName === "package.json") {
+    const pnpm = ctx.files.readAny(dir === "." ? "pnpm-workspace.yaml" : `${dir}/pnpm-workspace.yaml`);
+    if (pnpm) for (const m of pnpm.matchAll(/^\s*-\s*['"]?([^'"\n#]+?)['"]?\s*$/gm)) globs.push(m[1]);
+  }
+  return globs.filter((g) => !g.startsWith("!"));
+}
 function isWorkspaceMember(ctx, m) {
-  let dir = dirOf(m.file);
+  const memberDir = dirOf(m.file);
   const b = m.file.split("/").pop();
+  let dir = memberDir;
   while (dir !== ".") {
     dir = dirOf(dir);
     const lock = ctx.profile.lockfiles.find((l) => dirOf(l.file) === dir && LOCK_FOR[b]?.test(l.file.split("/").pop()));
-    if (lock) return lock.file;
-    if (dir === ".") break;
+    if (lock) {
+      const rel = dir === "." ? memberDir : memberDir.slice(dir.length + 1);
+      const globs = workspaceGlobs(ctx, dir, b);
+      if (b === "go.mod" || globs.some((g) => matchesAny(rel, [g.replace(/\/$/, "")]))) return lock.file;
+      return void 0;
+    }
   }
   return void 0;
 }
@@ -11632,6 +11736,8 @@ var LOCK_FOR, missingLockfile, lockfileDrift, multipleLockfiles, nonRegistry, in
 var init_supply_chain = __esm({
   "src/rules/supply-chain.ts"() {
     "use strict";
+    init_glob();
+    init_files();
     init_helpers();
     LOCK_FOR = {
       "package.json": /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?)$/,
@@ -11661,7 +11767,7 @@ var init_supply_chain = __esm({
         for (const m of ctx.profile.manifests) {
           const b = m.file.split("/").pop();
           const lockRe = LOCK_FOR[b];
-          if (!lockRe || m.error) continue;
+          if (!lockRe || m.error || isTestPath(m.file)) continue;
           const runtimeDeps = m.deps.filter((d) => !d.dev && d.source !== "workspace" && d.spec !== "sdk");
           if (!runtimeDeps.length) continue;
           const dir = dirOf(m.file);
@@ -11921,7 +12027,7 @@ var init_supply_chain = __esm({
             facts: { product: EOL[key].product, version: hit.version, eolDate: hit.date }
           });
         };
-        for (const m of ctx.profile.manifests) {
+        for (const m of ctx.profile.manifests.filter((x) => !isTestPath(x.file))) {
           if (m.runtime.node) report("node", lowestMajor(m.runtime.node), m.file, m.runtime.node);
           if (m.runtime.php) report("php", lowestMajor(m.runtime.php), m.file, m.runtime.php);
           if (m.runtime.python) report("python", lowestMajor(m.runtime.python), m.file, m.runtime.python);
@@ -11931,13 +12037,13 @@ var init_supply_chain = __esm({
           const django = m.deps.find((d) => d.name === "django");
           if (django?.spec) report("django", lowestMajor(django.spec), m.file, django.spec);
         }
-        for (const l of ctx.profile.lockfiles) {
+        for (const l of ctx.profile.lockfiles.filter((x) => !isTestPath(x.file))) {
           const lv = l.packages.find((p) => p.name === "laravel/framework");
           if (lv) report("laravel", lv.version.split(".")[0], l.file, `laravel/framework ${lv.version}`, "laravel/framework");
           const dj = l.packages.find((p) => p.name === "django");
           if (dj) report("django", lowestMajor(dj.version), l.file, `django ${dj.version}`, dj.version);
         }
-        for (const f of ctx.files.files) {
+        for (const f of ctx.files.files.filter((x) => !x.isTest)) {
           const b = f.path.split("/").pop();
           if (b === ".nvmrc" || b === ".node-version") report("node", lowestMajor(ctx.files.read(f.path) ?? ""), f.path, (ctx.files.read(f.path) ?? "").trim());
           if (b === ".python-version") report("python", lowestMajor(ctx.files.read(f.path) ?? ""), f.path, (ctx.files.read(f.path) ?? "").trim());
@@ -14382,40 +14488,40 @@ var Edit = class {
    * operation. This is useful for editing ranges without requiring a tree
    * or node instance.
    */
-  editRange(range) {
+  editRange(range2) {
     const newRange = {
-      startIndex: range.startIndex,
-      startPosition: { ...range.startPosition },
-      endIndex: range.endIndex,
-      endPosition: { ...range.endPosition }
+      startIndex: range2.startIndex,
+      startPosition: { ...range2.startPosition },
+      endIndex: range2.endIndex,
+      endPosition: { ...range2.endPosition }
     };
-    if (range.endIndex >= this.oldEndIndex) {
-      if (range.endIndex !== Number.MAX_SAFE_INTEGER) {
-        newRange.endIndex = this.newEndIndex + (range.endIndex - this.oldEndIndex);
+    if (range2.endIndex >= this.oldEndIndex) {
+      if (range2.endIndex !== Number.MAX_SAFE_INTEGER) {
+        newRange.endIndex = this.newEndIndex + (range2.endIndex - this.oldEndIndex);
         newRange.endPosition = {
-          row: this.newEndPosition.row + (range.endPosition.row - this.oldEndPosition.row),
-          column: range.endPosition.row === this.oldEndPosition.row ? this.newEndPosition.column + (range.endPosition.column - this.oldEndPosition.column) : range.endPosition.column
+          row: this.newEndPosition.row + (range2.endPosition.row - this.oldEndPosition.row),
+          column: range2.endPosition.row === this.oldEndPosition.row ? this.newEndPosition.column + (range2.endPosition.column - this.oldEndPosition.column) : range2.endPosition.column
         };
         if (newRange.endIndex < this.newEndIndex) {
           newRange.endIndex = Number.MAX_SAFE_INTEGER;
           newRange.endPosition = { row: Number.MAX_SAFE_INTEGER, column: Number.MAX_SAFE_INTEGER };
         }
       }
-    } else if (range.endIndex > this.startIndex) {
+    } else if (range2.endIndex > this.startIndex) {
       newRange.endIndex = this.startIndex;
       newRange.endPosition = { ...this.startPosition };
     }
-    if (range.startIndex >= this.oldEndIndex) {
-      newRange.startIndex = this.newEndIndex + (range.startIndex - this.oldEndIndex);
+    if (range2.startIndex >= this.oldEndIndex) {
+      newRange.startIndex = this.newEndIndex + (range2.startIndex - this.oldEndIndex);
       newRange.startPosition = {
-        row: this.newEndPosition.row + (range.startPosition.row - this.oldEndPosition.row),
-        column: range.startPosition.row === this.oldEndPosition.row ? this.newEndPosition.column + (range.startPosition.column - this.oldEndPosition.column) : range.startPosition.column
+        row: this.newEndPosition.row + (range2.startPosition.row - this.oldEndPosition.row),
+        column: range2.startPosition.row === this.oldEndPosition.row ? this.newEndPosition.column + (range2.startPosition.column - this.oldEndPosition.column) : range2.startPosition.column
       };
       if (newRange.startIndex < this.newEndIndex) {
         newRange.startIndex = Number.MAX_SAFE_INTEGER;
         newRange.startPosition = { row: Number.MAX_SAFE_INTEGER, column: Number.MAX_SAFE_INTEGER };
       }
-    } else if (range.startIndex > this.startIndex) {
+    } else if (range2.startIndex > this.startIndex) {
       newRange.startIndex = this.startIndex;
       newRange.startPosition = { ...this.startPosition };
     }
@@ -15590,14 +15696,14 @@ function unmarshalPoint(address) {
   return result2;
 }
 __name(unmarshalPoint, "unmarshalPoint");
-function marshalRange(address, range) {
-  marshalPoint(address, range.startPosition);
+function marshalRange(address, range2) {
+  marshalPoint(address, range2.startPosition);
   address += SIZE_OF_POINT;
-  marshalPoint(address, range.endPosition);
+  marshalPoint(address, range2.endPosition);
   address += SIZE_OF_POINT;
-  C.setValue(address, range.startIndex, "i32");
+  C.setValue(address, range2.startIndex, "i32");
   address += SIZE_OF_INT;
-  C.setValue(address, range.endIndex, "i32");
+  C.setValue(address, range2.endIndex, "i32");
   address += SIZE_OF_INT;
 }
 __name(marshalRange, "marshalRange");
@@ -19835,6 +19941,19 @@ function isServerSide(file, source, project) {
   const frontend = project.profile.technologies.some((t2) => t2.kind === "frontend" || t2.kind === "fullstack" || t2.kind === "mobile");
   return !frontend && !file.path.endsWith(".tsx") && !file.path.endsWith(".jsx");
 }
+function callSite(n) {
+  if (n.startPosition.row === n.endPosition.row) return n;
+  if (n.type === "member_call_expression" || n.type === "scoped_call_expression" || n.type === "nullsafe_member_call_expression") return n.childForFieldName("name") ?? n;
+  if (n.type === "call_expression") {
+    const fn = n.childForFieldName("function");
+    if (fn?.type === "member_expression" && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName("property") ?? n;
+  }
+  if (n.type === "call") {
+    const fn = n.childForFieldName("function");
+    if (fn?.type === "attribute" && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName("attribute") ?? n;
+  }
+  return n;
+}
 var DOWNGRADE = { critical: "high", high: "medium", medium: "low", low: "low", info: "info" };
 var SUPPRESS_RE = /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
 function parseSuppressions(lines) {
@@ -19903,8 +20022,9 @@ var FindingBuilder = class {
     let column = hit.column;
     let endLine = hit.endLine;
     if (hit.node) {
-      line ??= hit.node.startPosition.row + 1;
-      column ??= hit.node.startPosition.column + 1;
+      const at = callSite(hit.node);
+      line ??= at.startPosition.row + 1;
+      column ??= at.startPosition.column + 1;
       endLine ??= hit.node.endPosition.row + 1;
     }
     const lines = file ? this.linesOf(file) : void 0;
@@ -20773,10 +20893,10 @@ import { isIP } from "node:net";
 // src/perf/stats.ts
 function quantile(sorted, q) {
   if (!sorted.length) return 0;
-  const pos = (sorted.length - 1) * q;
-  const lo = Math.floor(pos);
-  const hi = Math.ceil(pos);
-  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  const pos2 = (sorted.length - 1) * q;
+  const lo = Math.floor(pos2);
+  const hi = Math.ceil(pos2);
+  return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos2 - lo);
 }
 function stats(samples) {
   const s = [...samples].sort((a, b) => a - b);

@@ -1,3 +1,5 @@
+import { matchesAny } from '../core/glob.js';
+import { isTestPath } from '../fs/files.js';
 import type { ManifestInfo } from '../deps/manifests.js';
 import { OWASP } from './helpers.js';
 import type { Hit, ProjectContext, ProjectRule } from './types.js';
@@ -19,15 +21,30 @@ const LOCK_FOR: Record<string, RegExp> = {
   'go.mod': /^go\.sum$/,
 };
 
+function workspaceGlobs(ctx: ProjectContext, dir: string, manifestName: string): string[] {
+  const root = ctx.profile.manifests.find((x) => dirOf(x.file) === dir && x.file.endsWith(manifestName));
+  const globs = [...(root?.workspaces ?? [])];
+  if (manifestName === 'package.json') {
+    const pnpm = ctx.files.readAny(dir === '.' ? 'pnpm-workspace.yaml' : `${dir}/pnpm-workspace.yaml`);
+    if (pnpm) for (const m of pnpm.matchAll(/^\s*-\s*['"]?([^'"\n#]+?)['"]?\s*$/gm)) globs.push(m[1]!);
+  }
+  return globs.filter((g) => !g.startsWith('!'));
+}
+
+/** A lockfile in an ancestor directory covers nested packages only when they are declared workspace members. */
 function isWorkspaceMember(ctx: ProjectContext, m: ManifestInfo): string | undefined {
-  // A lockfile in any ancestor directory (workspace root) covers nested packages.
-  let dir = dirOf(m.file);
+  const memberDir = dirOf(m.file);
   const b = m.file.split('/').pop()!;
+  let dir = memberDir;
   while (dir !== '.') {
     dir = dirOf(dir);
     const lock = ctx.profile.lockfiles.find((l) => dirOf(l.file) === dir && LOCK_FOR[b]?.test(l.file.split('/').pop()!));
-    if (lock) return lock.file;
-    if (dir === '.') break;
+    if (lock) {
+      const rel = dir === '.' ? memberDir : memberDir.slice(dir.length + 1);
+      const globs = workspaceGlobs(ctx, dir, b);
+      if (b === 'go.mod' || globs.some((g) => matchesAny(rel, [g.replace(/\/$/, '')]))) return lock.file;
+      return undefined;
+    }
   }
   return undefined;
 }
@@ -50,7 +67,7 @@ const missingLockfile: ProjectRule = {
     for (const m of ctx.profile.manifests) {
       const b = m.file.split('/').pop()!;
       const lockRe = LOCK_FOR[b];
-      if (!lockRe || m.error) continue;
+      if (!lockRe || m.error || isTestPath(m.file)) continue;
       const runtimeDeps = m.deps.filter((d) => !d.dev && d.source !== 'workspace' && d.spec !== 'sdk');
       if (!runtimeDeps.length) continue;
       const dir = dirOf(m.file);
@@ -348,7 +365,7 @@ const runtimeEol: ProjectRule = {
         facts: { product: EOL[key]!.product, version: hit.version, eolDate: hit.date },
       });
     };
-    for (const m of ctx.profile.manifests) {
+    for (const m of ctx.profile.manifests.filter((x) => !isTestPath(x.file))) {
       if (m.runtime.node) report('node', lowestMajor(m.runtime.node), m.file, m.runtime.node);
       if (m.runtime.php) report('php', lowestMajor(m.runtime.php), m.file, m.runtime.php);
       if (m.runtime.python) report('python', lowestMajor(m.runtime.python), m.file, m.runtime.python);
@@ -358,13 +375,13 @@ const runtimeEol: ProjectRule = {
       const django = m.deps.find((d) => d.name === 'django');
       if (django?.spec) report('django', lowestMajor(django.spec), m.file, django.spec);
     }
-    for (const l of ctx.profile.lockfiles) {
+    for (const l of ctx.profile.lockfiles.filter((x) => !isTestPath(x.file))) {
       const lv = l.packages.find((p) => p.name === 'laravel/framework');
       if (lv) report('laravel', lv.version.split('.')[0], l.file, `laravel/framework ${lv.version}`, 'laravel/framework');
       const dj = l.packages.find((p) => p.name === 'django');
       if (dj) report('django', lowestMajor(dj.version), l.file, `django ${dj.version}`, dj.version);
     }
-    for (const f of ctx.files.files) {
+    for (const f of ctx.files.files.filter((x) => !x.isTest)) {
       const b = f.path.split('/').pop()!;
       if (b === '.nvmrc' || b === '.node-version') report('node', lowestMajor(ctx.files.read(f.path) ?? ''), f.path, (ctx.files.read(f.path) ?? '').trim());
       if (b === '.python-version') report('python', lowestMajor(ctx.files.read(f.path) ?? ''), f.path, (ctx.files.read(f.path) ?? '').trim());

@@ -1,0 +1,33 @@
+lockfileVersion: '9.0'
+
+importers:
+  .:
+    dependencies:
+      next:
+        specifier: 15.1.0
+        version: 15.1.0
+      react:
+        specifier: 19.0.0
+        version: 19.0.0
+      react-dom:
+        specifier: 19.0.0
+        version: 19.0.0
+    devDependencies:
+      typescript:
+        specifier: 5.6.3
+        version: 5.6.3
+      vitest:
+        specifier: 2.1.8
+        version: 2.1.8
+
+packages:
+  next@15.1.0:
+    resolution: {integrity: sha512-x}
+  react@19.0.0:
+    resolution: {integrity: sha512-x}
+  react-dom@19.0.0:
+    resolution: {integrity: sha512-x}
+  typescript@5.6.3:
+    resolution: {integrity: sha512-x}
+  vitest@2.1.8:
+    resolution: {integrity: sha512-x}

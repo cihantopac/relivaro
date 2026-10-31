@@ -10,6 +10,8 @@ const ORM_FIND = /^(?:findUnique|findUniqueOrThrow|findFirst|findFirstOrThrow|fi
 const PHP_FACADES = /^(?:Str|Arr|Carbon|CarbonImmutable|Cache|Log|Config|Http|Storage|Collection|Validator|Auth|Gate|Hash|Crypt|Session|Lang|URL|Route|View|Event|Queue|Mail|Notification|Response|Request|File|Date|Number|Js|App|Artisan|Bus|Cookie|Process|RateLimiter|Redirect|Schema|Blade|Broadcast|Password|Vite|Sleep|Context|Concurrency|Pipeline|Illuminate|parent|self|static|Inertia|Livewire|Filament|Notification|Exception|DateTime|DateTimeImmutable|Uuid|Ulid|Money|Carbon\\\w+)$/;
 const PHP_QUERY_TERMINAL = /^(?:get|first|firstOrFail|firstWhere|find|findOrFail|findMany|count|exists|doesntExist|sum|avg|max|min|pluck|paginate|simplePaginate|cursorPaginate|value|sole|update|delete|increment|decrement|insert|create|firstOrCreate|updateOrCreate)$/;
 
+const NOT_RELATIONSHIP = /^(?:toArray|get|all|values|keys|collect|fresh|refresh|errors|messages|getMessages|failed|items|toBase|getCollection|lazy|cursor|sortBy|filter|map|unique|flatten|reverse|session|user|attributes|getAttributes|getChanges|getDirty|jsonSerialize|toJson)$/;
+
 function phpQueryInLoop(c: CallInfo): string | null {
   // Model::find($id) / Model::where(...)->first() / DB::table(...)->get() / $item->relation()->get()
   if (/^DB::(?:table|select|selectOne|insert|update|delete|statement|scalar)$/.test(c.callee)) return c.callee;
@@ -31,7 +33,7 @@ function phpQueryInLoop(c: CallInfo): string | null {
       // `$post->comments()->get()`: relationship method with no args returns a query builder.
       const inner = obj.childForFieldName('object');
       const args = obj.childForFieldName('arguments');
-      if (inner?.type === 'variable_name' && args && args.namedChildren.length === 0 && /^[a-z]\w*$/.test(obj.childForFieldName('name')?.text ?? '') && !/^(?:toArray|get|all|values|keys|collect|fresh|refresh)$/.test(obj.childForFieldName('name')?.text ?? ''))
+      if (inner?.type === 'variable_name' && args && args.namedChildren.length === 0 && /^[a-z]\w*$/.test(obj.childForFieldName('name')?.text ?? '') && !NOT_RELATIONSHIP.test(obj.childForFieldName('name')?.text ?? '') && !/^\$(?:validator|errors|bag|page|response|collection|items|request)$/.test(inner.text))
         return compact(c.node.text).slice(0, 60);
       obj = inner;
     }
@@ -86,7 +88,9 @@ const queryInLoop: AstRule = {
       const key = loop.id * 31 + what.length;
       if (reported.has(key)) continue;
       reported.add(key);
-      out.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what } });
+      // Seeders, console commands and scripts run offline: N+1 there costs time, not user latency.
+      const offline = /(?:^|\/)(?:database\/(?:seeders|factories)|routes\/console\.php|app\/Console|scripts?|tools?|bin|management\/commands)\//.test(ctx.file.path) || /(?:^|\/)routes\/console\.php$/.test(ctx.file.path);
+      out.push({ node: c.node, message: `\`${what}\` runs on every iteration of the enclosing loop (line ${loop.startPosition.row + 1}).`, facts: { call: what }, ...(offline ? { severity: 'low' as const, confidence: 'low' as const } : {}) });
     }
     return out;
   },
@@ -173,9 +177,10 @@ const unboundedQuery: AstRule = {
 
 const ROUTE_EXPORT = /^(?:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|loader|action|getServerSideProps|handler|middleware)$/;
 
-function isRequestHandler(fn: Node, lang: Parameters<typeof enclosingFunction>[1]): boolean {
+function isRequestHandler(fn: Node, lang: Parameters<typeof enclosingFunction>[1], source: string): boolean {
   const params = parameterNames(fn, lang);
-  if (params.some((p) => /^(?:req|request|res|response|reply|ctx|context|event)$/.test(p))) return true;
+  if (params.some((p) => /^(?:req|request|res|response|reply)$/.test(p))) return true;
+  if (params.some((p) => /^(?:ctx|c|context)$/.test(p)) && /from\s+['"](?:koa|hono|@hapi\/hapi|@oak|elysia)['"]/.test(source)) return true;
   const name = functionName(fn);
   if (name && ROUTE_EXPORT.test(name)) return true;
   // app.get('/x', (…) => …)
@@ -201,86 +206,99 @@ const syncIo: AstRule = {
   recommendation: 'Use the async variants (`fs.promises.readFile`, `execFile` with `await`), or move the work to startup/caching.',
   verification: 'Load-test the endpoint (`relivaro load`) before and after; p95 latency under concurrency must improve.',
   check(ctx) {
-    if (!ctx.serverSide) return [];
+    if (!ctx.serverSide || /(?:^|\/)(?:cli|bin|scripts?|tools?|commands?)\//.test(ctx.file.path)) return [];
     const out: Hit[] = [];
     for (const c of ctx.calls) {
       if (!/Sync$/.test(c.name) || !/^(?:fs|fse|child_process|cp|zlib|crypto)\.|^(?:readFileSync|writeFileSync|existsSync|readdirSync|statSync|execSync|spawnSync|mkdirSync|appendFileSync|copyFileSync|unlinkSync|pbkdf2Sync|scryptSync|gzipSync|gunzipSync)$/.test(c.callee)) continue;
       const fn = enclosingFunction(c.node, ctx.lang);
-      if (!fn || !isRequestHandler(fn, ctx.lang)) continue;
+      if (!fn || !isRequestHandler(fn, ctx.lang, ctx.source)) continue;
       out.push({ node: c.node, message: `\`${c.callee}()\` blocks the event loop inside a request handler.` });
     }
     return out;
   },
 };
 
-/** Approximate set of ASCII code points an atom can match (`null` = anything). */
-type CharSet = Set<number> | null;
+/** Characters an atom can match: a positive set, a negated set (`[^…]`, `\\D`, `.`), or `null` = unknown/anything. */
+type CharSet = { neg: boolean; set: Set<number> } | null;
+
+const pos = (codes: Iterable<number>): CharSet => ({ neg: false, set: new Set(codes) });
+const range = (a: number, b: number) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
+const DIGIT = range(48, 57);
+const WORD = [...DIGIT, ...range(65, 90), ...range(97, 122), 95];
+const SPACE = [9, 10, 11, 12, 13, 32];
 
 function escapeSet(ch: string): CharSet {
-  const set = new Set<number>();
-  const add = (from: number, to: number) => {
-    for (let c = from; c <= to; c++) set.add(c);
-  };
   switch (ch) {
     case 'd':
-      add(48, 57);
-      return set;
+      return pos(DIGIT);
     case 'w':
-      add(48, 57);
-      add(65, 90);
-      add(97, 122);
-      set.add(95);
-      return set;
+      return pos(WORD);
     case 's':
-      for (const c of [9, 10, 11, 12, 13, 32]) set.add(c);
-      return set;
+      return pos(SPACE);
     case 'D':
+      return { neg: true, set: new Set(DIGIT) };
     case 'W':
+      return { neg: true, set: new Set(WORD) };
     case 'S':
+      return { neg: true, set: new Set(SPACE) };
     case 'p':
     case 'P':
       return null;
     default: {
       const map: Record<string, number> = { n: 10, r: 13, t: 9, f: 12, v: 11, '0': 0 };
-      set.add(map[ch] ?? ch.charCodeAt(0));
-      return set;
+      return pos([map[ch] ?? ch.charCodeAt(0)]);
     }
   }
 }
 
-function classSet(body: string): CharSet {
-  if (body.startsWith('^')) return null;
+function classSet(raw: string): CharSet {
+  const neg = raw.startsWith('^');
+  const body = neg ? raw.slice(1) : raw;
   const set = new Set<number>();
   for (let i = 0; i < body.length; i++) {
     let c: number;
     if (body[i] === '\\') {
       const e = escapeSet(body[i + 1] ?? '');
       i++;
-      if (e === null) return null;
-      if (e.size !== 1) {
-        for (const x of e) set.add(x);
+      if (e === null || e.neg) return null;
+      if (e.set.size !== 1) {
+        for (const x of e.set) set.add(x);
         continue;
       }
-      c = [...e][0]!;
+      c = [...e.set][0]!;
     } else c = body.charCodeAt(i);
-    if (body[i + 1] === '-' && i + 2 < body.length && body[i + 2] !== ']') {
-      const end = body[i + 2] === '\\' ? ([...(escapeSet(body[i + 3] ?? '') ?? new Set([0]))][0] ?? 0) : body.charCodeAt(i + 2);
+    if (body[i + 1] === '-' && i + 2 < body.length) {
+      const endEsc = body[i + 2] === '\\';
+      const end = endEsc ? ([...(escapeSet(body[i + 3] ?? '')?.set ?? new Set([0]))][0] ?? 0) : body.charCodeAt(i + 2);
       for (let x = c; x <= end && x < 0x3000; x++) set.add(x);
-      i += body[i + 2] === '\\' ? 3 : 2;
+      i += endEsc ? 3 : 2;
     } else set.add(c);
   }
-  return set;
+  return { neg, set };
+}
+
+function subset(a: Set<number>, b: Set<number>): boolean {
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
 }
 
 function disjoint(a: CharSet, b: CharSet): boolean {
   if (a === null || b === null) return false;
-  for (const x of a) if (b.has(x)) return false;
-  return true;
+  if (!a.neg && !b.neg) {
+    for (const x of a.set) if (b.set.has(x)) return false;
+    return true;
+  }
+  if (!a.neg && b.neg) return subset(a.set, b.set);
+  if (a.neg && !b.neg) return subset(b.set, a.set);
+  return false;
 }
 
 function union(a: CharSet, b: CharSet): CharSet {
   if (a === null || b === null) return null;
-  return new Set([...a, ...b]);
+  if (!a.neg && !b.neg) return pos([...a.set, ...b.set]);
+  if (a.neg && b.neg) return { neg: true, set: new Set([...a.set].filter((x) => b.set.has(x))) };
+  const [n, p] = a.neg ? [a, b] : [b, a];
+  return { neg: true, set: new Set([...n.set].filter((x) => !p.set.has(x))) };
 }
 
 /**
@@ -298,7 +316,7 @@ export function redosRisk(pattern: string): boolean {
     altFirst: (CharSet | undefined)[];
     atAltStart: boolean;
   }
-  const newFrame = (): Frame => ({ unbounded: false, repeated: new Set<number>(), separators: [], alternation: false, altFirst: [], atAltStart: true });
+  const newFrame = (): Frame => ({ unbounded: false, repeated: pos([]), separators: [], alternation: false, altFirst: [], atAltStart: true });
   const stack: Frame[] = [newFrame()];
   const isUnboundedAt = (j: number) => {
     const ch = pattern[j];
@@ -363,7 +381,7 @@ export function redosRisk(pattern: string): boolean {
             if (fx !== undefined && fy !== undefined && !disjoint(fx, fy)) return true;
           }
       }
-      const frameSet = union(frame.repeated, frame.separators.reduce<CharSet>((acc, s) => union(acc, s), new Set<number>()));
+      const frameSet = union(frame.repeated, frame.separators.reduce<CharSet>((acc, s) => union(acc, s), pos([])));
       if (frame.unbounded || outerUnbounded) {
         parent.unbounded = true;
         parent.repeated = union(parent.repeated, frameSet);
@@ -378,7 +396,7 @@ export function redosRisk(pattern: string): boolean {
     } else if (ch === '^' || ch === '$') {
       i++;
       continue;
-    } else set = ch === '.' ? null : new Set([ch.charCodeAt(0)]);
+    } else set = ch === '.' ? { neg: true, set: new Set([10]) } : pos([ch.charCodeAt(0)]);
     if (top.atAltStart) {
       top.altFirst.push(set);
       top.atAltStart = false;
@@ -452,7 +470,7 @@ const missingFkIndex: AstRule = {
       const body = compact(closure.text);
       for (const stmt of collect(closure, 'expression_statement')) {
         const chain = compact(stmt.text);
-        const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid|char|string)\(['"](\w+_id)['"]/.exec(chain);
+        const m = /^\$table->(?:unsignedBigInteger|bigInteger|unsignedInteger|integer|uuid|ulid)\(['"](\w+_id)['"]/.exec(chain);
         if (!m) continue;
         const col = m[1]!;
         if (/->(?:index|unique|primary|constrained|references)\(/.test(chain)) continue;

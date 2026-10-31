@@ -1,0 +1,12 @@
+{
+  "findings": [
+    { "rule": "rel/destructive-sql-migration", "file": "prisma/migrations/20240101_drop/migration.sql", "line": 2 },
+    { "rule": "rel/destructive-sql-migration", "file": "prisma/migrations/20240101_drop/migration.sql", "line": 3 },
+    { "rule": "rel/destructive-sql-migration", "file": "prisma/migrations/20240101_drop/migration.sql", "line": 5 },
+    { "rule": "sc/multiple-lockfiles", "file": "package-lock.json" },
+    { "rule": "sc/missing-lockfile", "file": "tools/cli/package.json", "line": 1 },
+    { "rule": "sec/env-file-committed", "file": ".env.production" },
+    { "rule": "rel/no-graceful-shutdown", "file": "package.json" },
+    { "rule": "rel/no-error-monitoring", "file": "package.json" }
+  ]
+}

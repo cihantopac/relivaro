@@ -1,4 +1,5 @@
-import { callInfo, collect, compact, enclosingFunction, isJs, walk } from '../parse/ast.js';
+import { isTestPath } from '../fs/files.js';
+import { collect, compact, enclosingFunction, isJs } from '../parse/ast.js';
 import type { Node } from '../parse/treesitter.js';
 import { OWASP, objectArg, pairValue } from './helpers.js';
 import { ALL_LANGS, type AstRule, type FileRule, type Hit, JS_LANGS, type ProjectRule } from './types.js';
@@ -81,8 +82,9 @@ const swallowed: AstRule = {
         const block = e.namedChildren.find((x) => x?.type === 'block');
         if (!block) continue;
         const stmts = block.namedChildren.filter((x) => x && x.type !== 'comment');
-        const explained = block.namedChildren.some((x) => x?.type === 'comment' && x.startPosition.row >= e.startPosition.row && x.startPosition.row <= block.endPosition.row && x.startPosition.row !== e.startPosition.row);
-        if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0]!.text.trim()) && !explained)
+        const explained = collect(e, 'comment').some((x) => x.startPosition.row !== e.startPosition.row);
+        const benign = /^except\s+\(?\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError|StopIteration|StopAsyncIteration|asyncio\.CancelledError|NotImplementedError)\b(?:\s*,\s*(?:ImportError|ModuleNotFoundError|FileNotFoundError|FileExistsError|ProcessLookupError))*\s*\)?\s*(?:as\s+\w+)?\s*:/.test(e.text);
+        if (stmts.length === 1 && /^(?:pass|\.\.\.)$/.test(stmts[0]!.text.trim()) && !explained && !benign)
           out.push({ node: e, message: `\`${e.text.split('\n')[0]!.trim()}\` followed only by \`pass\` discards the error.` });
       }
     }
@@ -331,8 +333,13 @@ const migrationNoDown: AstRule = {
   },
 };
 
+/** Units that ship: test fixtures, examples and benchmark scenarios inside a repository are not deployed. */
+function shippedUnits(ctx: Parameters<ProjectRule['check']>[0]) {
+  return ctx.profile.units.filter((u) => u.path === '.' || !isTestPath(`${u.path}/`));
+}
+
 function serverUnits(ctx: Parameters<ProjectRule['check']>[0]) {
-  return ctx.profile.units.filter((u) => u.kind === 'web-backend' || u.kind === 'fullstack');
+  return shippedUnits(ctx).filter((u) => u.kind === 'web-backend' || u.kind === 'fullstack');
 }
 
 const noGracefulShutdown: ProjectRule = {
@@ -399,7 +406,7 @@ const noErrorTracking: ProjectRule = {
   verification: 'Trigger a test exception in staging and confirm it reaches the monitoring tool with the release version.',
   check(ctx) {
     const out: Hit[] = [];
-    for (const u of ctx.profile.units) {
+    for (const u of shippedUnits(ctx)) {
       if (!['web-backend', 'fullstack', 'mobile'].includes(u.kind)) continue;
       const obs = ctx.profile.technologies.some((t) => t.unit === u.path && t.kind === 'observability' && !/^(?:pino|winston|Monolog|structlog|zap|tracing|Laravel Telescope)$/.test(t.name));
       if (!obs) out.push({ file: u.manifests[0], message: `\`${u.path}\` (${u.frameworks.join(', ') || u.kind}) has no error monitoring integration.`, anchor: u.path });
@@ -470,5 +477,3 @@ export const reliabilityAstRules: AstRule[] = [pyRequestsTimeout, swallowed, bar
 export const reliabilityFileRules: FileRule[] = [sqlMigration];
 export const reliabilityProjectRules: ProjectRule[] = [noGracefulShutdown, noHealthCheck, noErrorTracking];
 
-void callInfo;
-void walk;

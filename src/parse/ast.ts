@@ -349,7 +349,7 @@ const JS_SOURCES = [
 
 const PHP_SOURCES = [
   /^\$_(?:GET|POST|REQUEST|COOKIE|FILES|SERVER)\b/,
-  /^\$(?:this->)?request->(?:input|get|query|post|all|only|except|json|cookie|header|route|file|files|validated|safe|string|str|keys|collect|getContent|getQueryString|server|fullUrl|url|path)\(/,
+  /^\$(?:this->)?request->(?:input|get|query|post|all|only|except|json|cookie|header|route(?=\(\s*['"$])|file|files|validated|safe|string|str|keys|collect|getContent|getQueryString|server|fullUrl|url|path)\(/,
   /^request\(\)->(?:input|get|query|post|all|only|except|json|cookie|header|route|file|validated|string|str|collect)\(/,
   /^request\(['"]/,
   /^Request::(?:input|get|query|post|all|only|except|json|cookie|header|route|file)\(/,
@@ -371,7 +371,7 @@ const SANITIZERS = new Set([
   'intval', 'floatval', 'boolval', 'abs', 'htmlspecialchars', 'htmlentities', 'e', 'strip_tags', 'escapeshellarg',
   'escapeshellcmd', 'addslashes', 'mysqli_real_escape_string', 'filter_var', 'filter_input', 'urlencode', 'rawurlencode',
   'is_numeric', 'ctype_digit', 'count', 'strlen', 'md5', 'sha1', 'hash', 'json_encode', 'Str::slug', 'Str::limit',
-  'preg_quote', 'realpath',
+  'preg_quote', 'realpath', 'route', 'action', 'to_route',
   // Python
   'int', 'float', 'bool', 'len', 'str.isdigit', 'shlex.quote', 'quote', 'escape', 'html.escape', 'markupsafe.escape',
   'secure_filename', 'werkzeug.utils.secure_filename', 'os.path.basename', 'uuid.UUID', 'bleach.clean',
@@ -391,11 +391,14 @@ export function isSourceText(text: string, lang: Language): boolean {
   return false;
 }
 
+/** Functions whose name says they validate/allowlist their input; their result is treated as checked. */
+const VALIDATOR_NAME = /^(?:is_?)?(?:allowed|permitted|safe|trusted|whitelisted|allowlisted)\w*$|^(?:validate|sanitize|sanitise|check|verify|guard|assert|ensure|clean|escape|normalize)[A-Z_]\w*$|^(?:resolveInside|safeJoin|safe_join|secure_filename)\w*$/;
+
 function isSanitizerCall(n: Node, lang: Language): boolean {
   if (lang === 'php' && n.type === 'cast_expression') return /\(\s*(?:int|integer|float|double|bool|boolean)\s*\)/.test(n.text);
   const info = CALL_TYPES[lang].has(n.type) ? callInfo(n, lang) : null;
   if (!info) return false;
-  if (SANITIZERS.has(info.callee) || SANITIZERS.has(info.name)) return true;
+  if (SANITIZERS.has(info.callee) || SANITIZERS.has(info.name) || VALIDATOR_NAME.test(info.name)) return true;
   if (lang === 'php' && /^\$(?:this->)?request->(?:integer|boolean|float|date|enum|has|filled|boolean)$/.test(info.callee)) return true;
   return false;
 }
@@ -482,6 +485,16 @@ export function isTaintedExpr(expr: Node | null | undefined, lang: Language, tai
   walk(expr, (n) => {
     if (found) return false;
     if (isSanitizerCall(n, lang)) return false;
+    // Comparisons and type checks yield booleans, not the user's value.
+    if ((n.type === 'binary_expression' || n.type === 'comparison_operator' || n.type === 'boolean_operator') && /^(?:===|!==|==|!=|<|>|<=|>=|instanceof|in|not in|is|is not|<=>|and|or|&&|\|\|)$/.test(n.childForFieldName('operator')?.text ?? n.children.find((c) => c && /^(?:==|!=|<|>|<=|>=|in|is|and|or)$/.test(c.type))?.text ?? ''))
+      return n.childForFieldName('operator')?.text === '&&' || n.childForFieldName('operator')?.text === '||' || n.childForFieldName('operator')?.text === '??' ? undefined : false;
+    if (n.type === 'unary_expression' && /^!/.test(n.text)) return false;
+    if (n.type === 'ternary_expression' || n.type === 'conditional_expression') {
+      // Only the branches carry a value; the condition does not.
+      const branches = isJs(lang) || lang === 'php' ? [n.childForFieldName('consequence') ?? n.childForFieldName('body'), n.childForFieldName('alternative')] : [n.namedChildren[0], n.namedChildren[2]];
+      if (branches.some((b) => b && isTaintedExpr(b, lang, tainted))) found = true;
+      return false;
+    }
     // Arguments to the key of a property read are not the value itself: `obj[userKey]` is still a lookup.
     if (n.type === 'identifier' || (lang === 'php' && n.type === 'variable_name')) {
       if (tainted.has(n.text) && !isPropertyName(n)) found = true;

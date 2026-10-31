@@ -1,0 +1,1 @@
+{ "name": "misc", "private": true, "workspaces": ["packages/*"], "dependencies": { "express": "4.21.2", "libxmljs2": "0.35.0" } }

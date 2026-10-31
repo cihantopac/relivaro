@@ -48,6 +48,8 @@ const hardcodedSecret: FileRule = {
         }
       }
       if (matched) continue;
+      // Test files are full of literal passwords for fake users; only provider-format tokens are reported there.
+      if (ctx.file.isTest) continue;
       GENERIC_SECRET_ASSIGNMENT.lastIndex = 0;
       for (const m of line.matchAll(GENERIC_SECRET_ASSIGNMENT)) {
         const name = m[1]!;
@@ -160,6 +162,7 @@ const ghaScriptInjection: FileRule = {
     const wf = loadWorkflow(ctx);
     if (!wf) return [];
     const out: Hit[] = [];
+    const seen = new Set<string>();
     for (const s of wf.steps) {
       if (!s.run) continue;
       UNTRUSTED_CONTEXT.lastIndex = 0;
@@ -167,6 +170,8 @@ const ghaScriptInjection: FileRule = {
         const expr = m[1]!;
         if (expr.startsWith('inputs.') && !wf.triggers.includes('workflow_dispatch') && !wf.triggers.includes('workflow_call')) continue;
         const line = findLine(ctx.lines, new RegExp(m[0].replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), s.line - 1);
+        if (seen.has(`${line}:${expr}`)) continue;
+        seen.add(`${line}:${expr}`);
         out.push({ line, message: `\`${m[0]}\` is expanded inside a \`run:\` script.`, severity: expr.startsWith('inputs.') ? 'medium' : 'high', confidence: expr.startsWith('inputs.') ? 'medium' : 'high', facts: { expression: expr } });
       }
     }
@@ -605,12 +610,13 @@ const templateXss: FileRule = {
   appliesTo: (f) => f.kind === 'template',
   check(ctx) {
     const out: Hit[] = [];
-    const SAFE_BLADE = /^\s*(?:csrf_field\(\)|method_field\(|\$slot\b|\$\w+->links\(|\$attributes|json_encode\(|Js::from|@json|\$__env|\$\w+->render\(|\$\w+->toHtml\(|nl2br\(\s*e\(|e\(|clean\(|Purifier::clean|\$errors|session\(|__\(|trans\(|Str::markdown|markdown\(|\$\w+(?:Html|_html|Svg|Icon)\b)/;
+    const SAFE_BLADE = /^\s*(?:csrf_field\(\)|method_field\(|\$slot\b|\$\w+->links\(|\$attributes|json_encode\(|Js::from|@json|\$__env|\$\w+->render\(|\$\w+->toHtml\(|nl2br\(\s*e\(|e\(|clean\(|Purifier::clean|\$errors|session\(|__\(|trans\(|\$\w+(?:Html|_html|Svg|Icon)\b)/;
+    const LITERAL_TERNARY = /^[^'"?]*\?\s*(['"])(?:(?!\1).)*\1\s*:\s*(['"])(?:(?!\2).)*\2\s*$/;
     for (let i = 0; i < ctx.lines.length; i++) {
       const l = ctx.lines[i]!;
       if (ctx.file.path.endsWith('.blade.php')) {
         for (const m of l.matchAll(/\{!!\s*([\s\S]*?)\s*!!\}/g))
-          if (!SAFE_BLADE.test(m[1]!)) out.push({ line: i + 1, column: (m.index ?? 0) + 1, message: `Blade prints \`{!! ${m[1]!.slice(0, 50)} !!}\` without escaping.`, confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]!) ? 'high' : 'low', severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]!) ? 'high' : 'medium' });
+          if (!SAFE_BLADE.test(m[1]!) && !LITERAL_TERNARY.test(m[1]!)) out.push({ line: i + 1, column: (m.index ?? 0) + 1, message: `Blade prints \`{!! ${m[1]!.slice(0, 50)} !!}\` without escaping.`, confidence: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]!) ? 'high' : 'low', severity: /\$request|request\(|\$_(?:GET|POST)/.test(m[1]!) ? 'high' : 'medium' });
       } else if (/\.vue$/.test(ctx.file.path)) {
         for (const m of l.matchAll(/\sv-html\s*=\s*"([^"]+)"/g)) if (!/sanitize|purify|DOMPurify/i.test(m[1]!)) out.push({ line: i + 1, message: `\`v-html="${m[1]!.slice(0, 50)}"\` renders raw HTML.` });
       } else if (/\.(?:html|jinja2?|j2|djhtml)$/.test(ctx.file.path)) {
@@ -639,7 +645,8 @@ const laravelEnvDebug: FileRule = {
   check(ctx) {
     const out: Hit[] = [];
     ctx.lines.forEach((l, i) => {
-      if (/^\s*(?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*(?:true|1|True)\s*$/.test(l)) out.push({ line: i + 1, message: `\`${l.trim()}\` in a production environment template.` });
+      const m = /^\s*((?:APP_DEBUG|DEBUG|FLASK_DEBUG|DJANGO_DEBUG)\s*=\s*["']?(?:true|1|True|on|yes)["']?)(?:\s|#|$)/.exec(l);
+      if (m) out.push({ line: i + 1, message: `\`${m[1]}\` in a production environment template.` });
     });
     return out;
   },

@@ -40,6 +40,21 @@ function isServerSide(file: ProjectFile, source: string, project: ProjectContext
   return !frontend && !file.path.endsWith('.tsx') && !file.path.endsWith('.jsx');
 }
 
+/** For a call that spans several lines (fluent chains), point at the called method rather than the chain start. */
+function callSite(n: import('../parse/treesitter.js').Node): import('../parse/treesitter.js').Node {
+  if (n.startPosition.row === n.endPosition.row) return n;
+  if (n.type === 'member_call_expression' || n.type === 'scoped_call_expression' || n.type === 'nullsafe_member_call_expression') return n.childForFieldName('name') ?? n;
+  if (n.type === 'call_expression') {
+    const fn = n.childForFieldName('function');
+    if (fn?.type === 'member_expression' && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName('property') ?? n;
+  }
+  if (n.type === 'call') {
+    const fn = n.childForFieldName('function');
+    if (fn?.type === 'attribute' && fn.startPosition.row !== fn.endPosition.row) return fn.childForFieldName('attribute') ?? n;
+  }
+  return n;
+}
+
 const DOWNGRADE: Record<Severity, Severity> = { critical: 'high', high: 'medium', medium: 'low', low: 'low', info: 'info' };
 
 interface Suppressions {
@@ -119,8 +134,9 @@ export class FindingBuilder {
     let column = hit.column;
     let endLine = hit.endLine;
     if (hit.node) {
-      line ??= hit.node.startPosition.row + 1;
-      column ??= hit.node.startPosition.column + 1;
+      const at = callSite(hit.node);
+      line ??= at.startPosition.row + 1;
+      column ??= at.startPosition.column + 1;
       endLine ??= hit.node.endPosition.row + 1;
     }
     const lines = file ? this.linesOf(file) : undefined;

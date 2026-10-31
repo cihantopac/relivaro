@@ -1,0 +1,9 @@
+{
+  "name": "clean-service",
+  "version": "2.0.0",
+  "private": true,
+  "engines": { "node": ">=22" },
+  "scripts": { "build": "tsc", "test": "vitest run", "typecheck": "tsc --noEmit", "lint": "biome check ." },
+  "dependencies": { "express": "4.21.2", "pg": "8.13.1", "@sentry/node": "8.42.0", "axios": "1.7.9", "zod": "3.24.1" },
+  "devDependencies": { "typescript": "5.7.2", "vitest": "2.1.8", "@biomejs/biome": "1.9.4" }
+}

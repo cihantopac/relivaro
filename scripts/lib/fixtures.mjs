@@ -37,7 +37,7 @@ function walk(dir, base = dir, out = []) {
   return out;
 }
 
-const ANNOT = /(?:\/\/|#|<!--|\{\{--|\/\*|--)\s*expect:\s*([\w/.\- ]+?)\s*(?:-->|--\}\}|\*\/)?\s*$/;
+const ANNOT = /(?:\/\/|#|<!--|\{\{--|\/\*|--)\s*expect:\s*([\w/.\- ]+?)\s*(?:-->|--\}\}|\*\/\s*\}?)?\s*$/;
 
 export function expectations(dir) {
   const out = [];

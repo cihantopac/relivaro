@@ -1,0 +1,1 @@
+{ "name": "regressions-cli", "private": true, "type": "module", "bin": { "tool": "src/cli/main.js" }, "engines": { "node": ">=22" } }

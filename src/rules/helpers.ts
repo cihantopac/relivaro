@@ -83,30 +83,47 @@ export function isSafePart(part: Node, lang: Language): boolean {
   if (lang === 'php' && part.type === 'cast_expression' && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t)) return true;
   if (SAFE_PART_CALL.test(t.replace(/\s+/g, ''))) return true;
   if (/\.(?:length|size|count)\s*$/.test(t)) return true;
+  // `String(x).replace(/[^a-z0-9-]/g, '')`: allowlist filtering that removes markup and quote characters.
+  if (/\.replace\(\s*\/\[\^[^\]<>"'&`]*\]\+?\/g\w*\s*,\s*(['"`])\1\s*\)$/.test(t)) return true;
   if ((part.type === 'identifier' || part.type === 'variable_name') && boundToLiteral(part, lang)) return true;
   return false;
 }
 
-/** `const limit = 50` / `$table = 'users'` / `LIMIT = 10` assigned once in the enclosing scope. */
+/** Literal, template without substitutions, `[…literals].join(…)`, or concatenation of those. */
+export function isConstantExpression(n: Node | null | undefined, lang: Language): boolean {
+  if (!n) return false;
+  if (isLiteral(n, lang)) return true;
+  if (n.type === 'parenthesized_expression') return isConstantExpression(n.namedChildren[0], lang);
+  if ((n.type === 'binary_expression' || n.type === 'binary_operator') && /^[.+]$/.test(n.childForFieldName('operator')?.text ?? ''))
+    return isConstantExpression(n.childForFieldName('left'), lang) && isConstantExpression(n.childForFieldName('right'), lang);
+  if (n.type === 'array' || n.type === 'list' || n.type === 'array_creation_expression')
+    return n.namedChildren.every((c) => !c || c.type === 'comment' || isConstantExpression(c.type === 'array_element_initializer' ? c.namedChildren[c.namedChildren.length - 1] : c, lang));
+  if (n.type === 'call_expression') {
+    const fn = n.childForFieldName('function');
+    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'join') return isConstantExpression(fn.childForFieldName('object'), lang);
+  }
+  return false;
+}
+
+/** `const limit = 50` / `$table = 'users'` / `$cond = cond ? 'a' : 'b'`: every assignment in scope is a constant. */
 function boundToLiteral(id: Node, lang: Language): boolean {
   const name = id.text;
   let scope: Node | null = id.parent;
   while (scope && !FUNCTION_SCOPE.has(scope.type) && scope.parent) scope = scope.parent;
   for (let s: Node | null = scope; s; s = s.parent) {
-    let literal: boolean | undefined;
+    let allConstant = true;
     let assignments = 0;
     walk(s, (n) => {
       if (n.id !== s.id && FUNCTION_SCOPE.has(n.type)) return false;
       if (n.type === 'variable_declarator' && n.childForFieldName('name')?.text === name) {
         assignments++;
-        literal = isLiteral(n.childForFieldName('value'), lang) && n.parent?.childForFieldName('kind')?.text !== 'let' ? true : literal ?? false;
-        if (!isLiteral(n.childForFieldName('value'), lang)) literal = false;
-      } else if ((n.type === 'assignment_expression' || n.type === 'assignment') && n.childForFieldName('left')?.text === name) {
+        if (!isConstantExpression(n.childForFieldName('value'), lang)) allConstant = false;
+      } else if ((n.type === 'assignment_expression' || n.type === 'assignment' || n.type === 'augmented_assignment_expression') && n.childForFieldName('left')?.text === name) {
         assignments++;
-        literal = isLiteral(n.childForFieldName('right'), lang) && literal !== false;
+        if (n.type.startsWith('augmented') || !isConstantExpression(n.childForFieldName('right'), lang)) allConstant = false;
       }
     });
-    if (assignments) return assignments === 1 && literal === true;
+    if (assignments) return allConstant;
     if (!s.parent) break;
   }
   return false;
