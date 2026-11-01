@@ -321,6 +321,7 @@ describe('report injection', () => {
       expect(html).not.toMatch(/@import|url\(\s*["']?(?:https?:)?\/\//i);
       expect(html).not.toMatch(/fonts\.googleapis|cdn\.|unpkg|jsdelivr/i);
       expect(html).toContain('data-lang="tr"');
+      for (const mode of ['light', 'dark', 'system']) expect(html).toContain(`data-theme-mode="${mode}"`);
     } finally {
       fx.cleanup();
     }

@@ -1,6 +1,6 @@
-# Release readiness — Relivaro 1.2.0
+# Release readiness — Relivaro 1.2.2
 
-Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261101-004621-69c5e1`, 2026-11-01, darwin/arm64, Node v22.23.2).
+Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261101-114103-d9cd63`, 2026-11-01, darwin/arm64, Node v22.23.2).
 
 ## Result: **READY** — score 90/100
 
@@ -9,13 +9,13 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 
 | Gate | Status | Basis | Evidence |
 | --- | --- | --- | --- |
-| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.3s |
-| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 11.5s (154 passed) |
+| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.4s |
+| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 12.0s (154 passed) |
 | Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.4s |
 | Lint passes | ✅ passed | executed | `npm run lint --silent` passed in 0.4s |
 | No exposed secrets | ✅ passed | static | No secrets detected in analysed files. |
 | No unresolved high-risk security findings | ✅ passed | static | No security findings at medium or above with medium/high confidence. |
-| No known-vulnerable dependencies | ✅ passed | advisory-db | 131 resolved packages checked against OSV.dev; no advisories. |
+| No known-vulnerable dependencies | ✅ passed | advisory-db | 133 resolved packages checked against OSV.dev; no advisories. |
 | Reproducible dependency installs | ✅ passed | static | 1 lockfile(s), consistent with manifests. |
 | CI runs tests on every change | ✅ passed | static | GitHub Actions configured and runs tests. |
 | No high-risk reliability defects | ✅ passed | static | No medium or higher reliability findings. |
@@ -24,7 +24,7 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 | Supported runtimes and frameworks | ✅ passed | static | No end-of-life runtime or framework versions detected. |
 | Operational readiness (health checks, monitoring, shutdown) | ➖ n/a | static | No deployable service detected. |
 | Performance budgets met | ✅ passed | measured | 1 budget(s) met by the latest measurements. |
-| Installation and usage documentation | ✅ passed | static | README (12 KB), LICENSE, CHANGELOG, SECURITY policy. |
+| Installation and usage documentation | ✅ passed | static | README (9 KB), LICENSE, CHANGELOG, SECURITY policy. |
 
 > This assessment is based on automated checks and their stated limitations. Passing it does not prove the software is free of vulnerabilities or defects.
 

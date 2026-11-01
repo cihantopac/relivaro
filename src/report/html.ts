@@ -18,11 +18,25 @@ export interface HtmlExtras {
   fixes?: { applied: number; verified: number; rolledBack: number };
 }
 
+/** Light / dark / system switch; labels and the pressed state are set by the client in the active language. */
+const THEME_ICONS = {
+  light:
+    '<circle cx="8" cy="8" r="3"/><path d="M8 1.5v1.6M8 12.9v1.6M1.5 8h1.6M12.9 8h1.6M3.4 3.4l1.1 1.1M11.5 11.5l1.1 1.1M3.4 12.6l1.1-1.1M11.5 4.5l1.1-1.1"/>',
+  dark: '<path d="M13.6 9.8A5.8 5.8 0 0 1 6.2 2.4a5.8 5.8 0 1 0 7.4 7.4z"/>',
+  system: '<rect x="1.8" y="2.6" width="12.4" height="8.6" rx="1.4"/><path d="M5.6 14h4.8M8 11.2V14"/>',
+};
+const THEME_BUTTONS = Object.entries(THEME_ICONS)
+  .map(
+    ([mode, icon]) =>
+      `<button type="button" data-theme-mode="${mode}"><svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">${icon}</svg></button>`,
+  )
+  .join('');
+
 const topFindings = (fs: RunComparison['introduced']) =>
   fs.slice(0, 8).map((f) => ({ title: f.title, severity: f.severity, file: f.location?.file }));
 
 /**
- * Self-contained interactive HTML report (English and Turkish, light and dark). All repository-derived text is
+ * Self-contained interactive HTML report (English and Turkish; light, dark or system theme). All repository-derived text is
  * inserted via `textContent` from a JSON payload (with `<` escaped), and a strict CSP forbids any network access, so
  * analysed content cannot inject markup or scripts into the report.
  */
@@ -83,7 +97,7 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 <nav class="tabs" id="nav" aria-label="Sections"></nav>
 <div class="tools">
 <div class="seg" id="lang" role="group"><button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="tr" lang="tr">TR</button></div>
-<button type="button" class="icon-btn" id="theme"><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M8 2a6 6 0 0 1 0 12z" fill="currentColor"/></svg></button>
+<div class="seg seg-icons" id="theme" role="group">${THEME_BUTTONS}</div>
 </div>
 </div></header>
 <main class="wrap" id="app"><noscript><p>This report needs JavaScript to render. The same results are in report.md and report.json next to this file.</p></noscript></main>

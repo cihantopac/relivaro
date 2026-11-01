@@ -24,7 +24,12 @@ if (lang !== 'en' && lang !== 'tr') {
   lang = /^tr\b/i.test(prefs[0] || '') ? 'tr' : 'en';
 }
 var theme = store.get('theme');
-if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+if (theme !== 'light' && theme !== 'dark') theme = 'system';
+function applyTheme() {
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
+}
+applyTheme();
 
 function t(k, v) {
   var s = (I[lang] && I[lang][k]) || I.en[k] || k;
@@ -83,6 +88,7 @@ function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) ==
 var VAR_ALIAS = { unverified: 'unv', 'n/a': 'na' };
 function cssVar(name) { return 'var(--' + (VAR_ALIAS[name] || name) + ')'; }
 function stKey(st) { return st === 'n/a' ? 'na' : st; }
+function sevStyle(sev) { return { color: cssVar(sev), background: 'color-mix(in srgb, ' + cssVar(sev) + ' 13%, transparent)' }; }
 
 /* Status glyphs: drawn shapes, so status never relies on colour alone. */
 function glyph(st, size) {
@@ -148,9 +154,14 @@ function renderChrome() {
   var seg = document.getElementById('lang');
   seg.setAttribute('aria-label', 'Language / Dil');
   Array.prototype.forEach.call(seg.querySelectorAll('button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-lang') === lang)); });
-  var tb = document.getElementById('theme');
-  tb.setAttribute('aria-label', t('theme.toggle'));
-  tb.setAttribute('title', t('theme.toggle'));
+  var tg = document.getElementById('theme');
+  tg.setAttribute('aria-label', t('theme.label'));
+  Array.prototype.forEach.call(tg.querySelectorAll('button'), function (b) {
+    var m = b.getAttribute('data-theme-mode');
+    b.setAttribute('aria-pressed', String(m === theme));
+    b.setAttribute('aria-label', t('theme.' + m));
+    b.setAttribute('title', t('theme.label') + ': ' + t('theme.' + m));
+  });
   document.getElementById('skip').textContent = t('skip');
   var foot = document.getElementById('foot-text');
   foot.textContent = t('footer', { v: D.tool.version });
@@ -255,11 +266,51 @@ function actionCenter() {
     ]));
   });
   var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
-  var steps = el('ol', { cls: 'ac-steps' }, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]);
-  return card(t('ac.title'), t('ac.hint'), [
-    tiles,
-    el('div', { cls: 'ac-foot' }, [steps, el('p', { cls: 'hint', style: { margin: '0' } }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])])
+  var steps = el('div', { cls: 'ac-next' }, [
+    el('h3', { text: t('ac.next') }),
+    el('ol', { cls: 'ac-steps' }, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]),
+    el('p', { cls: 'hint' }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])
   ]);
+  return card(t('ac.title'), t('ac.hint'), [tiles, el('div', { cls: 'ac-foot' }, [fixFirst(), steps])]);
+}
+
+/* The three most severe root causes (rules) among open findings that were not reviewed as false positives. */
+function priorities() {
+  var groups = {}, order = [];
+  open.forEach(function (f) {
+    if (vstate(f) === 'false-positive') return;
+    if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); }
+    groups[f.ruleId].push(f);
+  });
+  return order.map(function (r) {
+    var g = groups[r].slice().sort(function (a, b) { return SEV.indexOf(a.severity) - SEV.indexOf(b.severity); });
+    return { rule: r, list: g, worst: SEV.indexOf(g[0].severity) };
+  }).sort(function (a, b) { return a.worst - b.worst || b.list.length - a.list.length || a.rule.localeCompare(b.rule); }).slice(0, 3);
+}
+function showRule(rule) {
+  state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
+  renderGates(); renderFindingsSection(); focusFindings();
+}
+function fixFirst() {
+  var top = priorities();
+  var box = el('div', { cls: 'ff-box' }, [el('h3', { text: t('ff.title') })]);
+  if (!top.length) { box.appendChild(el('div', { cls: 'empty', text: t('ff.none') })); return box; }
+  var list = el('ol', { cls: 'ff' });
+  top.forEach(function (g) {
+    var f = g.list[0], sev = SEV[g.worst];
+    var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : g.rule;
+    list.appendChild(el('li', null, [
+      el('span', { cls: 'sev', style: sevStyle(sev) }, [t('sev.' + sev)]),
+      el('div', { cls: 'ff-main' }, [
+        el('button', { type: 'button', cls: 'ff-t', title: t('ff.show'), on: { click: function () { showRule(g.rule); } } }, [md(f.title)]),
+        el('div', { cls: 'ff-m' }, [remBadge(remOf(f).kind), el('span', { cls: 'loc' }, [el('bdi', { text: g.list.length > 1 ? t('ff.where', { n: num(g.list.length - 1), w: where }) : where })])])
+      ])
+    ]));
+  });
+  var all = [].concat.apply([], top.map(function (g) { return g.list; }));
+  box.appendChild(list);
+  box.appendChild(el('button', { type: 'button', cls: 'btn primary', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { state.sel = {}; setSel(all, true); renderFindingsList(); openPrompt(); } } }));
+  return box;
 }
 
 function donut(segs, size, width) {
@@ -456,9 +507,8 @@ function findingRow(f) {
   row.appendChild(el('label', { cls: 'fsel-wrap', title: t('sel.row', { id: f.id, title: '' }) }, [cb]));
   var d = el('details', { cls: 'f' });
   if (state.opened[f.id]) d.open = true;
-  var sevStyle = { color: cssVar(f.severity), background: 'color-mix(in srgb, ' + cssVar(f.severity) + ' 13%, transparent)' };
   d.appendChild(el('summary', null, [
-    el('span', { cls: 'sev', style: sevStyle }, [t('sev.' + f.severity)]),
+    el('span', { cls: 'sev', style: sevStyle(f.severity) }, [t('sev.' + f.severity)]),
     el('span', { cls: 'ttl' }, [md(f.title)]),
     el('span', { cls: 'side' }, [vsBadge(vstate(f)), remBadge(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
     where ? el('span', { cls: 'loc', title: where }, [el('bdi', { text: where })]) : null
@@ -714,9 +764,11 @@ function project() {
   row('project.deploy', uniq(Pf.deploy.map(function (d) { return d.kind; })).join(', '));
   if (Pf.api && Pf.api.routes) row('project.api', t('project.apiV', { n: num(Pf.api.routes) }));
   if (Pf.envVars.length) row('project.env', t('project.envV', { n: Pf.envVars.length, u: Pf.envVars.filter(function (v) { return v.required && !v.documented; }).length }));
-  var lim = el('ul', { cls: 'limits' });
-  (D.limitations.length ? D.limitations : [t('limits.none')]).forEach(function (l) { lim.appendChild(el('li', null, [md(l)])); });
-  return el('div', { cls: 'grid g-2' }, [card(t('project.title'), null, [dl]), card(t('limits.title'), t('disclaimer'), [lim])]);
+  var all = D.limitations.length ? D.limitations : [t('limits.none')];
+  function limits(items) { return el('ul', { cls: 'limits' }, items.map(function (l) { return el('li', null, [md(l)]); })); }
+  var lim = [limits(all.slice(0, 3))];
+  if (all.length > 3) lim.push(el('details', { cls: 'more-lim' }, [el('summary', { text: t('limits.more', { n: num(all.length - 3) }) }), limits(all.slice(3))]));
+  return el('div', { cls: 'grid g-2' }, [card(t('project.title'), null, [dl]), card(t('limits.title'), t('disclaimer'), lim)]);
 }
 
 /* ---------- page ---------- */
@@ -753,11 +805,8 @@ function render() {
 Array.prototype.forEach.call(document.querySelectorAll('#lang button'), function (b) {
   b.addEventListener('click', function () { lang = b.getAttribute('data-lang'); store.set('lang', lang); render(); });
 });
-document.getElementById('theme').addEventListener('click', function () {
-  var cur = document.documentElement.getAttribute('data-theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-  var next = cur === 'dark' ? 'light' : 'dark';
-  document.documentElement.setAttribute('data-theme', next);
-  store.set('theme', next);
+Array.prototype.forEach.call(document.querySelectorAll('#theme button'), function (b) {
+  b.addEventListener('click', function () { theme = b.getAttribute('data-theme-mode'); store.set('theme', theme); applyTheme(); renderChrome(); });
 });
 render();
 })();`;

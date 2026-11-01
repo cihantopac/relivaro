@@ -3,6 +3,28 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.2.2] — 2026-11-01
+
+Visual polish and brand consistency; no changes to analysis, CLI flags, run records or report formats.
+
+### Changed
+
+- HTML report palette follows the Relivaro identity (teal, ink, paper, stone from `assets/brand/tokens.css`) in light
+  and dark themes, with contrast-checked text colours; severity and gate colours keep their meaning.
+- The theme button is now a **Light / Dark / System** switch; the choice is remembered (System by default).
+- The action center opens with **Fix first**: the three most severe root causes, each linking to its findings, and
+  one button that turns them into a fix prompt.
+- Clearer hierarchy and spacing; on phones the section navigation stays available as a scrollable row and the action
+  center, flow and gate tiles are more compact. Limitations show the first three items and expand for the rest.
+- Turkish interface text reworded where it was literal or ambiguous ("tarayıcı adayı" became "aday", "Bastırılmış"
+  became "Yok sayılan", deterministic fixes are "Otomatik düzeltme").
+- README rewritten as a shorter product page with new screenshots of the 1.2.2 report and absolute image URLs, so
+  images render on npm as well as GitHub. Workflow diagrams use the brand palette and the correct fixer count (15).
+
+### Added
+
+- `scripts/screenshots.mjs` regenerates the README screenshots from real reports (Playwright, development only).
+
 ## [1.2.1] — 2026-11-01
 
 Brand update; no functional changes. 1.2.0 was released on GitHub only, so on npm this release follows 1.1.0 and

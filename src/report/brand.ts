@@ -3,8 +3,8 @@
  * outline: the unverified step made visible. Reports inline these outlined paths, so they need no font or network.
  */
 export const BRAND = {
-  light: { brand: '0b7285', ink: '0a6273', soft: 'e3f2f5' },
-  dark: { brand: '3fb6c9', ink: '74d0de', soft: '10303a' },
+  light: { brand: '0b7285', ink: '085765', soft: 'e2f1f4' },
+  dark: { brand: '3fb6c9', ink: '7ad2df', soft: '0f2f38' },
 };
 
 /** Compact horizontal lockup (for widths below 120 px): the cairn keeps the brand teal, the wordmark takes the text colour. */

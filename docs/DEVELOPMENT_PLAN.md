@@ -4,7 +4,8 @@ Persistent record of scope, decisions, verified progress and open issues. Update
 
 ## Status (2026-11-01)
 
-v1.2.1 released (GitHub, npm): 1.2.0 plus the Relivaro identity designed with Markilo. All acceptance
+v1.2.2 released (GitHub, npm): report and README polished around the Relivaro identity designed with Markilo
+(brand palette, Light / Dark / System theme, Fix first, new screenshots). All acceptance
 criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
 
 ## Milestones (internal)
@@ -57,7 +58,7 @@ CI passes on Ubuntu, macOS and Windows with Node 22 and 24. The first Windows ru
 | --- | --- |
 | Technical fixes | Transactional multi-file `fix apply`, interrupted-apply rollback, conflict-preserving forced rollback, symlink-safe verification copies with a report of files changed outside the copy; connection-time load-target validation and complete private-range classification; gate `basis` + tally, `ready` only when every gate is verified, `unverifiable` fix findings; `report` default formats and `rules <id>` CLI defects; plugin install command in the docs. Each with a regression test. |
 | Brand identity | Started with Markilo (research: 53 sources, 12 competitor brands; 4 directions, 2 sketch rounds, critic gate). Paused at the owner's request until Markilo 1.0.0; the report and README use the product name as text and the researched petrol colour. |
-| HTML report | Rebuilt as a bilingual (EN/TR) dashboard; screenshots in `assets/screenshots/` come from real runs (Relivaro on itself with `--allow-exec --online`, and the `node-api` fixture after `fix apply`). |
+| HTML report | Rebuilt as a bilingual (EN/TR) dashboard; screenshots in `assets/screenshots/` come from real runs (Relivaro on itself with `--allow-exec --online`, and the `node-api` fixture) via `scripts/screenshots.mjs`. |
 | README / npm | Product-style README with real numbers; npm description and keywords updated. |
 
 ## 1.2.0 — actionable reports and agent-assisted fixes

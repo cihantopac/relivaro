@@ -4,7 +4,7 @@ Every analysis command writes `report.html` next to `report.json`, `report.md` (
 `.relivaro/runs/<run-id>/`. It is a single self-contained file: open it from disk, attach it to a ticket or publish it
 as a CI artifact. It makes no network requests.
 
-![Relivaro HTML report: release gates with their basis](../assets/screenshots/report-gates.png)
+![Relivaro HTML report: release gates with their basis](../assets/screenshots/report-gates-light.png)
 
 ## What it shows
 
@@ -12,7 +12,7 @@ as a CI artifact. It makes no network requests.
 | --- | --- | --- |
 | Release readiness | Score ring, status (ready · ready with warnings · needs verification · not ready), gate tally | `release` only |
 | KPIs | Open findings, critical + high, auto-fixable, files and lines analysed, checks passed, findings reviewed in code | run record, review |
-| Action center | Open findings per remediation path (deterministic fix · agent-assisted · manual review) and the three steps from selection to a fix prompt | run record, review |
+| Action center | Open findings per remediation path (deterministic fix · agent-assisted · manual review), **Fix first** — the three most severe root causes with a one-click fix prompt — and the steps from selection to a fix prompt | run record, review |
 | Audit → Release flow | What happened at each stage of this run; stages that did not run are hatched | run record, fix history |
 | Charts | Severity distribution, findings by category (stacked by severity), files with the most findings | open findings |
 | Release gates | One tile per gate with its status and **basis** (executed, measured, advisory database, static analysis, not run). Select a tile to filter the findings behind it | `release` only |
@@ -21,7 +21,7 @@ as a CI artifact. It makes no network requests.
 | Compared with the previous run | Introduced, resolved and persisting findings, release status change | previous run in the same workspace |
 | Performance measurements | Latest `bench` / `load` results with mean, p95 and error rate | `.relivaro/bench/` |
 | Untested high-risk code | Heuristic ranking of source files without matching tests | run record |
-| What this run did not verify | Every limitation of the run, stated plainly | run record |
+| What this run did not verify | Every limitation of the run, stated plainly; the first three are shown, the rest expand | run record |
 
 Charts and numbers are only drawn from what the run actually measured. A gate that was not executed is shown as
 **unverified** with a dashed outline, never as passed, and the status is never `ready` while a gate is unverified.
@@ -78,7 +78,10 @@ The interface is available in **English** and **Türkçe**. The default follows 
 storage when available. Relivaro's own interface text is translated; repository content — code, paths, evidence,
 rule messages and generated details — is shown exactly as produced. No translation service is used.
 
-Light and dark themes follow the operating system; the theme button overrides it.
+The theme switch offers **Light**, **Dark** and **System** (the default, which follows the operating system); the
+choice is remembered in local storage when available. Colours come from the Relivaro identity
+([`assets/brand/tokens.css`](../assets/brand/tokens.css)); severity and gate colours keep their meaning in both
+themes, and status never relies on colour alone.
 
 ## Security
 
