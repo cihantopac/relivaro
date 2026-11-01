@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -283,6 +283,134 @@ describe('relivaro CLI', () => {
       expect(cli(['audit', dir, '--no-write']).code).toBe(2);
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('review, recheck and report access', () => {
+  it('records reviews, re-renders the report and re-checks findings against changed code', () => {
+    const p = materialize('python-app');
+    try {
+      const a = cli(['audit', p.dir, '--json', '--compact']);
+      const run = JSON.parse(a.stdout);
+      expect(run.report.html).toMatch(/report\.html$/);
+      expect(existsSync(run.report.html)).toBe(true);
+      expect(run.report.open).toContain(run.report.html);
+      expect(run.remediation.deterministic).toBeGreaterThan(0);
+      expect(run.review.unreviewed).toBe(run.summary.open);
+      const target = run.findings.find(
+        (f: { rule: string; message: string }) =>
+          f.rule === 'sec/unsafe-deserialization' && f.message.includes('yaml.load'),
+      );
+      const other = run.findings.find((f: { id: string; where?: string }) => f.id !== target.id && f.where);
+
+      const r = cli([
+        'review',
+        'add',
+        '--path',
+        p.dir,
+        '--finding',
+        target.id,
+        '--verdict',
+        'confirmed',
+        '--reason',
+        'request body reaches yaml.load',
+        '--evidence',
+        target.where,
+        '--reviewer',
+        'e2e',
+        '--json',
+      ]);
+      expect(r.code).toBe(0);
+      expect(JSON.parse(r.stdout).summary.confirmed).toBe(1);
+      const html = readFileSync(run.report.html, 'utf8');
+      expect(html).toContain('request body reaches yaml.load');
+      expect(
+        cli([
+          'review',
+          'add',
+          '--path',
+          p.dir,
+          '--finding',
+          'RLV-00000000',
+          '--verdict',
+          'confirmed',
+          '--reason',
+          'x y z',
+        ]).code,
+      ).toBe(2);
+      expect(JSON.parse(cli(['review', 'list', '--path', p.dir, '--json']).stdout).entries).toHaveLength(1);
+
+      const before = JSON.parse(
+        cli(['recheck', p.dir, '--finding', `${target.id},${other.id}`, '--json']).stdout,
+      );
+      expect(before.results.map((x: { status: string }) => x.status)).toEqual(['present', 'present']);
+      // Fix the deserialization by hand and shift the other finding down a line.
+      const file = join(p.dir, 'app.py');
+      writeFileSync(
+        file,
+        `# moved\n${readFileSync(file, 'utf8').replace('yaml.load(request.data)', 'yaml.safe_load(request.data)')}`,
+      );
+      const after = JSON.parse(
+        cli(['recheck', p.dir, '--finding', `${target.id},${other.id}`, '--json']).stdout,
+      );
+      const byId = Object.fromEntries(
+        after.results.map((x: { id: string; status: string }) => [x.id, x.status]),
+      );
+      expect(byId[target.id]).toBe('gone');
+      if (other.where.startsWith('app.py')) expect(byId[other.id]).toBe('moved');
+
+      const plan = JSON.parse(cli(['fix', 'plan', p.dir, '--finding', target.id, '--json']).stdout);
+      expect(plan.notes.join(' ')).toMatch(/not found in the current source/);
+
+      const rep = JSON.parse(cli(['report', 'latest', '--path', p.dir, '--json']).stdout);
+      expect(rep.open).toContain('report.html');
+      expect(
+        cli(['recheck', p.dir, '--finding', target.id, '--run', 'latest', '--workspace', join(p.dir, 'nope')])
+          .code,
+      ).toBe(2);
+    } finally {
+      p.cleanup();
+    }
+  });
+});
+
+describe('parallel review recording', () => {
+  it('keeps every verdict when agents record them concurrently', async () => {
+    const p = materialize('python-app');
+    try {
+      const run = JSON.parse(cli(['audit', p.dir, '--json', '--compact']).stdout);
+      const ids: string[] = run.findings.slice(0, 8).map((f: { id: string }) => f.id);
+      const codes = await Promise.all(
+        ids.map(
+          (id) =>
+            new Promise<number | null>((done) => {
+              const c = spawn(
+                process.execPath,
+                [
+                  CLI,
+                  'review',
+                  'add',
+                  '--path',
+                  p.dir,
+                  '--finding',
+                  id,
+                  '--verdict',
+                  'confirmed',
+                  '--reason',
+                  `checked ${id}`,
+                ],
+                { stdio: 'ignore' },
+              );
+              c.on('close', done);
+            }),
+        ),
+      );
+      expect(codes.every((c) => c === 0)).toBe(true);
+      const list = JSON.parse(cli(['review', 'list', '--path', p.dir, '--json']).stdout);
+      expect(list.entries.map((e: { findingId: string }) => e.findingId).sort()).toEqual([...ids].sort());
+    } finally {
+      p.cleanup();
     }
   });
 });

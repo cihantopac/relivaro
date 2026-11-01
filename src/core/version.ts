@@ -4,4 +4,4 @@ declare const __RELIVARO_VERSION__: string | undefined;
 export const VERSION: string =
   typeof __RELIVARO_VERSION__ === 'string'
     ? __RELIVARO_VERSION__
-    : (process.env.RELIVARO_VERSION_OVERRIDE ?? '1.1.0');
+    : (process.env.RELIVARO_VERSION_OVERRIDE ?? '1.2.0');

@@ -34,6 +34,13 @@ To update later: `claude plugin marketplace update relivaro`, then `claude plugi
 | `/relivaro:optimize`    | Fix plans with diffs, isolated verification with your tests, backups and rollback                      |
 | `/relivaro:release`     | Production-readiness gates: blockers, warnings, passed and unverified                                  |
 
+## What you get back
+
+A short answer (about 80–150 words): status, a few numbers, the top three root-cause groups, what was not covered, and
+the HTML report with the command that opens it. In the report, select findings and press **Generate fix prompt** to
+hand them back to Claude Code (or any coding agent); verdicts Claude recorded while verifying are shown next to the raw
+detections.
+
 ## Safety
 
 Read-only and offline by default. Claude asks before running your project's commands (`--allow-exec`), contacting

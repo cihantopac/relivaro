@@ -57,7 +57,7 @@ Most scanners give you a list. Relivaro gives you a decision you can defend.
 | --- | --- | --- |
 | **Audit** | Project intelligence (stacks, monorepo units, data stores, CI/CD, routes, env vars) and 83 rules over tree-sitter syntax trees with intra-procedural taint | Findings with confidence, not keyword hits |
 | **Evidence** | Each finding is tied to code, facts and standards; secrets are always redacted | A reason to act — or to suppress with a reason |
-| **Fix** | 14 deterministic fixers produce a reviewable diff plan | Nothing changes until you approve |
+| **Fix** | 15 deterministic fixers produce a reviewable diff plan; everything else gets a fix prompt for your coding agent | Nothing changes until you approve |
 | **Verify** | Targeted findings must disappear, nothing new may appear, your test command must still pass | `verified`, `static-only` or a refused change |
 | **Release** | Gates combine executed checks, measurements and static analysis | ready · ready with warnings · needs verification · not ready |
 
@@ -93,8 +93,10 @@ relivaro audit .
 relivaro release . --allow-exec --online
 ```
 
-Open `.relivaro/runs/<run-id>/report.html` — or `report.md`, `report.json`, `report.sarif`. No install? Use
-`npx relivaro audit .`. Requires Node.js 22+; no native builds, no install scripts, no runtime dependencies.
+The summary ends with the path of the HTML report and the command that opens it (or add `--open`). In the report,
+select findings and press **Generate fix prompt** to hand them to Claude Code, Codex or another coding agent.
+`report.md`, `report.json` and `report.sarif` sit next to it. No install? Use `npx relivaro audit .`. Requires
+Node.js 22+; no native builds, no install scripts, no runtime dependencies.
 
 ### Fix, verify, roll back
 
@@ -111,6 +113,19 @@ relivaro fix rollback latest
 
 A multi-file apply is transactional: if any write fails, the files already written are restored. An interrupted
 apply can be rolled back, and a forced rollback saves your later edits before restoring.
+
+### Review and hand off
+
+```bash
+# Record what you verified in code; the report shows it next to the raw detection
+relivaro review add --finding RLV-3f9a1c2b --verdict false-positive --reason "escaped by the template engine"
+
+# Before repairing findings from an earlier run: still there, moved, or gone?
+relivaro recheck . --finding RLV-3f9a1c2b,RLV-7fb00c34 --run latest
+
+# Pin GitHub Actions to the commit their tag points to (resolved from the action's repository)
+relivaro fix plan . --rule sec/gha-unpinned-action --online
+```
 
 ### More
 
@@ -143,6 +158,17 @@ One self-contained HTML file per run: no CDN, no fonts, no network — open it f
   <tr>
     <td><sub>Findings explorer: search, filter by severity, category, gate or fixability; evidence with the reported line highlighted.</sub></td>
     <td><sub>Responsive, light and dark, <b>English | Türkçe</b>.</sub></td>
+  </tr>
+</table>
+
+<table>
+  <tr>
+    <td width="50%"><img src="assets/screenshots/report-actions.png" alt="Action center: open findings split into deterministic fixes, agent-assisted fixes and manual review"></td>
+    <td width="50%"><img src="assets/screenshots/report-selection.png" alt="Selected findings with verification and remediation badges and the Generate fix prompt bar"></td>
+  </tr>
+  <tr>
+    <td><sub>Action center: what a fixer can patch, what a coding agent can fix, what needs a decision first.</sub></td>
+    <td><sub>Select findings, then <b>Generate fix prompt</b> for Claude Code, Codex or any coding agent. Detected, confirmed and false-positive findings are labelled.</sub></td>
   </tr>
 </table>
 

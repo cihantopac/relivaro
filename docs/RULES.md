@@ -61,7 +61,7 @@
 | [`sec/gha-excessive-permissions`](#sec-gha-excessive-permissions) | supply-chain | medium | medium | CWE-250, A03:2025 Software Supply Chain Failures, A01:2025 Broken Access Control | `gha-permissions-read` |
 | [`sec/gha-pwn-request`](#sec-gha-pwn-request) | supply-chain | critical | high | CWE-829, A03:2025 Software Supply Chain Failures, A08:2025 Software or Data Integrity Failures |  |
 | [`sec/gha-script-injection`](#sec-gha-script-injection) | supply-chain | high | high | CWE-78, CWE-94, A03:2025 Software Supply Chain Failures, A05:2025 Injection |  |
-| [`sec/gha-unpinned-action`](#sec-gha-unpinned-action) | supply-chain | medium | high | CWE-829, CWE-1357, A03:2025 Software Supply Chain Failures |  |
+| [`sec/gha-unpinned-action`](#sec-gha-unpinned-action) | supply-chain | medium | high | CWE-829, CWE-1357, A03:2025 Software Supply Chain Failures | `gha-pin-action` |
 | [`sec/hardcoded-secret`](#sec-hardcoded-secret) | security | high | high | CWE-798, A07:2025 Authentication Failures, A04:2025 Cryptographic Failures |  |
 | [`sec/hardcoded-signing-secret`](#sec-hardcoded-signing-secret) | security | high | high | CWE-798, CWE-321, A07:2025 Authentication Failures, A04:2025 Cryptographic Failures |  |
 | [`sec/insecure-cookie`](#sec-insecure-cookie) | security | low | medium | CWE-1004, CWE-614, A02:2025 Security Misconfiguration, A07:2025 Authentication Failures |  |
@@ -939,6 +939,7 @@ Tests are skipped unconditionally (`it.skip`, `xit`, `markTestSkipped`, `@pytest
 | `js-remove-only` | safe | Remove `.only` | Turns `it.only(...)`/`describe.only(...)` back into normal tests so the full suite runs. |
 | `tls-verify-enable` | review | Re-enable TLS certificate verification | Restores certificate verification. Environments with private CAs must configure the CA bundle instead. |
 | `gha-permissions-read` | review | Restrict workflow token to read-only | Adds a top-level `permissions: contents: read` block. Jobs that need more must declare it explicitly. |
+| `gha-pin-action` | review | Pin GitHub Actions to the commit their tag points to | Replaces `owner/action@<tag>` with the full commit SHA the tag points to today, resolved from the action's own GitHub repository (`git ls-remote`, needs `--online`), and keeps the tag as a comment so Dependabot/Renovate can update it. |
 | `gitignore-env` | safe | Ignore local environment files | Adds `.env`, `.env.*` (keeping `.env.example`) to `.gitignore`. |
 
 `safe` fixers preserve behaviour for correct programs; `review` fixers intentionally change behaviour (e.g. enabling TLS verification) and should be reviewed before applying.

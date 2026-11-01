@@ -1,13 +1,18 @@
 import type { RunRecord } from '../audit.js';
 import type { BenchSnapshot } from '../release/readiness.js';
+import type { ReviewEntry } from '../review/review.js';
 import { BRAND } from './brand.js';
 import type { RunComparison } from './compare.js';
 import { REPORT_JS } from './html-client.js';
 import { I18N } from './html-i18n.js';
+import { PROMPT_JS } from './html-prompt.js';
 import { REPORT_CSS } from './html-style.js';
+import { REMEDIATION_TEXT, remediationOf } from './remediation.js';
 
-/** Optional context shown next to a run: the previous run, measured benchmarks and fix history. */
+/** Optional context shown next to a run: reviews, the previous run, measured benchmarks and fix history. */
 export interface HtmlExtras {
+  /** Recorded review verdicts by finding id (see review/review.ts). */
+  review?: Record<string, ReviewEntry>;
   comparison?: RunComparison;
   bench?: BenchSnapshot[];
   fixes?: { applied: number; verified: number; rolledBack: number };
@@ -23,8 +28,13 @@ const topFindings = (fs: RunComparison['introduced']) =>
  */
 export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
   const c = extras.comparison;
+  const review = extras.review ?? {};
+  const rem = Object.fromEntries(run.findings.map((f) => [f.id, remediationOf(f, review[f.id])]));
   const payload = JSON.stringify({
     run,
+    review,
+    rem,
+    remText: REMEDIATION_TEXT,
     extra: {
       comparison: c && {
         base: c.base,
@@ -77,7 +87,10 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 </div></header>
 <main class="wrap" id="app"><noscript><p>This report needs JavaScript to render. The same results are in report.md and report.json next to this file.</p></noscript></main>
 <footer class="wrap"><span id="foot-text"></span></footer>
+<div id="actionbar" class="actionbar" role="region" aria-label="Selection" hidden></div>
+<dialog id="prompt" class="pdlg"></dialog>
 <script type="application/json" id="data">${payload}</script>
+<script>${PROMPT_JS}</script>
 <script>${REPORT_JS}</script>
 </body>
 </html>

@@ -22,3 +22,5 @@ Toolchain and rules as in `${CLAUDE_PLUGIN_ROOT}/skills/relivaro/SKILL.md`.
    with file:line evidence, labelled as your review findings.
 5. Answer with confirmed risks ordered by blast radius, the recommended minimal fix for each, and how to verify it
    (a test or a controlled failure experiment).
+6. Use the **Final response** format of the main skill (80–150 words) for that answer; record verdicts with
+   `relivaro review add` so the report shows them. Details stay in the report.

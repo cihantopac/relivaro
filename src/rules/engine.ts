@@ -145,6 +145,12 @@ export function snippetAround(lines: string[], line: number, context = 1): strin
   return redact(out.join('\n'));
 }
 
+/**
+ * Fixers whose change would break what tests usually do on purpose: round-tripping objects through `unserialize()`
+ * and talking to local servers with self-signed certificates. In test files these findings stay review items.
+ */
+const TEST_UNSAFE_FIXERS = new Set(['php-unserialize-allowed-classes', 'tls-verify-enable']);
+
 export class FindingBuilder {
   private readonly occurrences = new Map<string, number>();
   readonly findings: Finding[] = [];
@@ -238,7 +244,7 @@ export class FindingBuilder {
     if (rule.owasp?.length) finding.owasp = rule.owasp;
     if (rule.tags?.length) finding.tags = rule.tags;
     const fixer = hit.fixer === null ? undefined : (hit.fixer ?? rule.fixer);
-    if (fixer) finding.fixer = fixer;
+    if (fixer && !(pf?.isTest && TEST_UNSAFE_FIXERS.has(fixer))) finding.fixer = fixer;
     if (suppression) finding.suppression = suppression;
     this.findings.push(finding);
     return finding;

@@ -2,9 +2,10 @@
 
 Persistent record of scope, decisions, verified progress and open issues. Update it with every significant change.
 
-## Status (2026-10-31)
+## Status (2026-11-01)
 
-v1.0.0 released (GitHub, npm). All acceptance criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
+v1.1.0 released (GitHub, npm). v1.2.0 is a release candidate in the repository, not published. All acceptance
+criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
 
 ## Milestones (internal)
 
@@ -48,7 +49,6 @@ CI passes on Ubuntu, macOS and Windows with Node 22 and 24. The first Windows ru
 - Inter-procedural taint within a file; cross-file summaries for common frameworks.
 - AST rules for Go and Dart.
 - Git history secret scanning (opt-in).
-- `relivaro fix` for unpinned GitHub Actions (resolve SHAs with `--online`).
 - Split `discover()` and `assessRelease()` into smaller units.
 
 ## 1.1.0 — polish and release experience (2026-11-01)
@@ -59,3 +59,16 @@ CI passes on Ubuntu, macOS and Windows with Node 22 and 24. The first Windows ru
 | Brand identity | Started with Markilo (research: 53 sources, 12 competitor brands; 4 directions, 2 sketch rounds, critic gate). Paused at the owner's request until Markilo 1.0.0; the report and README use the product name as text and the researched petrol colour. |
 | HTML report | Rebuilt as a bilingual (EN/TR) dashboard; screenshots in `assets/screenshots/` come from real runs (Relivaro on itself with `--allow-exec --online`, and the `node-api` fixture after `fix apply`). |
 | README / npm | Product-style README with real numbers; npm description and keywords updated. |
+
+## 1.2.0 — actionable reports and agent-assisted fixes (release candidate)
+
+Problem: on a real monorepo (repo-1 in [VALIDATION.md](VALIDATION.md)) the plugin answered with pages of text, the
+HTML report was easy to miss, and nothing led from a finding to a verified fix.
+
+| Area | Result |
+| --- | --- |
+| Agent answers | One shared 80–150 word format for every skill; report path + open command; verdicts recorded with `relivaro review add`. Compact JSON 57 KB → 22 KB on repo-1 (`groups`, 30 detailed findings, unindented). Tested headlessly in Claude Code on a copy of repo-1. |
+| Report | Action center, remediation paths, verification states, selection, grouping, sticky selection bar, fix-prompt dialog (copy with fallback, download, editable). Tested in Chromium, WebKit and Firefox: EN/TR, light/dark, 375 px, keyboard, `file://`, no network requests, hostile content. |
+| Review artifact | `runs/<run>/review.json` (schema v1), fingerprint-bound, carried to later runs with provenance; `relivaro recheck` for stale ids. |
+| Fixers | `gha-pin-action` (online SHA resolution, peeled annotated tags — found by comparing with the GitHub API on repo-1); test files no longer get behaviour-changing fixers. Deliberately not automated: container users, capabilities, dependency upgrades, lockfile generation, payment logic. |
+

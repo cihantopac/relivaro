@@ -47,6 +47,19 @@ runtime confirmation, with file:line justification, without modifying files.
 - Smallest safe change; no changes to raise a score; prove every change with re-analysis and tests; give the
   rollback command.
 - Answers in the user's language; code and reports in English.
+- Changes that need a decision (container user, capabilities, payment logic, dependency upgrades, data migrations)
+  are proposed, never applied by a fixer.
+
+## Short answers, details in the report
+
+Every skill ends with the same compact answer (about 80–150 words, in the user's language): status and run id, three
+or four numbers, up to three root-cause groups, a "Not covered" line for limitations that change the conclusion, the
+HTML report as a link plus the platform's open command, and one next step. Full findings, rejected candidates,
+evidence and limitations live in the report. Agents record what they verified with `relivaro review add`, so the
+report distinguishes raw detections from reviewed verdicts; unreviewed findings are always called candidates.
+
+From the report's action center the user can select findings and generate a fix prompt; the agent re-checks the ids
+with `relivaro recheck` before changing anything.
 
 ## Permissions
 

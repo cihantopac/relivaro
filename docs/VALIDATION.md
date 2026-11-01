@@ -94,3 +94,22 @@ symlinked, separate `--workspace`) of two TypeScript repositories:
 This run found two more issues, both fixed with regression tests: benchmark scenario sub-projects were planned for
 execution (e.g. `cargo test`), and fixture web apps inside a CLI repository made it look like a deployable service.
 The monorepo's (repo-1) test suite needs a local PostgreSQL test database and was not executed to avoid side effects.
+
+## 1.2.0: from findings to verified fixes (repo-1)
+
+The 1.2 work started from a real complaint: on repo-1 the plugin answered with pages of text and the HTML report was
+easy to miss. Every step below ran on **disposable clones** of repo-1; the repository itself was not modified.
+
+| Step | Result |
+| --- | --- |
+| Audit (offline) | 100 open findings, 0 critical/high. Remediation paths: 7 deterministic, 70 agent-assisted, 23 manual review. Dart (538 files) and Swift (6) are reported as not parsed; tests not executed; dependencies not checked online. |
+| Inappropriate fixes | 1.1 offered `php-unserialize-allowed-classes` for two test files that deliberately round-trip serialized jobs; applying it would have broken those tests. 1.2 no longer attaches behaviour-changing fixers in test files. |
+| Agent answer (`/relivaro:audit`, headless Claude Code, three runs) | 150, 183 and 154 words in Turkish, each with run id, numbers, root-cause groups, "not covered" (Dart/Swift, tests, offline dependencies) and the report path with its open command. The agent recorded 6 verdicts with `relivaro review add` per run (Blade raw-output findings rejected with evidence: `Str::markdown` with `html_input=escape`; containers running as root and a missing lockfile confirmed). The first run hit a 57 KB compact output that the agent had to page through; `groups` and a 30-finding cap brought it to 22 KB. The second exceeded the word target with an extra section; the skill now forbids sections outside the template. |
+| Report | Reviewed verdicts shown next to raw detections; selection, grouping, prompt generation, copy and download checked in Chromium, WebKit and Firefox (EN/TR, light/dark, 375 px, keyboard, no network requests). |
+| Deterministic fixes | `fix plan --online` for the 7 workflow findings: `permissions: contents: read` in both workflows and SHA pins for 5 actions. Cross-checking the SHAs against the GitHub API found a defect: `shivammathur/setup-php@v2` is an annotated tag and was resolved to the tag object instead of its commit. Fixed (explicit `^{}` lookup) with a regression test; all 5 SHAs then matched the API. Applied to the clone: 7 resolved, 0 introduced, workflows still parse. |
+| Fix prompt → Claude Code | A prompt generated in the report for 8 findings (4 deterministic, 2 agent-assisted, 1 manual, 1 reviewed false positive) was pasted into headless Claude Code on a clone. It ran `relivaro recheck` first, recorded 8 verdicts, rejected the 2 false positives with evidence, left the container finding as a manual decision with the questions to answer, produced the `fix plan` and an N+1 diff with a query-count regression test, changed no file and asked for approval. It noticed that a ninth, unselected finding in the same workflow needed the same pin. Its parallel `review add` calls exposed a possible lost-update race; review writes are now serialised and tested with concurrent processes. |
+| Re-audit | `compare`: 100 → 93 open findings, −7 resolved, +0 introduced. Verdicts from the earlier run carried over to the unchanged findings, labelled with their origin. |
+
+Not automated on purpose: container user migration (needs writable storage paths and a deployment test), the missing
+`services/api` lockfile (needs the package manager and approval), N+1 queries (suspected until measured), complexity
+(a refactoring decision).

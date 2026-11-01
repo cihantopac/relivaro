@@ -17,6 +17,7 @@ Toolchain and rules as in `${CLAUDE_PLUGIN_ROOT}/skills/relivaro/SKILL.md`.
 2. `relivaro release <path> [--allow-exec] [--online] --json --compact`. Exit code 1 means NOT READY.
 3. Verify every blocker in the code or in the check output (a blocker that turns out to be a false positive must be
    explained, and suppressed only with the user's approval and a reason).
-4. Present exactly: status, score (and that it is capped while blockers exist), blockers with evidence and fixes,
-   warnings, unverified gates and what would verify them, passed gates. Do not soften the status.
-5. Point to `report.html` / `report.md` and offer `/relivaro:optimize` for fixable blockers.
+4. Answer with the **Final response** format from the main skill, with the release status first and unsoftened:
+   `NOT READY` / `NEEDS VERIFICATION` / …, the score (capped while blockers exist), blockers as the numbered items
+   (with evidence location), unverified gates under "Not covered" with what would verify them, the report link and
+   one next step (e.g. `/relivaro:optimize` for fixable blockers). Gate-by-gate details stay in the report.

@@ -24,6 +24,8 @@ Relivaro; never try to reveal them, and never print a secret you encounter while
 3. Look beyond the rules where the code warrants it — especially authorization and multi-tenant isolation (object
    access checked against the current user/tenant? admin-only actions protected? IDs from the request trusted?).
    Report such issues only with concrete file:line evidence and label them as your own review findings.
-4. Answer with confirmed vulnerabilities (severity, exploit scenario, evidence, fix, verification test), rejected
-   candidates with reasons, dependency advisories with fixed versions, and limitations. State that this review does
-   not prove the absence of vulnerabilities.
+4. Record each verdict with `relivaro review add --path <path> --run <runId> --finding <ids> --verdict <verdict> --reason "<why>" --evidence <file:line> --reviewer claude-code`
+   (your own review findings without a Relivaro id go in the answer only, with file:line).
+5. Answer with the **Final response** format from the main skill (80–150 words): confirmed vulnerabilities first
+   (never call an unreviewed candidate a vulnerability), dependency advisories in one line, "Not covered", the report
+   link, one next step, and one sentence that this review does not prove the absence of vulnerabilities.

@@ -24,8 +24,9 @@ import { FileSet, safeResolve } from '../fs/files.js';
 import { discover } from '../intel/discover.js';
 import { analyze } from '../rules/engine.js';
 import { RULES } from '../rules/index.js';
+import type { ActionPin } from './actions.js';
 import { unifiedDiff } from './diff.js';
-import { type Fixer, findFixer } from './fixers.js';
+import { type FixContext, type Fixer, findFixer } from './fixers.js';
 
 export interface PlanItem {
   findingId: string;
@@ -37,6 +38,8 @@ export interface PlanItem {
   file: string;
   line?: number;
   message: string;
+  /** Action references this item pins, with the SHA and where it was resolved (gha-pin-action). */
+  pins?: ActionPin[];
 }
 
 export interface PlannedFile {
@@ -101,6 +104,7 @@ export async function generateFixes(
   root: string,
   findings: Finding[],
   readFile: (p: string) => string | undefined,
+  ctx: FixContext = {},
 ): Promise<{
   contents: Map<string, { before: string; after: string; existed: boolean }>;
   items: PlanItem[];
@@ -121,6 +125,13 @@ export async function generateFixes(
       skipped.push({ findingId: f.id, reason: 'no automated fixer for this finding' });
       continue;
     }
+    if (fixer.online && !ctx.resolveAction) {
+      skipped.push({
+        findingId: f.id,
+        reason: `needs --online: ${fixer.id} resolves commit SHAs from the action's GitHub repository`,
+      });
+      continue;
+    }
     const target = fixer.target?.(f) ?? f.location?.file;
     if (!target) {
       skipped.push({ findingId: f.id, reason: 'finding has no file location' });
@@ -138,8 +149,18 @@ export async function generateFixes(
       entry = { before: text ?? '', after: text ?? '', existed };
     }
     let next: string | null;
+    const pins: ActionPin[] = [];
+    const itemCtx: FixContext = ctx.resolveAction
+      ? {
+          resolveAction: async (action, ref) => {
+            const pin = await ctx.resolveAction!(action, ref);
+            pins.push(pin);
+            return pin;
+          },
+        }
+      : {};
     try {
-      next = await fixer.apply({ path: target, text: entry.after, finding: f });
+      next = await fixer.apply({ path: target, text: entry.after, finding: f, ctx: itemCtx });
     } catch (e) {
       skipped.push({ findingId: f.id, reason: `fixer error: ${(e as Error).message}` });
       continue;
@@ -163,17 +184,24 @@ export async function generateFixes(
       file: target,
       line: f.location?.line,
       message: f.message,
+      ...(pins.length ? { pins } : {}),
     });
   }
   return { contents, items, skipped };
 }
 
-export async function createPlan(root: string, findings: Finding[], ws: Workspace): Promise<FixPlan> {
+export async function createPlan(
+  root: string,
+  findings: Finding[],
+  ws: Workspace,
+  ctx: FixContext = {},
+): Promise<FixPlan> {
   const files = new FileSet(root);
   const { contents, items, skipped } = await generateFixes(
     files.root,
     findings,
     (p) => files.read(p) ?? files.readAny(p),
+    ctx,
   );
   const planId = ws.newRunId('fix-');
   const planned: PlannedFile[] = [];
@@ -345,7 +373,16 @@ export async function applyPlan(ws: Workspace, plan: FixPlan, opts: ApplyOptions
     const filesNow = new FileSet(root);
     const { analyzeFindings } = await reanalyze(filesNow, new Set(items.map((i) => i.file)));
     const selected = analyzeFindings.filter((f) => items.some((i) => i.fingerprint === f.fingerprint));
-    const regenerated = await generateFixes(root, selected, (p) => filesNow.read(p) ?? filesNow.readAny(p));
+    // Never go online while applying: pins come from the SHAs the plan resolved and showed.
+    const planned = plan.items.flatMap((i) => i.pins ?? []);
+    const resolveAction = async (action: string, ref: string) => {
+      const pin = planned.find((p) => p.action === action && p.ref === ref);
+      if (!pin) throw new Error(`${action}@${ref} was not resolved in plan ${plan.planId}`);
+      return pin;
+    };
+    const regenerated = await generateFixes(root, selected, (p) => filesNow.read(p) ?? filesNow.readAny(p), {
+      resolveAction,
+    });
     for (const [p, c] of regenerated.contents) desired.set(p, c);
     items = regenerated.items;
   }

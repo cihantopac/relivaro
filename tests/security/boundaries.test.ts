@@ -305,7 +305,7 @@ describe('report injection', () => {
     const data = html.slice(dataStart, dataEnd);
     expect(data).not.toContain('</script>');
     expect(data).not.toContain('<script>');
-    expect(html.match(/<script/g)!.length).toBe(2);
+    expect(html.match(/<script/g)!.length).toBe(3);
     expect(html).toContain("default-src 'none'");
     expect(readFileSync(join(dir, 'app.py'), 'utf8')).toContain(payload);
     // The client never parses data as markup.

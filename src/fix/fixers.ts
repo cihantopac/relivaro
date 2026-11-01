@@ -2,6 +2,7 @@ import type { Finding, Language } from '../core/types.js';
 import { classify } from '../fs/files.js';
 import { callInfo, collect, walk } from '../parse/ast.js';
 import { type Node, parse } from '../parse/treesitter.js';
+import type { ActionPin } from './actions.js';
 
 /**
  * Deterministic fixers. Each makes the smallest change that removes the cause of one finding, operating on the
@@ -12,6 +13,13 @@ export interface FixInput {
   path: string;
   text: string;
   finding: Finding;
+  ctx?: FixContext;
+}
+
+/** Capabilities a fixer may need beyond the file text. Provided by the plan step, never by the fixer itself. */
+export interface FixContext {
+  /** Resolves a GitHub Action tag to its commit SHA (only available with `--online`). */
+  resolveAction?: (action: string, ref: string) => Promise<ActionPin>;
 }
 
 export interface Fixer {
@@ -20,6 +28,8 @@ export interface Fixer {
   /** `safe` = behaviour-preserving for correct programs; `review` = changes behaviour intentionally (needs approval). */
   safety: 'safe' | 'review';
   description: string;
+  /** Needs network access while planning (the plan stores the result; applying never goes online). */
+  online?: boolean;
   /** File the fixer edits when it differs from the finding's location (e.g. `.gitignore`). */
   target?: (f: Finding) => string;
   apply(input: FixInput): Promise<string | null>;
@@ -93,6 +103,10 @@ const CALLS: Record<Language, Set<string>> = {
   typescript: new Set(['call_expression']),
   tsx: new Set(['call_expression']),
 };
+
+/** `uses: owner/repo[/path]@ref` with optional quotes and a trailing comment. */
+const USES_LINE =
+  /^(\s*(?:-\s+)?uses:\s*)(['"]?)([A-Za-z0-9_.-]+\/[A-Za-z0-9_./-]+)@([A-Za-z0-9_./-]+)\2(\s*(?:#.*)?)$/;
 
 export const FIXERS: Fixer[] = [
   {
@@ -386,6 +400,41 @@ export const FIXERS: Fixer[] = [
       if (!m) return null;
       const eol = text.includes('\r\n') ? '\r\n' : '\n';
       return `${text.slice(0, m.index)}permissions:${eol}  contents: read${eol}${eol}${text.slice(m.index)}`;
+    },
+  },
+  {
+    id: 'gha-pin-action',
+    title: 'Pin GitHub Actions to the commit their tag points to',
+    safety: 'review',
+    online: true,
+    description:
+      "Replaces `owner/action@<tag>` with the full commit SHA the tag points to today, resolved from the action's own GitHub repository (`git ls-remote`, needs `--online`), and keeps the tag as a comment so Dependabot/Renovate can update it.",
+    async apply({ text, finding, ctx }) {
+      if (!ctx?.resolveAction) return null;
+      const facts = finding.evidence.facts ?? {};
+      const eol = text.includes('\r\n') ? '\r\n' : '\n';
+      const lines = text.split(eol);
+      // A third-party finding targets its own `uses:` line; the aggregated GitHub-owned finding targets every listed
+      // action in the file.
+      const wanted =
+        typeof facts.action === 'string' && typeof facts.ref === 'string'
+          ? new Set([`${facts.action}@${facts.ref}`])
+          : typeof facts.actions === 'string'
+            ? new Set(facts.actions.split(','))
+            : null;
+      if (!wanted) return null;
+      const only = typeof facts.action === 'string' ? (finding.location?.line ?? 0) - 1 : -1;
+      let changed = false;
+      for (let i = 0; i < lines.length; i++) {
+        if (only >= 0 && i !== only) continue;
+        const m = USES_LINE.exec(lines[i]!);
+        if (!m || !wanted.has(`${m[3]}@${m[4]}`) || /^[0-9a-f]{40}$/.test(m[4]!)) continue;
+        const pin = await ctx.resolveAction(m[3]!, m[4]!);
+        const comment = m[5]?.trim() ? m[5] : ` # ${m[4]}`;
+        lines[i] = `${m[1]}${m[2]}${m[3]}@${pin.sha}${m[2]}${comment}`;
+        changed = true;
+      }
+      return changed ? lines.join(eol) : null;
     },
   },
   {

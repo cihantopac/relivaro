@@ -3,6 +3,54 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.2.0] — 2026-11-01
+
+Actionable reports and agent-assisted fixes. No breaking changes: run records (schema v1), SARIF, Markdown, CLI
+flags and configuration from 1.1 keep working. `--json --compact` gains fields and is printed unindented.
+
+### Added
+
+- **Action center** in the HTML report: open findings per remediation path — *deterministic fix* (a Relivaro fixer
+  produces a patch), *agent-assisted* (a coding agent investigates, changes and tests) and *manual review* (needs
+  runtime evidence, an operational decision or approval) — with the steps from selection to a fix.
+- **Selection and fix prompts**: checkboxes per finding and per root-cause group, *Select visible*, *Select by
+  severity*, a selection bar, and **Generate fix prompt** — an editable Markdown brief for Claude Code, Codex or any
+  coding agent with the run id, stable finding ids, locations, severity, verification state, evidence, expected
+  outcome, re-check step, permission boundaries and verification requirements. Copy (with a selection fallback for
+  `file://` pages) or download as `.md`. Hostile repository text stays inert: flattened or fenced, inside
+  nonce-marked delimiters, secrets redacted again, secret snippets omitted.
+- **Verification states** next to every raw detection: detected, confirmed, false positive, needs verification;
+  filters and badges for verification and remediation; grouping by root cause.
+- **`relivaro review add|list`**: record verdicts (confirmed / false-positive / needs-runtime) with justification,
+  evidence locations, optional severity and reviewer provenance in `runs/<run>/review.json`
+  ([schema](schemas/review.schema.json)); reports re-render immediately. Verdicts bind to the finding fingerprint and
+  carry to later runs for the same code, labelled with their origin. Original findings are never modified. Safe to
+  call in parallel (agents do): writes are serialised with a lock file.
+- **`relivaro recheck`**: re-runs only the rules behind given finding ids and reports each as present, moved or gone,
+  so findings from a report or prompt are revalidated before any repair.
+- **`gha-pin-action` fixer** (`fix plan --online`): pins GitHub Actions to the commit their tag points to, resolved
+  from the action's own repository with `git ls-remote` (annotated tags peeled to the commit), keeping the tag as a
+  comment. The plan shows every SHA and its source; `fix apply` never goes online.
+- `--open` on analysis commands and `relivaro report` opens the HTML report; the terminal summary and compact JSON
+  print the absolute report path and the platform's open command.
+- Compact JSON for agents: `groups` (every open finding by rule with count, remediation path, review count and ids),
+  per-finding `remediation` and `review`, `remediation` and `review` totals, `report.html` / `report.open`.
+
+### Changed
+
+- Plugin skills end with one short answer (about 80–150 words): status, a few numbers, up to three root-cause groups,
+  what was not covered, the report path with its open command and one next step. Agents record verified verdicts
+  with `relivaro review add` and call unreviewed findings candidates.
+- Compact JSON lists the 30 most severe open findings in detail (snippets for medium and above) and is printed without
+  indentation; `report.json` keeps everything.
+- `fix plan --finding <ids>` names ids that the current source no longer produces, and open ids no fixer applies to.
+- The Markdown report shows each finding's review status and remediation path.
+
+### Fixed
+
+- `php-unserialize-allowed-classes` and `tls-verify-enable` were offered for test files, where tests round-trip
+  objects or use self-signed certificates on purpose; findings in tests no longer carry these fixers.
+
 ## [1.1.0] — 2026-11-01
 
 Polish and release-experience update. No breaking changes: JSON (schema v1), SARIF, Markdown, configuration

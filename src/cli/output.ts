@@ -79,6 +79,7 @@ export function printRunSummary(
   run: RunRecord,
   files: Record<string, string>,
   maxFindings = 15,
+  openCommand?: (file: string) => string,
 ): void {
   const on = out.color;
   const s = run.summary;
@@ -155,5 +156,18 @@ export function printRunSummary(
     }
   }
   out.print('');
-  for (const [k, v] of Object.entries(files)) out.print(`${paint(on, 'gray', `${k.padEnd(9)}`)} ${v}`);
+  for (const [k, v] of Object.entries(files))
+    if (k !== 'html') out.print(`${paint(on, 'gray', `${k.padEnd(9)}`)} ${v}`);
+  if (files.html) {
+    out.print('');
+    out.print(`${paint(on, 'bold', 'HTML report')}  ${paint(on, 'cyan', files.html)}`);
+    if (openCommand)
+      out.print(
+        paint(
+          on,
+          'gray',
+          `Open it: ${openCommand(files.html)}  (or re-run with --open). Select findings there to generate a fix prompt.`,
+        ),
+      );
+  }
 }

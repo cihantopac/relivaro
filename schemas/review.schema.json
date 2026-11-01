@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/review.schema.json",
+  "title": "Relivaro review artifact (runs/<run-id>/review.json)",
+  "description": "Verdicts recorded by an agent or a person after reading the code behind findings of one run. Written by `relivaro review add`; never modifies the run's findings.",
+  "type": "object",
+  "required": ["schema", "schemaVersion", "runId", "project", "createdAt", "updatedAt", "entries"],
+  "properties": {
+    "schema": { "const": "relivaro.review" },
+    "schemaVersion": { "const": 1 },
+    "runId": { "type": "string" },
+    "project": { "type": "string" },
+    "createdAt": { "type": "string", "format": "date-time" },
+    "updatedAt": { "type": "string", "format": "date-time" },
+    "entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "findingId",
+          "fingerprint",
+          "ruleId",
+          "verdict",
+          "justification",
+          "evidence",
+          "reviewer",
+          "reviewedAt",
+          "toolVersion"
+        ],
+        "properties": {
+          "findingId": { "type": "string", "pattern": "^RLV-[0-9a-f]+$" },
+          "fingerprint": {
+            "type": "string",
+            "description": "Fingerprint of the reviewed finding; a verdict only applies to a finding with the same id and fingerprint."
+          },
+          "ruleId": { "type": "string" },
+          "verdict": { "enum": ["confirmed", "false-positive", "needs-runtime"] },
+          "justification": { "type": "string", "minLength": 3, "maxLength": 1000 },
+          "evidence": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+              "type": "object",
+              "required": ["file"],
+              "properties": {
+                "file": { "type": "string", "description": "Project-relative POSIX path." },
+                "line": { "type": "integer", "minimum": 1 }
+              },
+              "additionalProperties": false
+            }
+          },
+          "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+          "reviewer": {
+            "type": "object",
+            "required": ["kind", "name"],
+            "properties": {
+              "kind": { "enum": ["agent", "human"] },
+              "name": { "type": "string", "maxLength": 60 }
+            },
+            "additionalProperties": false
+          },
+          "reviewedAt": { "type": "string", "format": "date-time" },
+          "toolVersion": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

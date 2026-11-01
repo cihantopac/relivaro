@@ -27,3 +27,4 @@ Toolchain and rules as in `${CLAUDE_PLUGIN_ROOT}/skills/relivaro/SKILL.md`.
      A test is done only when it has been executed and passes; for regression tests also show it would fail on the
      old code when practical.
 4. Answer with what was tested, results, coverage changes if a report is available, and remaining gaps.
+5. Use the **Final response** format of the main skill (80–150 words) for that answer.

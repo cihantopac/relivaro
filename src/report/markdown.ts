@@ -1,6 +1,8 @@
 import type { RunRecord } from '../audit.js';
 import { type Finding, SEVERITIES } from '../core/types.js';
 import { releaseTally } from '../release/readiness.js';
+import type { ReviewEntry } from '../review/review.js';
+import { REMEDIATION_TEXT, remediationOf } from './remediation.js';
 
 const ICON: Record<string, string> = { block: '⛔', warn: '⚠️', pass: '✅', unverified: '❔', 'n/a': '➖' };
 
@@ -13,7 +15,17 @@ function loc(f: Finding): string {
   return `\`${f.location.file}${f.location.line ? `:${f.location.line}` : ''}\``;
 }
 
-export function toMarkdown(run: RunRecord, opts: { maxFindings?: number } = {}): string {
+const REVIEW_LABEL: Record<ReviewEntry['verdict'], string> = {
+  confirmed: 'confirmed',
+  'false-positive': 'false positive',
+  'needs-runtime': 'needs runtime verification',
+};
+
+export function toMarkdown(
+  run: RunRecord,
+  opts: { maxFindings?: number; review?: Record<string, ReviewEntry> } = {},
+): string {
+  const review = opts.review ?? {};
   const max = opts.maxFindings ?? 200;
   const p = run.profile;
   const s = run.summary;
@@ -108,6 +120,12 @@ export function toMarkdown(run: RunRecord, opts: { maxFindings?: number } = {}):
     L.push('');
     L.push(
       `\`${f.id}\` · rule \`${f.ruleId}\` · confidence ${f.confidence} · ${f.provenance}${f.cwe?.length ? ` · ${f.cwe.join(', ')}` : ''}${f.owasp?.length ? ` · ${f.owasp.join('; ')}` : ''}`,
+    );
+    L.push('');
+    const r = review[f.id];
+    const rem = remediationOf(f, r);
+    L.push(
+      `**Status:** ${r ? `${REVIEW_LABEL[r.verdict]} (${r.reviewer.kind} review by ${r.reviewer.name}${r.carriedFrom ? `, run ${r.carriedFrom}` : ''}): ${r.justification}` : 'detected, not reviewed'} · **Remediation:** ${rem.kind === 'none' ? 'none' : rem.kind === 'deterministic' ? 'deterministic fix' : rem.kind === 'agent' ? 'agent-assisted' : 'manual review'} — ${REMEDIATION_TEXT[rem.reason]}`,
     );
     L.push('');
     L.push(f.message);

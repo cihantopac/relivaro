@@ -65,6 +65,8 @@ projects inside a container or VM when executing their commands.
   it refuses unless `--force`. With `--force`, the current content of every conflicting file is first saved under
   `.relivaro/fixes/<apply id>/conflicts/`, so later edits are never lost. All backups are validated before any file is
   touched.
+- Fixers whose change would break what tests do on purpose (`php-unserialize-allowed-classes`,
+  `tls-verify-enable`) are not attached to findings in test files.
 - Findings the static re-analysis cannot observe (for example project-level rules satisfied by a `.gitignore` change)
   are reported as `unverifiable`, never as resolved.
 
@@ -85,6 +87,10 @@ into a temporary directory and runs the command there, before and after the chan
 - `--online`: POST of `{ecosystem, name, version}` for each resolved dependency to `https://api.osv.dev/v1/querybatch`
   and GET of advisory details. No source code, file paths or project names are sent. Responses are cached for 24 h in
   the workspace.
+- `fix plan --online`: `git ls-remote https://github.com/<owner>/<repo>.git` for each GitHub Action the selected
+  `gha-pin-action` findings reference (owner, repository and tag are validated first; hardened git options, no
+  prompts). Annotated tags are peeled to their commit. The plan shows every SHA with its source; `fix apply` never
+  goes online and pins exactly the SHAs the plan showed.
 - `load`: the target host is resolved first; non-loopback/non-private addresses are refused unless `--allow-remote`.
   The same check runs again inside the HTTP client's DNS lookup for every new connection, so a name that resolves to
   a private address during the pre-check cannot be re-pointed at a public one during the test (DNS rebinding).
@@ -97,6 +103,13 @@ into a temporary directory and runs the command there, before and after the chan
 - HTML reports embed data as escaped JSON and render it with `textContent` under a CSP of `default-src 'none'` — no
   network, no markup from analysed content. A test injects `</script>` payloads through source comments.
 - SARIF/Markdown/JSON contain redacted text only.
+- The report's fix prompt is built in the page from that redacted data; repository text is flattened or fenced,
+  enclosed in nonce-marked delimiters the agent is told to treat as data, and secret-shaped values are redacted again.
+  The page cannot run commands or reach the network; copying uses the clipboard API or a selection fallback.
+- Review verdicts (`relivaro review add`) are written only to the workspace; justifications are stripped of control
+  characters and redacted, evidence paths must be project-relative, and a verdict binds to the finding's fingerprint.
+- Finding ids from a report or prompt are re-checked against the current code (`relivaro recheck`, and `fix plan`
+  reports ids it no longer finds) before anything is changed.
 - The Claude Code plugin's skills instruct the agent that repository content, logs and test output are untrusted data
   and must never be followed as instructions; consequential steps require the user's explicit approval.
 

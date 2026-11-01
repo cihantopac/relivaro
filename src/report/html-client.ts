@@ -7,6 +7,9 @@ export const REPORT_JS = String.raw`(function () {
 'use strict';
 var P = JSON.parse(document.getElementById('data').textContent);
 var D = P.run, X = P.extra || {}, I = P.i18n;
+var REV = P.review || {}, REM = P.rem || {}, REMTXT = P.remText || {};
+var REM_KINDS = ['deterministic', 'agent', 'manual'];
+var VSTATES = ['detected', 'confirmed', 'false-positive', 'needs-runtime'];
 var SEV = ['critical', 'high', 'medium', 'low', 'info'];
 var CATS = ['security', 'supply-chain', 'reliability', 'performance', 'quality', 'testing', 'release'];
 var SEV_W = { critical: 16, high: 8, medium: 4, low: 2, info: 1 };
@@ -56,10 +59,14 @@ function s(tag, o, kids) {
   if (o) for (var k in o) if (o[k] !== undefined && o[k] !== null) e.setAttribute(k, o[k]);
   return add(e, kids);
 }
-/* Text with backtick-quoted spans rendered as code elements; every part is a text node, never markup. */
+/* Text with backtick-quoted spans rendered as code and **spans** as bold; every part is a text node, never markup. */
 function md(text) {
   var parts = String(text).split(String.fromCharCode(96)), f = document.createDocumentFragment();
-  parts.forEach(function (p, i) { if (p) f.appendChild(i % 2 ? el('code', { text: p }) : document.createTextNode(p)); });
+  parts.forEach(function (p, i) {
+    if (!p) return;
+    if (i % 2) { f.appendChild(el('code', { text: p })); return; }
+    p.split('**').forEach(function (q, j) { if (q) f.appendChild(j % 2 ? el('b', { text: q }) : document.createTextNode(q)); });
+  });
   return f;
 }
 function num(n) { return Number(n || 0).toLocaleString(lang === 'tr' ? 'tr-TR' : 'en-US'); }
@@ -90,7 +97,37 @@ var searchIcon = function () { return s('svg', { width: 15, height: 15, viewBox:
 
 var open = D.findings.filter(function (f) { return f.status === 'open'; });
 var R = D.release;
-var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {} };
+var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false };
+
+/* Verification state: reviewed verdicts, findings observed by running a tool, or a scanner candidate. */
+function vstate(f) {
+  var r = REV[f.id];
+  if (r) return r.verdict;
+  return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
+}
+function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
+function remBadge(k) { return el('span', { cls: 'rb rb-' + k, text: t('rem.' + k) }); }
+function vsBadge(v) { return el('span', { cls: 'vs vs-' + v, text: t('vs.' + v) }); }
+function selectedList() { return D.findings.filter(function (f) { return state.sel[f.id]; }); }
+
+/* Clipboard with fallbacks: file:// pages may not expose the async clipboard API. */
+function copyText(text, area, done) {
+  function fallback() {
+    var ok = false;
+    try {
+      var ta = area;
+      if (!ta) { ta = el('textarea', { style: { position: 'fixed', opacity: '0' } }); ta.value = text; document.body.appendChild(ta); }
+      ta.focus(); ta.select();
+      ok = document.execCommand && document.execCommand('copy');
+      if (!area) document.body.removeChild(ta);
+    } catch (e) { ok = false; }
+    done(!!ok);
+  }
+  try {
+    if (navigator.clipboard && window.isSecureContext !== false) navigator.clipboard.writeText(text).then(function () { done(true); }, fallback);
+    else fallback();
+  } catch (e) { fallback(); }
+}
 
 function card(title, hint, kids, extraHead) {
   return el('div', { cls: 'card' }, [
@@ -104,7 +141,7 @@ function renderChrome() {
   document.documentElement.lang = lang;
   var nav = document.getElementById('nav');
   nav.textContent = '';
-  [['overview', 'nav.overview'], ['gates', 'nav.gates'], ['findings', 'nav.findings'], ['verification', 'nav.checks'], ['project', 'nav.project']].forEach(function (x) {
+  [['overview', 'nav.overview'], ['actions', 'nav.actions'], ['gates', 'nav.gates'], ['findings', 'nav.findings'], ['verification', 'nav.checks'], ['project', 'nav.project']].forEach(function (x) {
     if (x[0] === 'gates' && !R) return;
     nav.appendChild(el('a', { href: '#' + x[0], text: t(x[1]) }));
   });
@@ -174,7 +211,12 @@ function kpis() {
     k(t('kpi.fixable'), num(fixable)),
     k(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) })),
     k(t('kpi.checks'), ran.length ? passed + '/' + ran.length : '—', ran.length ? null : t('kpi.checksNone'), ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified'),
-    k(t('kpi.time'), dur(D.metrics.analysisMs), t('kpi.rules') + ': ' + num(D.metrics.rulesRun))
+    (function () {
+      var c = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'confirmed'; }).length;
+      var fp = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'false-positive'; }).length;
+      var n = open.filter(function (f) { return REV[f.id]; }).length;
+      return k(t('kpi.reviewed'), open.length ? num(n) + '/' + num(open.length) : '—', t('kpi.reviewedSub', { c: num(c), f: num(fp) }), n ? null : 'unverified');
+    })()
   ]);
 }
 
@@ -199,6 +241,25 @@ function flow() {
       el('div', { cls: 'v', text: x.v })
     ]);
   }));
+}
+
+/* ---------- action center ---------- */
+function actionCenter() {
+  var tiles = el('div', { cls: 'ac-tiles' });
+  REM_KINDS.forEach(function (k) {
+    var n = open.filter(function (f) { return remOf(f).kind === k; }).length;
+    tiles.appendChild(el('div', { cls: 'ac-tile ac-' + k }, [
+      el('div', { cls: 'ac-h' }, [remBadge(k), el('b', { cls: 'ac-n', text: num(n) })]),
+      el('p', { cls: 'hint' }, [md(t('rem.' + k + '.d'))]),
+      el('button', { type: 'button', cls: 'btn', disabled: n ? null : true, text: t('ac.show'), on: { click: function () { state.rem = k; state.status = 'open'; state.limit = 50; renderFindingsSection(); focusFindings(); } } })
+    ]));
+  });
+  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
+  var steps = el('ol', { cls: 'ac-steps' }, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]);
+  return card(t('ac.title'), t('ac.hint'), [
+    tiles,
+    el('div', { cls: 'ac-foot' }, [steps, el('p', { cls: 'hint', style: { margin: '0' } }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])])
+  ]);
 }
 
 function donut(segs, size, width) {
@@ -313,6 +374,8 @@ function matches(f) {
   if (sevOn.length && sevOn.indexOf(f.severity) < 0) return false;
   if (state.cat && f.category !== state.cat) return false;
   if (state.fixable && !f.fixer) return false;
+  if (state.rem && remOf(f).kind !== state.rem) return false;
+  if (state.vs && vstate(f) !== state.vs) return false;
   if (state.q) {
     var hay = (f.title + ' ' + f.message + ' ' + f.ruleId + ' ' + f.id + ' ' + (f.location ? f.location.file : '')).toLowerCase();
     if (hay.indexOf(state.q.toLowerCase()) < 0) return false;
@@ -342,6 +405,13 @@ function snippet(text, line) {
 }
 function findingBody(f) {
   var b = el('div', { cls: 'body' });
+  var r = REV[f.id], rm = remOf(f);
+  b.appendChild(el('div', { cls: 'verdict v-' + vstate(f) }, [
+    el('div', { cls: 'vh' }, [vsBadge(vstate(f)), r ? el('span', { cls: 'faint', text: t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') }) : null]),
+    r ? el('p', { text: r.justification }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
+    r && r.severity ? el('p', { cls: 'faint', text: t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) }) : null,
+    r && r.evidence && r.evidence.length ? el('div', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); })) : null
+  ]));
   b.appendChild(el('p', { cls: 'msg' }, [md(f.message)]));
   var ev = f.evidence || {};
   if (ev.snippet) b.appendChild(snippet(ev.snippet, f.location && f.location.line));
@@ -361,26 +431,36 @@ function findingBody(f) {
     kv('finding.confidence', t('conf.' + f.confidence) + ' · ' + (I.en['prov.' + f.provenance] ? t('prov.' + f.provenance) : f.provenance)),
     f.suppression ? kv('finding.suppressed', f.suppression.kind + (f.suppression.reason ? ': ' + f.suppression.reason : '')) : null
   ]));
-  if (f.fixer) {
-    var cmd = 'relivaro fix plan --finding ' + f.id;
+  b.appendChild(el('div', { cls: 'remline' }, [el('span', { cls: 'muted', text: t('finding.remediation') }), remBadge(rm.kind), el('span', { text: t('rem.reason.' + rm.reason) })]));
+  if (rm.kind === 'deterministic') {
+    var cmd = 'relivaro fix plan --finding ' + f.id + (rm.online ? ' --online' : '');
+    var cmdCode = el('code', { text: cmd });
     var btn = el('button', { type: 'button', cls: 'btn', text: t('finding.copy') });
     btn.addEventListener('click', function () {
-      var done = function () { btn.textContent = t('finding.copied'); setTimeout(function () { btn.textContent = t('finding.copy'); }, 1400); };
-      try { navigator.clipboard.writeText(cmd).then(done, function () {}); } catch (e) { /* clipboard unavailable */ }
+      copyText(cmd, null, function (ok) {
+        btn.textContent = ok ? t('finding.copied') : t('finding.copyFail');
+        if (!ok) { var rg = document.createRange(); rg.selectNodeContents(cmdCode); var sl = window.getSelection(); sl.removeAllRanges(); sl.addRange(rg); }
+        setTimeout(function () { btn.textContent = t('finding.copy'); }, 1800);
+      });
     });
-    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12px', 'font-weight': '600' }, text: t('finding.autofix') }), el('code', { text: cmd }), btn]));
+    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12px', 'font-weight': '600' }, text: t('finding.autofix') + (rm.safety === 'review' ? ' · ' + t('finding.reviewDiff') : '') }), cmdCode, btn]));
   }
   return b;
 }
 function findingRow(f) {
   var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : '';
+  var row = el('div', { cls: 'frow' + (state.sel[f.id] ? ' is-sel' : '') });
+  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.row', { id: f.id, title: f.title }) });
+  cb.checked = !!state.sel[f.id];
+  cb.addEventListener('change', function () { setSel([f], cb.checked); row.className = 'frow' + (cb.checked ? ' is-sel' : ''); });
+  row.appendChild(el('label', { cls: 'fsel-wrap', title: t('sel.row', { id: f.id, title: '' }) }, [cb]));
   var d = el('details', { cls: 'f' });
   if (state.opened[f.id]) d.open = true;
   var sevStyle = { color: cssVar(f.severity), background: 'color-mix(in srgb, ' + cssVar(f.severity) + ' 13%, transparent)' };
   d.appendChild(el('summary', null, [
     el('span', { cls: 'sev', style: sevStyle }, [t('sev.' + f.severity)]),
     el('span', { cls: 'ttl' }, [md(f.title)]),
-    el('span', { cls: 'side' }, [el('span', { text: t('cat.' + f.category) }), f.fixer ? el('span', { cls: 'pill st-pass', text: t('finding.fixable') }) : null, f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
+    el('span', { cls: 'side' }, [vsBadge(vstate(f)), remBadge(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
     where ? el('span', { cls: 'loc', title: where }, [el('bdi', { text: where })]) : null
   ]));
   var filled = false;
@@ -389,7 +469,30 @@ function findingRow(f) {
     if (d.open && !filled) { d.appendChild(findingBody(f)); filled = true; }
   });
   if (d.open) { d.appendChild(findingBody(f)); filled = true; }
-  return d;
+  row.appendChild(d);
+  return row;
+}
+function setSel(list, on) {
+  list.forEach(function (f) { if (on) state.sel[f.id] = true; else delete state.sel[f.id]; });
+  (state.groupBoxes || []).forEach(function (g) {
+    var all = g.list.every(function (f) { return state.sel[f.id]; }), some = g.list.some(function (f) { return state.sel[f.id]; });
+    g.cb.checked = all; g.cb.indeterminate = some && !all;
+  });
+  renderActionBar();
+}
+function groupHead(rule, list) {
+  var all = list.every(function (f) { return state.sel[f.id]; }), some = list.some(function (f) { return state.sel[f.id]; });
+  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.group', { n: list.length, rule: rule }) });
+  cb.checked = all; cb.indeterminate = some && !all;
+  cb.addEventListener('change', function () { setSel(list, cb.checked); renderFindingsList(); var again = document.querySelector('[data-group="' + rule.replace(/[^\w\/-]/g, '') + '"]'); if (again) again.focus(); });
+  cb.setAttribute('data-group', rule.replace(/[^\w\/-]/g, ''));
+  state.groupBoxes.push({ cb: cb, list: list });
+  var kinds = uniq(list.map(function (f) { return remOf(f).kind; }));
+  return el('div', { cls: 'ghead' }, [
+    el('label', { cls: 'fsel-wrap' }, [cb]),
+    el('div', { cls: 'gtitle' }, [el('b', { text: list[0].title }), el('code', { text: rule })]),
+    el('span', { cls: 'side' }, kinds.map(remBadge).concat([el('span', { cls: 'faint', text: t('group.count', { n: num(list.length) }) })]))
+  ]);
 }
 function renderFindingsList() {
   var host = document.getElementById('flist'), cnt = document.getElementById('fcount');
@@ -400,10 +503,23 @@ function renderFindingsList() {
     var g = R.gates.filter(function (x) { return x.id === state.gate; })[0];
     cnt.appendChild(el('span', { cls: 'chip', 'aria-pressed': 'true' }, [t('findings.gate', { g: lang !== 'en' && I[lang]['gt.' + g.id] ? t('gt.' + g.id) : g.title }), el('button', { type: 'button', cls: 'btn', style: { padding: '1px 6px' }, text: t('findings.clear'), on: { click: function () { state.gate = null; state.status = 'open'; renderGates(); renderFindingsSection(); } } })]));
   }
-  if (!list.length) { host.appendChild(el('div', { cls: 'empty', text: t('findings.empty') })); return; }
-  list.slice(0, state.limit).forEach(function (f) { host.appendChild(findingRow(f)); });
   var more = document.getElementById('fmore');
   more.textContent = '';
+  state.visible = list;
+  state.groupBoxes = [];
+  if (!list.length) { host.appendChild(el('div', { cls: 'empty', text: t('findings.empty') })); return; }
+  if (state.group) {
+    var groups = {}, order = [];
+    list.forEach(function (f) { if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); } groups[f.ruleId].push(f); });
+    var shown = 0;
+    order.forEach(function (rule) {
+      if (shown >= state.limit) return;
+      var g = groups[rule], box = el('div', { cls: 'group' }, [groupHead(rule, g)]);
+      g.slice(0, Math.max(state.limit - shown, 1)).forEach(function (f) { box.appendChild(findingRow(f)); });
+      shown += g.length;
+      host.appendChild(box);
+    });
+  } else list.slice(0, state.limit).forEach(function (f) { host.appendChild(findingRow(f)); });
   if (list.length > state.limit) more.appendChild(el('button', { type: 'button', cls: 'btn', text: t('findings.more', { n: num(Math.min(50, list.length - state.limit)) }), on: { click: function () { state.limit += 50; renderFindingsList(); } } }));
 }
 function findingsSection() {
@@ -427,9 +543,35 @@ function findingsSection() {
   var so = el('select', { 'aria-label': t('findings.sort') }, ['severity', 'file', 'rule'].map(function (v) { return el('option', { value: v, text: t('findings.sort') + ': ' + t('findings.sort.' + v) }); }));
   so.value = state.sort;
   so.addEventListener('change', function () { state.sort = so.value; renderFindingsList(); });
-  return card(t('findings.title'), null, [
+  var pool = D.findings.filter(function (f) { return state.status === 'all' || f.status === state.status; });
+  function toggleChips(label, keys, cur, count, badge, set) {
+    return el('div', { cls: 'chips', role: 'group', 'aria-label': label }, keys.map(function (k) {
+      var n = pool.filter(function (f) { return count(f) === k; }).length;
+      return el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(cur === k), disabled: n || cur === k ? null : true, on: { click: function () { set(cur === k ? '' : k); state.limit = 50; renderFindingsSection(); } } }, [badge(k), ' ' + num(n)]);
+    }));
+  }
+  var remChips = toggleChips(t('finding.remediation'), REM_KINDS, state.rem, function (f) { return remOf(f).kind; }, remBadge, function (v) { state.rem = v; });
+  var vsChips = toggleChips(t('vs.label'), VSTATES, state.vs, vstate, vsBadge, function (v) { state.vs = v; });
+  var bySev = el('select', { 'aria-label': t('sel.severity') }, [el('option', { value: '', text: t('sel.severity') })].concat(SEV.map(function (x) { return el('option', { value: x, text: t('sev.' + x) }); })));
+  bySev.addEventListener('change', function () {
+    var v = bySev.value; if (!v) return;
+    setSel((state.visible || []).filter(function (f) { return f.severity === v; }), true);
+    bySev.value = ''; renderFindingsList();
+  });
+  var grp = el('input', { type: 'checkbox' });
+  grp.checked = state.group;
+  grp.addEventListener('change', function () { state.group = grp.checked; renderFindingsList(); });
+  var selBar = el('div', { cls: 'selbar', role: 'group', 'aria-label': t('sel.label') }, [
+    el('button', { type: 'button', cls: 'btn', text: t('sel.visible'), on: { click: function () { setSel(state.visible || [], true); renderFindingsList(); } } }),
+    bySev,
+    el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+    el('label', { cls: 'chk' }, [grp, t('group.toggle')])
+  ]);
+  return card(t('findings.title'), t('findings.hint'), [
     el('div', { cls: 'filters' }, [el('label', { cls: 'search' }, [searchIcon(), q]), cat, st, so, el('label', { cls: 'chk' }, [fx, t('findings.fixable')])]),
     el('div', { cls: 'filters' }, [chips]),
+    el('div', { cls: 'filters' }, [el('span', { cls: 'flabel', text: t('finding.remediation') }), remChips, el('span', { cls: 'flabel', text: t('vs.label') }), vsChips]),
+    selBar,
     el('div', { id: 'fcount', cls: 'count', 'aria-live': 'polite' }),
     el('div', { id: 'flist', cls: 'flist' }),
     el('div', { id: 'fmore', cls: 'more' })
@@ -440,6 +582,75 @@ function renderFindingsSection() {
   host.textContent = '';
   host.appendChild(findingsSection());
   renderFindingsList();
+}
+
+/* ---------- action bar + prompt ---------- */
+function renderActionBar() {
+  var bar = document.getElementById('actionbar');
+  var list = selectedList();
+  bar.textContent = '';
+  bar.hidden = !list.length;
+  document.body.classList.toggle('has-bar', !!list.length);
+  bar.setAttribute('aria-label', t('sel.label'));
+  if (!list.length) return;
+  var c = { deterministic: 0, agent: 0, manual: 0, none: 0 };
+  list.forEach(function (f) { c[remOf(f).kind]++; });
+  var hidden = list.filter(function (f) { return (state.visible || []).indexOf(f) < 0; }).length;
+  bar.appendChild(el('div', { cls: 'wrap ab-in' }, [
+    el('div', { cls: 'ab-txt' }, [
+      el('b', { text: t('sel.count', { n: num(list.length) }) }),
+      el('span', { cls: 'ab-mix' }, REM_KINDS.concat(['none']).filter(function (k) { return c[k]; }).map(function (k) { return el('span', null, [remBadge(k), ' ' + num(c[k])]); })),
+      hidden ? el('span', { cls: 'faint', text: t('sel.hidden', { n: num(hidden) }) }) : null
+    ]),
+    el('div', { cls: 'ab-btns' }, [
+      el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+      el('button', { type: 'button', cls: 'btn primary', text: t('ab.generate'), on: { click: openPrompt } })
+    ])
+  ]));
+}
+function nonce() {
+  var a = new Uint8Array(8);
+  try { window.crypto.getRandomValues(a); } catch (e) { for (var i = 0; i < a.length; i++) a[i] = Math.floor(Math.random() * 256); }
+  return Array.prototype.map.call(a, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+}
+function openPrompt() {
+  var list = sorted(selectedList());
+  var text = RelivaroPrompt.build({
+    project: D.profile.name, runId: D.runId, command: D.command, startedAt: D.startedAt, version: D.tool.version, root: D.root,
+    lang: lang, nonce: nonce(), remText: REMTXT,
+    findings: list.map(function (f) { return { finding: f, rem: remOf(f), review: REV[f.id] }; })
+  });
+  var dlg = document.getElementById('prompt');
+  dlg.textContent = '';
+  var status = el('p', { cls: 'pr-status', role: 'status', 'aria-live': 'polite' });
+  var area = el('textarea', { id: 'prompt-text', spellcheck: 'false', 'aria-label': t('pr.label') });
+  area.value = text;
+  var file = 'relivaro-fix-' + String(D.runId).replace(/[^\w.-]/g, '') + '.md';
+  function close() { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  dlg.appendChild(el('div', { cls: 'pr' }, [
+    el('div', { cls: 'pr-h' }, [el('h2', { id: 'prompt-title', text: t('pr.title') + ' · ' + t('sel.count', { n: num(list.length) }) }), el('button', { type: 'button', cls: 'icon-btn', 'aria-label': t('pr.close'), text: '×', on: { click: close } })]),
+    el('p', { cls: 'hint' }, [md(t('pr.where'))]),
+    el('p', { cls: 'hint' }, [md(t('pr.static'))]),
+    el('label', { 'for': 'prompt-text', cls: 'sr', text: t('pr.label') }),
+    area,
+    el('div', { cls: 'pr-btns' }, [
+      el('button', { type: 'button', cls: 'btn primary', text: t('pr.copy'), on: { click: function () { copyText(area.value, area, function (ok) { status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked'); if (!ok) { area.focus(); area.select(); } }); } } }),
+      el('button', { type: 'button', cls: 'btn', text: t('pr.download'), on: { click: function () {
+        var url = URL.createObjectURL(new Blob([area.value], { type: 'text/markdown;charset=utf-8' }));
+        var a = el('a', { href: url, download: file });
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+        status.textContent = t('pr.downloaded', { f: file });
+      } } }),
+      el('button', { type: 'button', cls: 'btn', text: t('pr.close'), on: { click: close } })
+    ]),
+    status
+  ]));
+  dlg.setAttribute('aria-labelledby', 'prompt-title');
+  if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
+  area.focus();
+  area.setSelectionRange(0, 0);
+  area.scrollTop = 0;
 }
 
 /* ---------- verification ---------- */
@@ -524,6 +735,7 @@ function render() {
     ])
   ]));
   app.appendChild(section('summary', [el('div', { cls: 'grid g-hero' }, [hero(), kpis()])]));
+  app.appendChild(section('actions', [actionCenter()]));
   app.appendChild(section('flow', [flow()]));
   app.appendChild(section('charts', [charts()]));
   if (R) app.appendChild(section('gates', []));
@@ -535,6 +747,7 @@ function render() {
   app.appendChild(section('project', [project()]));
   renderGates();
   renderFindingsSection();
+  renderActionBar();
 }
 
 Array.prototype.forEach.call(document.querySelectorAll('#lang button'), function (b) {

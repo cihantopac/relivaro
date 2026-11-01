@@ -313,6 +313,7 @@ const ghaUnpinned: FileRule = {
   recommendation:
     'Pin to the full 40-character commit SHA and keep the version in a comment (`uses: owner/action@<sha> # v4.1.0`); let Dependabot/Renovate update the pins.',
   verification: 'Every `uses:` of a third-party action ends in a 40-hex-character SHA.',
+  fixer: 'gha-pin-action',
   appliesTo: (f) => f.kind === 'workflow',
   check(ctx) {
     const wf = loadWorkflow(ctx);
@@ -338,6 +339,7 @@ const ghaUnpinned: FileRule = {
         line: findLine(ctx.lines, /uses:\s*(?:actions|github)\//),
         message: `GitHub-owned actions use mutable tags: ${[...new Set(firstParty)].join(', ')}.`,
         severity: 'low',
+        facts: { actions: [...new Set(firstParty)].join(',') },
         anchor: `first-party:${[...new Set(firstParty)].sort().join(',')}`,
       });
     return out;

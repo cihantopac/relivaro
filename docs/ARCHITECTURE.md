@@ -15,11 +15,12 @@ src/
   deps/         manifest and lockfile parsers (npm/pnpm/yarn, Composer, PyPI/Poetry/uv, Go, Cargo, RubyGems, Pub, Maven), OSV client
   rules/        rule engine + packs: security (code, files), supply-chain, reliability, performance, quality
   checks/       execution checks (build/test/typecheck/lint) with output parsers; coverage reports; test-gap ranking
-  fix/          deterministic fixers, unified diff, plan/apply/verify/rollback workflow
+  fix/          deterministic fixers, GitHub Action SHA resolution, unified diff, plan/apply/verify/rollback workflow
+  review/       review artifact: recorded verdicts per run, fingerprint-bound, carried to later runs
   perf/         statistics, command benchmarks, HTTP load tests with target policy
   contract/     OpenAPI validation and breaking-change diff
   release/      release-readiness gates and scoring
-  report/       JSON, Markdown, HTML, SARIF renderers; run comparison
+  report/       JSON, Markdown, HTML, SARIF renderers; remediation paths; fix-prompt builder; run comparison
 ```
 
 ## Pipeline

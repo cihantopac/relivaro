@@ -23,3 +23,5 @@ Toolchain and rules as in `${CLAUDE_PLUGIN_ROOT}/skills/relivaro/SKILL.md`.
 3. Clearly separate **measured** results (numbers from bench/load, with environment) from **suspected** issues.
 4. If the user wants enforcement, suggest `performance.budgets` in `relivaro.config.json` so `relivaro release` gates on
    them.
+5. Answer with the **Final response** format of the main skill (80–150 words), labelling static findings as
+   suspected and measurements as measured; details stay in the report.

@@ -1,14 +1,16 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { BASELINE_FILE, type BaselineFile, gateFailed, type RunRecord, runAudit } from '../audit.js';
 import type { CheckKind } from '../checks/exec.js';
 import { diffSpecs, loadSpec, validateSpec } from '../contract/openapi.js';
 import { defaultConfig, loadConfig } from '../core/config.js';
 import { EXIT, RelivaroError } from '../core/errors.js';
-import { CATEGORIES, type Category, SEVERITIES, type Severity } from '../core/types.js';
+import { CATEGORIES, type Category, SEVERITIES, SEVERITY_RANK, type Severity } from '../core/types.js';
 import { VERSION } from '../core/version.js';
 import { atomicWrite, Workspace } from '../core/workspace.js';
 import { whichSync } from '../exec/runner.js';
+import { resolveActionRef } from '../fix/actions.js';
 import { FIXERS, findFixer } from '../fix/fixers.js';
 import { applyPlan, createPlan, history, loadPlan, rollback, verifyInPlace } from '../fix/workflow.js';
 import { runGit } from '../fs/files.js';
@@ -25,7 +27,16 @@ import { assessRelease } from '../release/readiness.js';
 import { compareRuns } from '../report/compare.js';
 import { type HtmlExtras, toHtml } from '../report/html.js';
 import { toMarkdown } from '../report/markdown.js';
+import { remediationOf } from '../report/remediation.js';
 import { toSarif } from '../report/sarif.js';
+import {
+  effectiveReview,
+  type ReviewEntry,
+  recordReview,
+  reviewIndex,
+  reviewSummary,
+  VERDICTS,
+} from '../review/review.js';
 import { allRuleMeta, findRule } from '../rules/index.js';
 import type { CommandSpec, OptSpec, Parsed } from './args.js';
 import { clearProgress, findingLine, type Out, paint, printRunSummary, sevLabel } from './output.js';
@@ -103,6 +114,7 @@ const ANALYSIS_OPTS: OptSpec[] = [
     description:
       'With --json: summary, open findings without rule boilerplate, checks, test gaps, release and limitations (for agents).',
   },
+  { name: 'open', type: 'boolean', description: 'Open the HTML report with the default application.' },
 ];
 
 function rootArg(p: Parsed): string {
@@ -111,9 +123,47 @@ function rootArg(p: Parsed): string {
   return r;
 }
 
+/** Platform command that opens a file with the default application (shown to users and agents). */
+export function openCommand(file: string): string {
+  if (process.platform === 'darwin') return `open "${file}"`;
+  if (process.platform === 'win32') return `start "" "${file}"`;
+  return `xdg-open "${file}"`;
+}
+
+/** Opens a file with the default application without waiting for it; failures are reported, not thrown. */
+function openFile(file: string): boolean {
+  const [cmd, args] =
+    process.platform === 'darwin'
+      ? ['open', [file]]
+      : process.platform === 'win32'
+        ? ['explorer.exe', [file]]
+        : ['xdg-open', [file]];
+  try {
+    const child = spawn(cmd, args, { detached: true, stdio: 'ignore', windowsHide: true });
+    child.on('error', () => {});
+    child.unref();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function groupBy<T>(items: T[], key: (x: T) => string): Map<string, T[]> {
+  const m = new Map<string, T[]>();
+  for (const x of items) m.set(key(x), [...(m.get(key(x)) ?? []), x]);
+  return m;
+}
+
 /** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
-export function compactRun(run: RunRecord, maxFindings = 150) {
+export function compactRun(
+  run: RunRecord,
+  maxFindings = 30,
+  files: Record<string, string> = {},
+  review: Record<string, ReviewEntry> = {},
+) {
   const open = run.findings.filter((f) => f.status === 'open');
+  const rem = new Map(open.map((f) => [f.id, remediationOf(f, review[f.id])]));
+  const remCount = (k: string) => open.filter((f) => rem.get(f.id)!.kind === k).length;
   return {
     runId: run.runId,
     command: run.command,
@@ -132,10 +182,28 @@ export function compactRun(run: RunRecord, maxFindings = 150) {
       where: f.location ? `${f.location.file}${f.location.line ? `:${f.location.line}` : ''}` : undefined,
       message: f.message,
       fixer: f.fixer,
-      snippet: f.evidence.snippet?.split('\n').slice(0, 3).join('\n'),
+      remediation: rem.get(f.id)!.kind,
+      review: review[f.id]?.verdict,
+      snippet:
+        SEVERITY_RANK[f.severity] >= SEVERITY_RANK.medium
+          ? f.evidence.snippet?.split('\n').slice(0, 3).join('\n')
+          : undefined,
       output: f.evidence.output?.split('\n').slice(-8).join('\n'),
     })),
     omittedFindings: Math.max(0, open.length - maxFindings),
+    // Every open finding, grouped by rule (root cause): enough to prioritise without reading each finding.
+    groups: [...groupBy(open, (f) => f.ruleId)]
+      .map(([rule, fs]) => ({
+        rule,
+        title: fs[0]!.title,
+        count: fs.length,
+        severity: fs[0]!.severity,
+        remediation: rem.get(fs[0]!.id)!.kind,
+        reviewed: fs.filter((f) => review[f.id]).length,
+        where: [...new Set(fs.map((f) => f.location?.file).filter(Boolean))].slice(0, 3),
+        ids: fs.slice(0, 12).map((f) => f.id),
+      }))
+      .sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity] || b.count - a.count),
     checks: run.checks.map((c) => ({
       kind: c.kind,
       unit: c.unit,
@@ -151,18 +219,28 @@ export function compactRun(run: RunRecord, maxFindings = 150) {
       warnings: run.release.warnings,
       unverified: run.release.unverified,
     },
+    remediation: {
+      deterministic: remCount('deterministic'),
+      agent: remCount('agent'),
+      manual: remCount('manual'),
+    },
+    review: reviewSummary(run, review),
     limitations: run.limitations,
     reports: `.relivaro/runs/${run.runId}/ (rule details: relivaro rules show <rule>)`,
+    ...(files.html
+      ? { report: { html: files.html, open: openCommand(files.html), markdown: files.md } }
+      : {}),
   };
 }
 
 /** Context for the HTML dashboard: the previous run of this project, measured benchmarks and fix history. */
-function htmlExtras(ws: Workspace, run: RunRecord): HtmlExtras {
+function htmlExtras(ws: Workspace, run: RunRecord, review: Record<string, ReviewEntry>): HtmlExtras {
   const runs = ws.listRuns();
   const prevId = runs[runs.indexOf(run.runId) - 1];
   const prev = prevId ? ws.readJson<RunRecord>(['runs', prevId, 'run.json']) : undefined;
   const fixes = history(ws).filter((r) => r.root === run.root);
   return {
+    review,
     comparison: prev ? compareRuns(prev, run) : undefined,
     bench: benchSnapshots(ws),
     fixes: fixes.length
@@ -183,10 +261,11 @@ function writeReports(
 ): Record<string, string> {
   const files: Record<string, string> = {};
   ws.writeJson(['runs', run.runId, 'run.json'], run);
+  const review = effectiveReview(ws, run);
   const render: Record<string, () => [string, string]> = {
     json: () => ['report.json', `${JSON.stringify(run, null, 2)}\n`],
-    md: () => ['report.md', toMarkdown(run)],
-    html: () => ['report.html', toHtml(run, htmlExtras(ws, run))],
+    md: () => ['report.md', toMarkdown(run, { review })],
+    html: () => ['report.html', toHtml(run, htmlExtras(ws, run, review))],
     sarif: () => ['report.sarif', `${JSON.stringify(toSarif(run), null, 2)}\n`],
   };
   for (const f of formats) {
@@ -240,8 +319,17 @@ async function analysisCommand(
         Array.isArray(formats) ? formats : String(formats).split(','),
         p.opts.out as string | undefined,
       );
-  if (out.json) out.print(JSON.stringify(p.opts.compact ? compactRun(run) : run, null, 2));
-  else printRunSummary(out, run, files, Number(p.opts['max-findings'] ?? 15));
+  if (out.json)
+    out.print(
+      // Compact output is for agents: unindented, so a large run stays small enough to read in one go.
+      p.opts.compact
+        ? JSON.stringify(
+            compactRun(run, 30, files, p.opts['no-write'] ? {} : effectiveReview(workspace, run)),
+          )
+        : JSON.stringify(run, null, 2),
+    );
+  else printRunSummary(out, run, files, Number(p.opts['max-findings'] ?? 15), openCommand);
+  if (p.opts.open && files.html) openFile(files.html);
   const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? config.failOn;
   if (cfg.release && run.release) {
     if (run.release.status === 'not-ready') return EXIT.GATE_FAILED;
@@ -402,15 +490,33 @@ const reportCmd: Command = {
         default: 'md,html',
       },
       { name: 'out', type: 'string', value: '<dir>', description: 'Output directory.' },
+      { name: 'open', type: 'boolean', description: 'Open the HTML report with the default application.' },
     ],
   },
   async run(p, out) {
     const ws = new Workspace(resolve((p.opts.path as string) ?? '.'), p.opts.workspace as string | undefined);
     const id = ws.resolveRun(p.positionals[0] ?? 'latest');
     const run = ws.readJson<RunRecord>(['runs', id, 'run.json'])!;
-    const files = writeReports(ws, run, p.opts.format as string[], p.opts.out as string | undefined);
-    if (out.json) out.print(JSON.stringify({ runId: id, files }, null, 2));
-    else for (const [k, v] of Object.entries(files)) out.print(`${k.padEnd(6)} ${v}`);
+    const formats = p.opts.format as string[];
+    const files = writeReports(
+      ws,
+      run,
+      p.opts.open && !formats.includes('html') ? [...formats, 'html'] : formats,
+      p.opts.out as string | undefined,
+    );
+    const opened = p.opts.open && files.html ? openFile(files.html) : false;
+    if (out.json)
+      out.print(
+        JSON.stringify(
+          { runId: id, files, ...(files.html ? { open: openCommand(files.html), opened } : {}) },
+          null,
+          2,
+        ),
+      );
+    else {
+      for (const [k, v] of Object.entries(files)) out.print(`${k.padEnd(6)} ${v}`);
+      if (files.html && !opened) out.print(paint(out.color, 'gray', `Open: ${openCommand(files.html)}`));
+    }
     return EXIT.OK;
   },
 };
@@ -467,6 +573,212 @@ const compareCmd: Command = {
         ))
     )
       return EXIT.GATE_FAILED;
+    return EXIT.OK;
+  },
+};
+
+/** Loads a stored run and checks that it belongs to the project directory the user named. */
+function storedRun(ws: Workspace, projectDir: string, idOrAlias: string): RunRecord {
+  const id = ws.resolveRun(idOrAlias);
+  const run = ws.readJson<RunRecord>(['runs', id, 'run.json'])!;
+  if (!samePath(run.root, projectDir))
+    throw new RelivaroError(
+      'USAGE',
+      `Run ${id} belongs to ${run.root}, not ${projectDir}.`,
+      'Pass --path <project> (and --workspace) for the project the run came from.',
+    );
+  return run;
+}
+
+function samePath(a: string, b: string): boolean {
+  if (resolve(a) === resolve(b)) return true;
+  try {
+    return realpathSync(a) === realpathSync(b);
+  } catch {
+    return false;
+  }
+}
+
+const reviewCmd: Command = {
+  spec: {
+    name: 'review',
+    summary: 'Record verified verdicts (confirmed, false positive, needs runtime) for findings of a run',
+    usage: 'relivaro review <add|list> [--finding <ids>] [--verdict <v>] [--reason <text>] [options]',
+    description: [
+      'Subcommands:',
+      '  add    Record a verdict for one or more findings of a run (one justification for all of them)',
+      '  list   Show the recorded verdicts of a run',
+      '',
+      'Verdicts are stored in runs/<run>/review.json next to the run and never change the original findings.',
+      'Reports re-render with the reviewed state: raw detection and reviewed conclusion side by side. Record only',
+      'what was actually checked in the code; unreviewed findings stay "detected".',
+    ].join('\n'),
+    positionals: ['subcommand'],
+    subcommands: ['add', 'list'],
+    options: [
+      { name: 'finding', type: 'list', value: '<ids>', description: 'add: finding id(s) of the run.' },
+      {
+        name: 'verdict',
+        type: 'string',
+        value: '<verdict>',
+        choices: VERDICTS,
+        description: 'add: confirmed, false-positive or needs-runtime.',
+      },
+      {
+        name: 'reason',
+        type: 'string',
+        value: '<text>',
+        description: 'add: short justification (required).',
+      },
+      {
+        name: 'evidence',
+        type: 'list',
+        value: '<file:line>',
+        description: 'add: code locations that support the verdict (project-relative).',
+      },
+      {
+        name: 'severity',
+        type: 'string',
+        value: '<severity>',
+        choices: SEVERITIES,
+        description: 'add: severity the reviewer considers appropriate, if different.',
+      },
+      {
+        name: 'reviewer',
+        type: 'string',
+        value: '<name>',
+        description: 'add: who reviewed (e.g. "claude-code", a person\'s handle). Default: agent.',
+      },
+      { name: 'human', type: 'boolean', description: 'add: the reviewer is a person, not an AI agent.' },
+      { name: 'run', type: 'string', value: '<id>', description: 'Run id or alias.', default: 'latest' },
+      { name: 'path', type: 'string', value: '<dir>', description: 'Project directory (default: .).' },
+      { name: 'workspace', type: 'string', value: '<dir>', description: 'Workspace directory.' },
+    ],
+    examples: [
+      'relivaro review add --finding RLV-3f9a1c2b --verdict confirmed --reason "user input reaches the query" --evidence src/db.ts:42',
+      'relivaro review add --finding RLV-1,RLV-2 --verdict false-positive --reason "test fixture, never deployed"',
+      'relivaro review list --json',
+    ],
+  },
+  async run(p, out) {
+    const sub = p.positionals[0];
+    const projectDir = resolve((p.opts.path as string) ?? '.');
+    const ws = new Workspace(projectDir, p.opts.workspace as string | undefined);
+    const run = storedRun(ws, projectDir, (p.opts.run as string) ?? 'latest');
+    if (sub === 'add') {
+      const file = recordReview(ws, run, {
+        findingIds: (p.opts.finding as string[] | undefined) ?? [],
+        verdict: String(p.opts.verdict ?? ''),
+        justification: String(p.opts.reason ?? ''),
+        evidence: p.opts.evidence as string[] | undefined,
+        severity: p.opts.severity as string | undefined,
+        reviewer: p.opts.reviewer as string | undefined,
+        human: !!p.opts.human,
+      });
+      // Re-render the reports this run already has, so the HTML shows the reviewed state immediately.
+      const formats = (['html', 'md'] as const).filter((f) =>
+        existsSync(ws.path('runs', run.runId, f === 'html' ? 'report.html' : 'report.md')),
+      );
+      const files = formats.length ? writeReports(ws, run, [...formats]) : {};
+      const summary = reviewSummary(run, { ...effectiveReview(ws, run), ...reviewIndex(run, file) });
+      if (out.json)
+        out.print(
+          JSON.stringify(
+            { runId: run.runId, review: ws.path('runs', run.runId, 'review.json'), summary, files },
+            null,
+            2,
+          ),
+        );
+      else {
+        out.print(
+          `Recorded ${new Set(p.opts.finding as string[]).size} review(s) for run ${run.runId}: ${summary.confirmed} confirmed, ${summary.falsePositive} false positive, ${summary.needsRuntime} need runtime verification, ${summary.unreviewed} not reviewed.`,
+        );
+        if (files.html) out.print(`HTML report updated: ${files.html}`);
+      }
+      return EXIT.OK;
+    }
+    if (sub === 'list') {
+      const index = effectiveReview(ws, run);
+      const entries = Object.values(index);
+      if (out.json)
+        out.print(JSON.stringify({ runId: run.runId, summary: reviewSummary(run, index), entries }, null, 2));
+      else if (!entries.length) out.print(`No reviews recorded for run ${run.runId}.`);
+      else
+        for (const e of entries)
+          out.print(
+            `${e.findingId}  ${e.verdict.padEnd(14)} ${e.ruleId}  ${paint(out.color, 'gray', `${e.reviewer.name}${e.carriedFrom ? ` (run ${e.carriedFrom})` : ''}: ${e.justification}`)}`,
+          );
+      return EXIT.OK;
+    }
+    throw new RelivaroError('USAGE', `Unknown review subcommand "${sub ?? ''}".`, 'Use one of: add, list.');
+  },
+};
+
+const recheckCmd: Command = {
+  spec: {
+    name: 'recheck',
+    summary: 'Re-check findings of an earlier run against the current source before repairing them',
+    usage: 'relivaro recheck [path] --finding <ids> [--run <id>]',
+    description:
+      'Re-runs only the rules behind the given findings and reports each one as present (same place), moved (same code, other line) or gone (fixed, or the code changed). Use it before editing code for findings taken from a report or a prompt.',
+    positionals: ['path'],
+    options: [
+      { name: 'finding', type: 'list', value: '<ids>', description: 'Finding ids from the run (required).' },
+      {
+        name: 'run',
+        type: 'string',
+        value: '<id>',
+        description: 'Run the ids came from.',
+        default: 'latest',
+      },
+      { name: 'workspace', type: 'string', value: '<dir>', description: 'Workspace directory.' },
+    ],
+    examples: ['relivaro recheck . --finding RLV-3f9a1c2b,RLV-7fb00c34 --run 20261101-120000-abc123'],
+  },
+  async run(p, out) {
+    const root = rootArg(p);
+    const ws = new Workspace(root, p.opts.workspace as string | undefined);
+    const run = storedRun(ws, root, (p.opts.run as string) ?? 'latest');
+    const ids = [...new Set((p.opts.finding as string[] | undefined) ?? [])];
+    if (!ids.length) throw new RelivaroError('USAGE', 'Name the findings to re-check with --finding <ids>.');
+    const unknown = ids.filter((id) => !run.findings.some((f) => f.id === id));
+    if (unknown.length)
+      throw new RelivaroError(
+        'NOT_FOUND',
+        `Finding(s) not in run ${run.runId}: ${unknown.join(', ')}.`,
+        'Use the run the ids came from (--run).',
+      );
+    const before = ids.map((id) => run.findings.find((f) => f.id === id)!);
+    const { run: now } = await runAudit({
+      root,
+      command: 'recheck',
+      rules: [...new Set(before.map((f) => f.ruleId))],
+      noWrite: true,
+      onProgress: out.progress,
+    });
+    clearProgress();
+    const where = (f?: { location?: { file: string; line?: number } }) =>
+      f?.location ? `${f.location.file}${f.location.line ? `:${f.location.line}` : ''}` : undefined;
+    const results = before.map((f) => {
+      const cur = now.findings.find((x) => x.fingerprint === f.fingerprint);
+      const status = !cur ? 'gone' : cur.location?.line !== f.location?.line ? 'moved' : 'present';
+      return { id: f.id, rule: f.ruleId, status, was: where(f), now: where(cur), findingStatus: cur?.status };
+    });
+    if (out.json) out.print(JSON.stringify({ runId: run.runId, results }, null, 2));
+    else {
+      for (const r of results)
+        out.print(
+          `${r.id}  ${(r.status === 'gone' ? paint(out.color, 'green', 'gone') : paint(out.color, 'yellow', r.status)).padEnd(7)}  ${r.rule}  ${r.now ?? r.was ?? ''}${r.status === 'moved' ? paint(out.color, 'gray', ` (was ${r.was})`) : ''}`,
+        );
+      if (results.some((r) => r.status === 'gone'))
+        out.print(
+          paint(
+            out.color,
+            'gray',
+            '"gone" = not produced by the current source: fixed, or the code changed (re-audit for new ids).',
+          ),
+        );
+    }
     return EXIT.OK;
   },
 };
@@ -570,6 +882,12 @@ const fixCmd: Command = {
         description: 'plan: include fixers that intentionally change behaviour (marked "review").',
         default: true,
       },
+      {
+        name: 'online',
+        type: 'boolean',
+        description:
+          "plan: allow fixers that need the network (gha-pin-action resolves tags to commit SHAs from the action's GitHub repository).",
+      },
       { name: 'yes', type: 'boolean', short: 'y', description: 'apply: confirm modifying the working tree.' },
       {
         name: 'verify',
@@ -622,6 +940,11 @@ const fixCmd: Command = {
       clearProgress();
       let fixable = run.findings.filter((f) => f.status === 'open' && f.fixer && findFixer(f.fixer));
       const fids = p.opts.finding as string[] | undefined;
+      // Finding ids come from an earlier run; say which ones the current source no longer produces.
+      const stale = (fids ?? []).filter((id) => !run.findings.some((f) => f.id === id));
+      const notFixable = (fids ?? []).filter(
+        (id) => !stale.includes(id) && !fixable.some((f) => f.id === id),
+      );
       const rules = p.opts.rule as string[] | undefined;
       const fixers = p.opts.fixer as string[] | undefined;
       if (fids?.length) fixable = fixable.filter((f) => fids.includes(f.id));
@@ -654,14 +977,32 @@ const fixCmd: Command = {
         }
         return EXIT.OK;
       }
+      const notes = [
+        ...stale.map((id) => `${id}: not found in the current source (already fixed or changed); re-audit`),
+        ...notFixable.map((id) => `${id}: open, but no automated fixer applies; fix it manually`),
+      ];
       if (!fixable.length) {
-        if (out.json) out.print(JSON.stringify({ planId: null, items: [] }));
-        else out.print('Nothing to fix: no open finding has an automated fixer.');
+        if (out.json) out.print(JSON.stringify({ planId: null, items: [], notes }));
+        else {
+          out.print('Nothing to fix: no open finding has an automated fixer.');
+          for (const n of notes) out.print(paint(on, 'yellow', `  ${n}`));
+        }
         return EXIT.OK;
       }
-      const plan = await createPlan(projectDir, fixable, ws);
-      if (out.json) out.print(JSON.stringify(plan, null, 2));
-      else printPlan(out, plan);
+      const online = !!p.opts.online;
+      if (online) out.progress('resolving GitHub Action tags (git ls-remote)');
+      const plan = await createPlan(
+        projectDir,
+        fixable,
+        ws,
+        online ? { resolveAction: resolveActionRef } : {},
+      );
+      clearProgress();
+      if (out.json) out.print(JSON.stringify(notes.length ? { ...plan, notes } : plan, null, 2));
+      else {
+        printPlan(out, plan);
+        for (const n of notes) out.print(paint(on, 'yellow', `  ${n}`));
+      }
       return EXIT.OK;
     }
     if (sub === 'show') {
@@ -750,7 +1091,11 @@ function printPlan(out: Out, plan: Awaited<ReturnType<typeof createPlan>>) {
   );
   for (const i of plan.items)
     out.print(
-      `  ${i.safety === 'safe' ? paint(on, 'green', 'safe  ') : paint(on, 'yellow', 'review')} ${i.findingId} ${i.title} — ${i.file}${i.line ? `:${i.line}` : ''}`,
+      `  ${i.safety === 'safe' ? paint(on, 'green', 'safe  ') : paint(on, 'yellow', 'review')} ${i.findingId} ${i.title} — ${i.file}${i.line ? `:${i.line}` : ''}${(
+        i.pins ?? []
+      )
+        .map((x) => paint(on, 'gray', `\n         ${x.action}@${x.ref} → ${x.sha} (${x.source})`))
+        .join('')}`,
     );
   for (const s of plan.skipped) out.print(paint(on, 'gray', `  skipped ${s.findingId}: ${s.reason}`));
   for (const f of plan.files) {
@@ -1327,6 +1672,8 @@ export const COMMANDS: Command[] = [
   fixCmd,
   reportCmd,
   compareCmd,
+  reviewCmd,
+  recheckCmd,
   baselineCmd,
   benchCmd,
   loadCmd,

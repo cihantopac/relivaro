@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.1.0",
-  "measuredAt": "2026-10-31T23:00:22.168Z",
+  "relivaro": "1.2.0",
+  "measuredAt": "2026-11-01T00:46:06.877Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 106
+        "ms": 105
       },
       "laravel-app": {
         "tp": 40,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 69
+        "ms": 68
       },
       "next-app": {
         "tp": 12,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 94
+        "ms": 95
       },
       "node-api": {
         "tp": 54,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 92
+        "ms": 93
       },
       "python-app": {
         "tp": 30,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 94
+        "ms": 92
       }
     },
     "byRule": {
@@ -470,11 +470,11 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 77,
-      "medianMs": 1387,
-      "minMs": 1385,
-      "maxMs": 1452,
-      "filesPerSecond": 2207,
-      "linesPerSecond": 35045,
+      "medianMs": 1410,
+      "minMs": 1400,
+      "maxMs": 1483,
+      "filesPerSecond": 2171,
+      "linesPerSecond": 34474,
       "peakRssMb": 129,
       "openFindings": 180
     },
