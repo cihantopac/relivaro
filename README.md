@@ -1,4 +1,9 @@
-<h1 align="center">Relivaro</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/primary-reversed.svg">
+    <img src="assets/brand/primary-color.svg" alt="Relivaro" width="360">
+  </picture>
+</h1>
 
 <h3 align="center">Verify the code. Prove the quality. Ship with confidence.</h3>
 
@@ -239,6 +244,11 @@ Independent tools by the same author. Each works on its own; none requires anoth
 | [**Searvex**](https://github.com/cihantopac/searvex) | SEO, GEO and search intelligence with sourced audits |
 | [**Jourilo**](https://github.com/cihantopac/jourilo) | UX, user journeys and conversion engineering in a real browser |
 | **Relivaro** | Software quality, security and release readiness |
+
+## Brand
+
+The Relivaro logo, symbol and icons (the SVG files in [`assets/brand/`](assets/brand/)) were designed with
+[Markilo](https://github.com/cihantopac/markilo), the open-source brand identity studio for Claude Code.
 
 ## License
 

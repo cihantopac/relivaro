@@ -4,7 +4,7 @@ Persistent record of scope, decisions, verified progress and open issues. Update
 
 ## Status (2026-11-01)
 
-v1.1.0 released (GitHub, npm). v1.2.0 is a release candidate in the repository, not published. All acceptance
+v1.2.1 released (GitHub, npm): 1.2.0 plus the Relivaro identity designed with Markilo. All acceptance
 criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
 
 ## Milestones (internal)
@@ -60,7 +60,7 @@ CI passes on Ubuntu, macOS and Windows with Node 22 and 24. The first Windows ru
 | HTML report | Rebuilt as a bilingual (EN/TR) dashboard; screenshots in `assets/screenshots/` come from real runs (Relivaro on itself with `--allow-exec --online`, and the `node-api` fixture after `fix apply`). |
 | README / npm | Product-style README with real numbers; npm description and keywords updated. |
 
-## 1.2.0 — actionable reports and agent-assisted fixes (release candidate)
+## 1.2.0 — actionable reports and agent-assisted fixes
 
 Problem: on a real monorepo (repo-1 in [VALIDATION.md](VALIDATION.md)) the plugin answered with pages of text, the
 HTML report was easy to miss, and nothing led from a finding to a verified fix.

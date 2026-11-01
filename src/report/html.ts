@@ -1,7 +1,7 @@
 import type { RunRecord } from '../audit.js';
 import type { BenchSnapshot } from '../release/readiness.js';
 import type { ReviewEntry } from '../review/review.js';
-import { BRAND } from './brand.js';
+import { BRAND, FAVICON_SVG, LOGO } from './brand.js';
 import type { RunComparison } from './compare.js';
 import { REPORT_JS } from './html-client.js';
 import { I18N } from './html-i18n.js';
@@ -73,12 +73,13 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 <meta name="color-scheme" content="light dark">
 <meta name="generator" content="Relivaro ${run.tool.version.replace(/[^\w.+-]/g, '')}">
 <title>${title}</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(FAVICON_SVG)}">
 <style>${css}</style>
 </head>
 <body>
 <a class="skip" id="skip" href="#findings">Skip to findings</a>
 <header class="top"><div class="wrap top-in">
-<span class="brand">Relivaro</span>
+<span class="brand"><svg viewBox="${LOGO.viewBox}" role="img" aria-label="Relivaro"><path class="cairn" fill-rule="evenodd" d="${LOGO.cairn}"/><path fill-rule="evenodd" d="${LOGO.wordmark}"/></svg></span>
 <nav class="tabs" id="nav" aria-label="Sections"></nav>
 <div class="tools">
 <div class="seg" id="lang" role="group"><button type="button" data-lang="en" lang="en">EN</button><button type="button" data-lang="tr" lang="tr">TR</button></div>

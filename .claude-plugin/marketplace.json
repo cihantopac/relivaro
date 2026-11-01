@@ -10,7 +10,7 @@
       "name": "relivaro",
       "source": "./plugin",
       "description": "Evidence-based security, supply-chain, reliability, performance, quality and test audits; verified safe fixes with rollback; release-readiness gates.",
-      "version": "1.2.0",
+      "version": "1.2.1",
       "category": "development",
       "tags": ["security", "quality", "reliability", "performance", "testing", "release"]
     }

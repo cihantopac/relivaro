@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.2.0",
-  "measuredAt": "2026-11-01T00:46:06.877Z",
+  "relivaro": "1.2.1",
+  "measuredAt": "2026-11-01T10:58:41.183Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 105
+        "ms": 124
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 80
+        "ms": 85
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 68
+        "ms": 73
       },
       "next-app": {
         "tp": 12,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 95
+        "ms": 99
       },
       "node-api": {
         "tp": 54,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 93
+        "ms": 98
       },
       "python-app": {
         "tp": 30,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 73
+        "ms": 98
       },
       "regressions": {
         "tp": 5,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 92
+        "ms": 100
       }
     },
     "byRule": {
@@ -470,12 +470,12 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 77,
-      "medianMs": 1410,
-      "minMs": 1400,
-      "maxMs": 1483,
-      "filesPerSecond": 2171,
-      "linesPerSecond": 34474,
-      "peakRssMb": 129,
+      "medianMs": 1490,
+      "minMs": 1433,
+      "maxMs": 1567,
+      "filesPerSecond": 2054,
+      "linesPerSecond": 32620,
+      "peakRssMb": 127,
       "openFindings": 180
     },
     "repositories": []

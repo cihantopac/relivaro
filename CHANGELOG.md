@@ -3,6 +3,17 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.2.1] — 2026-11-01
+
+Brand update; no functional changes. 1.2.0 was released on GitHub only, so on npm this release follows 1.1.0 and
+includes everything in 1.2.0.
+
+### Changed
+
+- New Relivaro identity ("Cairn"): the HTML report header shows the logo and the report has a favicon, both inlined
+  as outlined SVG (no font or network). The README header, the Claude Code plugin icon and `assets/brand/` use the
+  same marks. The identity was designed with [Markilo](https://github.com/cihantopac/markilo).
+
 ## [1.2.0] — 2026-11-01
 
 Actionable reports and agent-assisted fixes. No breaking changes: run records (schema v1), SARIF, Markdown, CLI

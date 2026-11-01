@@ -1,0 +1,37 @@
+:root {
+  --relivaro-primary-50: #eff9fb;
+  --relivaro-primary-100: #dbeff5;
+  --relivaro-primary-200: #b3dde7;
+  --relivaro-primary-300: #83c3d3;
+  --relivaro-primary-400: #54a6b9;
+  --relivaro-primary-500: #25889c;
+  --relivaro-primary-600: #0b7285;
+  --relivaro-primary-700: #085765;
+  --relivaro-primary-800: #063f4a;
+  --relivaro-primary-900: #022c35;
+  --relivaro-primary-950: #001a20;
+  --relivaro-secondary-50: #f8f6f5;
+  --relivaro-secondary-100: #edeae8;
+  --relivaro-secondary-200: #d9d3cd;
+  --relivaro-secondary-300: #beb6ad;
+  --relivaro-secondary-400: #a0968c;
+  --relivaro-secondary-500: #8c8278;
+  --relivaro-secondary-600: #6b6157;
+  --relivaro-secondary-700: #544b43;
+  --relivaro-secondary-800: #3e362f;
+  --relivaro-secondary-900: #2b2520;
+  --relivaro-secondary-950: #191511;
+  --relivaro-neutral-50: #f2f8fa;
+  --relivaro-neutral-100: #e6ecee;
+  --relivaro-neutral-200: #cfd5d7;
+  --relivaro-neutral-300: #b3b9ba;
+  --relivaro-neutral-400: #94999b;
+  --relivaro-neutral-500: #767b7d;
+  --relivaro-neutral-600: #5f6466;
+  --relivaro-neutral-700: #494e4f;
+  --relivaro-neutral-800: #34393a;
+  --relivaro-neutral-900: #232729;
+  --relivaro-neutral-950: #131718;
+  --relivaro-ink: #121620;
+  --relivaro-paper: #f6f4f0;
+}

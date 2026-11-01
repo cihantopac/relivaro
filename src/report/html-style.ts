@@ -46,7 +46,7 @@ h2{font-size:17px}h3{font-size:14px}
 /* header */
 .top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
 .top-in{display:flex;align-items:center;gap:20px;height:60px}
-.brand{flex:none;color:var(--text);font-weight:700;font-size:17px;letter-spacing:-.015em}
+.brand{flex:none;display:flex;color:var(--text)}.brand svg{display:block;height:22px;width:auto;fill:currentColor}.brand .cairn{fill:#0b7285}
 .tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1}
 .tabs a{color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:8px;font-weight:500;white-space:nowrap}
 .tabs a:hover{color:var(--text);background:var(--surface-2)}
