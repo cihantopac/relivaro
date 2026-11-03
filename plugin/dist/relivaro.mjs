@@ -392,6 +392,7 @@ __export(files_exports, {
   isInside: () => isInside,
   isSensitivePath: () => isSensitivePath,
   isTestPath: () => isTestPath,
+  isToolReport: () => isToolReport,
   runGit: () => runGit,
   safeResolve: () => safeResolve
 });
@@ -448,6 +449,25 @@ function classify(path) {
 }
 function isTestPath(path) {
   return TEST_DIR.test(path) || TEST_FILE.test(path);
+}
+function isToolReport(path, head) {
+  const ext = extname(path).toLowerCase();
+  if (!REPORT_EXT.has(ext)) return false;
+  if (ext === ".sarif") return true;
+  const h = head.slice(0, 4096);
+  return REPORT_MARKERS.some((re) => re.test(h));
+}
+function readHead(abs) {
+  let fd;
+  try {
+    fd = openSync(abs, "r");
+    const buf = Buffer.alloc(4096);
+    return buf.toString("utf8", 0, readSync(fd, buf, 0, 4096, 0));
+  } catch {
+    return "";
+  } finally {
+    if (fd !== void 0) closeSync(fd);
+  }
 }
 function isRootMeta(path) {
   return !path.includes("/") && (MANIFESTS.has(path) || LOCKFILES.has(path) || path === ".gitignore");
@@ -609,7 +629,7 @@ function readRootGitignore(root) {
     return [];
   }
 }
-var DEFAULT_EXCLUDED_DIRS, LANGUAGE_BY_EXT, MANIFESTS, LOCKFILES, TEMPLATE_EXT, DOC_EXT, CONFIG_EXT, OTHER_TEXT_EXT, BINARY_EXT, TEST_DIR, TEST_FILE, SENSITIVE_ENV, ENV_TEMPLATE, KEY_FILE, FileSet;
+var DEFAULT_EXCLUDED_DIRS, LANGUAGE_BY_EXT, MANIFESTS, LOCKFILES, TEMPLATE_EXT, DOC_EXT, CONFIG_EXT, OTHER_TEXT_EXT, BINARY_EXT, TEST_DIR, TEST_FILE, SENSITIVE_ENV, ENV_TEMPLATE, KEY_FILE, REPORT_EXT, REPORT_MARKERS, FileSet;
 var init_files = __esm({
   "src/fs/files.ts"() {
     "use strict";
@@ -840,6 +860,13 @@ var init_files = __esm({
     SENSITIVE_ENV = /^\.env(?:\..+)?$/i;
     ENV_TEMPLATE = /^\.env\.(?:example|sample|template|dist|defaults|schema)$|^\.env\..*\.example$/i;
     KEY_FILE = /(?:\.(?:pem|key|p12|pfx|jks|keystore|kdbx|ppk|asc|gpg)$|^id_(?:rsa|dsa|ecdsa|ed25519)$|^\.(?:netrc|pypirc|htpasswd)$|^credentials(?:\.json)?$)/i;
+    REPORT_EXT = /* @__PURE__ */ new Set([".html", ".md", ".json", ".sarif"]);
+    REPORT_MARKERS = [
+      /<meta name="generator" content="(?:Relivaro|Jourilo|Searvex) \d/,
+      /^\{\s*"schemaVersion"\s*:\s*\d+\s*,(?:\s*"id"\s*:\s*"[^"]*"\s*,)?\s*"tool"\s*:\s*\{\s*"name"\s*:\s*"(?:relivaro|jourilo|searvex)"/,
+      /^Generated \S+ · (?:Relivaro|Jourilo|Searvex) \d/m,
+      /^# (?:Relivaro|Jourilo) report — .*\n\nRun `[^`]+` · /
+    ];
     FileSet = class {
       root;
       realRoot;
@@ -851,7 +878,8 @@ var init_files = __esm({
         tooLarge: 0,
         sensitive: 0,
         symlinkOutside: 0,
-        generated: 0
+        generated: 0,
+        reports: 0
       };
       /** Sensitive files present on disk that were not read (path only). */
       sensitiveUnread = [];
@@ -917,6 +945,10 @@ var init_files = __esm({
           if (language2) pf.language = language2;
           if (st.size > this.maxBytes) {
             this.skipped.tooLarge++;
+            continue;
+          }
+          if (REPORT_EXT.has(ext) && isToolReport(path, readHead(abs))) {
+            this.skipped.reports++;
             continue;
           }
           files.push(pf);
@@ -22289,6 +22321,10 @@ async function runAudit(opts) {
   if (files.skipped.tooLarge)
     limitations.push(
       `${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`
+    );
+  if (files.skipped.reports)
+    limitations.push(
+      `${files.skipped.reports} generated report file(s) from Relivaro, Jourilo or Searvex were not analysed.`
     );
   if (files.skipped.sensitive)
     limitations.push(

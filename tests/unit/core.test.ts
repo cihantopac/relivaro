@@ -1,3 +1,7 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../../src/cli/args.js';
 import { defaultConfig, validateConfig } from '../../src/core/config.js';
@@ -6,6 +10,7 @@ import { globToRegExp, matchesAny } from '../../src/core/glob.js';
 import { findingId, fingerprint } from '../../src/core/hash.js';
 import { isPlaceholder, maskSecret, redact, shannonEntropy } from '../../src/core/secrets.js';
 import { splitCommand } from '../../src/exec/runner.js';
+import { FileSet, isToolReport } from '../../src/fs/files.js';
 
 describe('config', () => {
   it('accepts a valid config and fills defaults', () => {
@@ -143,5 +148,71 @@ describe('splitCommand', () => {
     expect(() => splitCommand('npm test && rm -rf /')).toThrow(/Shell operators/);
     expect(() => splitCommand('cat x | sh')).toThrow(/Shell operators/);
     expect(() => splitCommand('echo "unterminated')).toThrow(/Unterminated/);
+  });
+});
+
+describe('tool reports', () => {
+  it('recognises Relivaro, Jourilo and Searvex reports by their exact markers', () => {
+    expect(isToolReport('docs/x/report.html', '<meta name="generator" content="Relivaro 1.2.2">')).toBe(true);
+    expect(isToolReport('a/index.html', '<meta name="generator" content="Jourilo 1.0.0">')).toBe(true);
+    expect(
+      isToolReport('r.md', 'Generated 2026-11-01T00:00:00Z · Searvex 1.4.0 · rules 12 · run `abc`'),
+    ).toBe(true);
+    expect(
+      isToolReport(
+        'r.md',
+        '# Relivaro report — site\n\nRun `20261101-abc` · `relivaro audit` · Relivaro 1.2.2',
+      ),
+    ).toBe(true);
+    expect(
+      isToolReport('r.md', '# Jourilo report — https://x.test\n\nRun `j-1` · lab mode · chromium 1'),
+    ).toBe(true);
+    expect(isToolReport('run.json', '{\n  "schemaVersion": 1,\n  "tool": {\n    "name": "relivaro",')).toBe(
+      true,
+    );
+    expect(
+      isToolReport('run.json', '{"schemaVersion":3,"id":"x","tool":{"name":"jourilo","version":"1.0.0"}'),
+    ).toBe(true);
+    expect(isToolReport('out/report.sarif', '{')).toBe(true);
+  });
+
+  it('keeps project files that only mention a tool', () => {
+    expect(isToolReport('README.md', 'Relivaro audit is part of our CI')).toBe(false);
+    expect(isToolReport('page.html', '<meta name="generator" content="Hugo 0.120">')).toBe(false);
+    expect(isToolReport('docs/relivaro.md', '# Relivaro report — how we read it\n\nWe run it weekly.')).toBe(
+      false,
+    );
+    expect(isToolReport('package.json', '{"name":"relivaro","tool":{"name":"relivaro"}}')).toBe(false);
+    expect(isToolReport('app.ts', '<meta name="generator" content="Relivaro 1.2.2">')).toBe(false);
+  });
+
+  it('skips untracked and committed tool reports and counts them', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'relivaro-reports-'));
+    const git = (...args: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', '-c', 'commit.gpgsign=false', ...args],
+        {
+          cwd: dir,
+          stdio: 'ignore',
+        },
+      );
+    try {
+      git('init', '-q');
+      writeFileSync(join(dir, 'app.js'), 'console.log(1);\n');
+      mkdirSync(join(dir, 'docs/verification'), { recursive: true });
+      const report = '<!doctype html><meta name="generator" content="Relivaro 1.2.2"><title>r</title>';
+      writeFileSync(join(dir, 'docs/verification/report.html'), report);
+      let files = new FileSet(dir);
+      expect(files.files.map((f) => f.path)).toEqual(['app.js']);
+      expect(files.skipped.reports).toBe(1);
+      git('add', '-A');
+      git('commit', '-qm', 'x');
+      files = new FileSet(dir);
+      expect(files.files.map((f) => f.path)).toEqual(['app.js']);
+      expect(files.skipped.reports).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

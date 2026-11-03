@@ -310,6 +310,10 @@ export async function runAudit(
     limitations.push(
       `${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`,
     );
+  if (files.skipped.reports)
+    limitations.push(
+      `${files.skipped.reports} generated report file(s) from Relivaro, Jourilo or Searvex were not analysed.`,
+    );
   if (files.skipped.sensitive)
     limitations.push(
       `${files.skipped.sensitive} untracked sensitive file(s) (e.g. .env) were intentionally not read.`,
