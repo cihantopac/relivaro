@@ -15591,6 +15591,10 @@ function discover(files) {
       techs.map((t2) => t2.kind),
       manifests.filter((m) => dirOf2(m.file) === u.path)
     );
+    if (u.frameworks.includes("Next.js") && isNextStaticExport(files, u.path)) {
+      u.staticExport = true;
+      u.kind = "web-frontend";
+    }
   }
   const ci = [];
   for (const f of files.files) {
@@ -15783,6 +15787,13 @@ function countLines(text) {
 function cleanVersion(spec) {
   const m = /(\d+(?:\.\d+){0,2})/.exec(spec);
   return m?.[1];
+}
+function isNextStaticExport(files, unit) {
+  for (const ext of ["js", "mjs", "cjs", "ts"]) {
+    const text = files.read(unit === "." ? `next.config.${ext}` : `${unit}/next.config.${ext}`);
+    if (text && /\boutput\s*:\s*['"]export['"]/.test(text)) return true;
+  }
+  return false;
 }
 function unitKind(kinds, ms) {
   if (kinds.includes("mobile")) return "mobile";
@@ -26889,7 +26900,7 @@ var discoverCmd = {
     out2.print("Units:");
     for (const u of profile.units)
       out2.print(
-        `  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(", ") || "-"}${u.packageManager ? paint(on, "gray", ` (${u.packageManager})`) : ""}${paint(on, "gray", ` ${u.sourceFiles} src / ${u.testFiles} test`)}`
+        `  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(", ") || "-"}${u.staticExport ? " (static export)" : ""}${u.packageManager ? paint(on, "gray", ` (${u.packageManager})`) : ""}${paint(on, "gray", ` ${u.sourceFiles} src / ${u.testFiles} test`)}`
       );
     const byKind = /* @__PURE__ */ new Map();
     for (const t2 of profile.technologies)

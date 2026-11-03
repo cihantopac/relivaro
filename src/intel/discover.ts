@@ -33,6 +33,8 @@ export interface Unit {
   packageManager?: string;
   frameworks: string[];
   kind: 'web-frontend' | 'web-backend' | 'fullstack' | 'mobile' | 'desktop' | 'library' | 'cli' | 'unknown';
+  /** Next.js with a literal `output: 'export'`: static files only, no server at runtime. */
+  staticExport?: boolean;
   scripts: Record<string, string>;
   runtime: Record<string, string>;
   testFiles: number;
@@ -308,6 +310,10 @@ export function discover(files: FileSet): ProjectProfile {
       techs.map((t) => t.kind),
       manifests.filter((m) => dirOf(m.file) === u.path),
     );
+    if (u.frameworks.includes('Next.js') && isNextStaticExport(files, u.path)) {
+      u.staticExport = true;
+      u.kind = 'web-frontend';
+    }
   }
 
   // CI
@@ -548,6 +554,15 @@ function countLines(text: string): number {
 function cleanVersion(spec: string): string | undefined {
   const m = /(\d+(?:\.\d+){0,2})/.exec(spec);
   return m?.[1];
+}
+
+/** Only a literal `output: 'export'` counts; a value computed at build time (e.g. from an env var) is unknown. */
+function isNextStaticExport(files: FileSet, unit: string): boolean {
+  for (const ext of ['js', 'mjs', 'cjs', 'ts']) {
+    const text = files.read(unit === '.' ? `next.config.${ext}` : `${unit}/next.config.${ext}`);
+    if (text && /\boutput\s*:\s*['"]export['"]/.test(text)) return true;
+  }
+  return false;
 }
 
 function unitKind(kinds: TechKind[], ms: ManifestInfo[]): Unit['kind'] {

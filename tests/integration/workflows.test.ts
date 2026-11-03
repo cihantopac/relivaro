@@ -543,3 +543,64 @@ describe('web server headers', () => {
     expect(await ids({ 'public/index.html': '<!doctype html><title>x</title>' })).toEqual([]);
   });
 });
+
+describe('static export', () => {
+  const nextProject = async (config: Record<string, string>) => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const root = mkdtempSync(join(tmpdir(), 'relivaro-next-'));
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({
+        name: 'site',
+        dependencies: { next: '15.0.0', react: '19.0.0' },
+        scripts: { build: 'next build' },
+      }),
+    );
+    mkdirSync(join(root, 'app'));
+    writeFileSync(join(root, 'app/page.tsx'), 'export default function Page() {\n  return <h1>Hi</h1>;\n}\n');
+    for (const [f, text] of Object.entries(config)) writeFileSync(join(root, f), text);
+    return root;
+  };
+
+  it("a literal output: 'export' makes the unit a frontend without backend operational findings", async () => {
+    const { rmSync } = await import('node:fs');
+    const root = await nextProject({ 'next.config.mjs': "export default { output: 'export' };\n" });
+    try {
+      const files = new FileSet(root, { useGit: false });
+      const unit = discover(files).units[0]!;
+      expect(unit.kind).toBe('web-frontend');
+      expect(unit.staticExport).toBe(true);
+      const { run } = await runAudit({ root, command: 'audit', noWrite: true });
+      expect(run.findings.map((f) => f.ruleId)).not.toContain('rel/no-error-monitoring');
+      expect(run.findings.map((f) => f.ruleId)).not.toContain('rel/no-health-check');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('double quotes in next.config.ts are detected', async () => {
+    const { rmSync } = await import('node:fs');
+    const root = await nextProject({
+      'next.config.ts':
+        'const config = { output: "export", images: { unoptimized: true } };\nexport default config;\n',
+    });
+    try {
+      expect(discover(new FileSet(root, { useGit: false })).units[0]!.staticExport).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('an env-driven output is not treated as a static export', async () => {
+    const { rmSync } = await import('node:fs');
+    const root = await nextProject({ 'next.config.mjs': 'export default { output: process.env.OUT };\n' });
+    try {
+      const unit = discover(new FileSet(root, { useGit: false })).units[0]!;
+      expect(unit.kind).toBe('fullstack');
+      expect(unit.staticExport).toBeUndefined();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -431,7 +431,7 @@ const discoverCmd: Command = {
     out.print('Units:');
     for (const u of profile.units)
       out.print(
-        `  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(', ') || '-'}${u.packageManager ? paint(on, 'gray', ` (${u.packageManager})`) : ''}${paint(on, 'gray', ` ${u.sourceFiles} src / ${u.testFiles} test`)}`,
+        `  ${u.path.padEnd(28)} ${u.kind.padEnd(13)} ${u.frameworks.join(', ') || '-'}${u.staticExport ? ' (static export)' : ''}${u.packageManager ? paint(on, 'gray', ` (${u.packageManager})`) : ''}${paint(on, 'gray', ` ${u.sourceFiles} src / ${u.testFiles} test`)}`,
       );
     const byKind = new Map<string, string[]>();
     for (const t of profile.technologies)
