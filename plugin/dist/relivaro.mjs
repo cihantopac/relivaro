@@ -15550,12 +15550,17 @@ function discover(files) {
     }
     if (!unit.packageManager && unit.ecosystems.includes("npm")) {
       const lf = unit.lockfiles.map((l) => l.split("/").pop());
-      unit.packageManager = lf.includes("pnpm-lock.yaml") ? "pnpm" : lf.includes("yarn.lock") ? "yarn" : lf.some((l) => l?.startsWith("bun.")) ? "bun" : "npm";
+      unit.packageManager = lf.includes("pnpm-lock.yaml") ? "pnpm" : lf.includes("yarn.lock") ? "yarn" : lf.some((l) => l?.startsWith("bun.")) ? "bun" : lf.includes("package-lock.json") || lf.includes("npm-shrinkwrap.json") ? "npm" : void 0;
     }
     if (xcodeProjects.includes(path) || path === "." && xcodeProjects.includes(""))
       addTech({ name: "iOS (Xcode)", kind: "mobile", unit: path, evidence: "xcodeproj" });
     return unit;
   });
+  for (const u of units) {
+    if (u.packageManager || !u.ecosystems.includes("npm")) continue;
+    const parent = units.filter((a) => a !== u && a.packageManager && within(a.path, u.path)).sort((a, b) => b.path.length - a.path.length)[0];
+    u.packageManager = parent?.packageManager ?? "npm";
+  }
   const unitFor = (p) => {
     let best = units[0];
     for (const u of units)

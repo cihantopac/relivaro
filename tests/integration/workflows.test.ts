@@ -604,3 +604,38 @@ describe('static export', () => {
     }
   });
 });
+
+describe('workspace package manager', () => {
+  it('workspace units inherit the root package manager in skip hints and commands', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'relivaro-pm-'));
+    try {
+      writeFileSync(
+        join(dir, 'package.json'),
+        JSON.stringify({
+          name: 'root',
+          private: true,
+          packageManager: 'pnpm@12.16.1',
+          scripts: { test: 'turbo test' },
+        }),
+      );
+      writeFileSync(join(dir, 'pnpm-workspace.yaml'), "packages:\n  - 'packages/*'\n");
+      writeFileSync(join(dir, 'pnpm-lock.yaml'), "lockfileVersion: '9.0'\nimporters:\n  .: {}\n");
+      mkdirSync(join(dir, 'packages/a'), { recursive: true });
+      writeFileSync(
+        join(dir, 'packages/a/package.json'),
+        JSON.stringify({ name: 'a', scripts: { test: 'vitest run' } }),
+      );
+      const files = new FileSet(dir, { useGit: false });
+      const profile = discover(files);
+      expect(profile.units.find((u) => u.path === 'packages/a')!.packageManager).toBe('pnpm');
+      const a = planChecks(files, profile, defaultConfig(), ['test']).find((p) => p.unit === 'packages/a')!;
+      expect(a.skipReason).toContain('pnpm install --frozen-lockfile');
+      expect(a.skipReason).not.toContain('npm ci');
+      expect(a.argv[0]).toBe('pnpm');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

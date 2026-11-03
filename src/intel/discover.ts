@@ -259,12 +259,24 @@ export function discover(files: FileSet): ProjectProfile {
             ? 'yarn'
             : lf.some((l) => l?.startsWith('bun.'))
               ? 'bun'
-              : 'npm';
+              : lf.includes('package-lock.json') || lf.includes('npm-shrinkwrap.json')
+                ? 'npm'
+                : undefined;
       }
       if (xcodeProjects.includes(path) || (path === '.' && xcodeProjects.includes('')))
         addTech({ name: 'iOS (Xcode)', kind: 'mobile', unit: path, evidence: 'xcodeproj' });
       return unit;
     });
+
+  // Workspace packages without their own `packageManager` field or lockfile use the nearest ancestor's manager.
+  // Units are sorted so every ancestor comes before its descendants.
+  for (const u of units) {
+    if (u.packageManager || !u.ecosystems.includes('npm')) continue;
+    const parent = units
+      .filter((a) => a !== u && a.packageManager && within(a.path, u.path))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    u.packageManager = parent?.packageManager ?? 'npm';
+  }
 
   // Unit attribution for files: deepest unit containing the file.
   const unitFor = (p: string): Unit => {
