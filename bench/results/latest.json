@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.2.2",
-  "measuredAt": "2026-11-01T11:40:39.901Z",
+  "relivaro": "1.3.0",
+  "measuredAt": "2026-11-03T07:49:20.116Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 108
+        "ms": 107
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 85
+        "ms": 84
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 74
+        "ms": 82
       },
       "next-app": {
         "tp": 12,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 101
+        "ms": 108
       },
       "node-api": {
         "tp": 54,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 100
+        "ms": 94
       },
       "python-app": {
         "tp": 30,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 77
+        "ms": 76
       },
       "regressions": {
         "tp": 5,
@@ -65,7 +65,15 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 95
+        "ms": 96
+      },
+      "static-site": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 49
       }
     },
     "byRule": {
@@ -420,7 +428,12 @@
         "fn": 0
       },
       "sec/gha-unpinned-action": {
-        "tp": 2,
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/gha-unpinned-first-party-action": {
+        "tp": 1,
         "fp": 0,
         "fn": 0
       },
@@ -453,15 +466,30 @@
         "tp": 1,
         "fp": 0,
         "fn": 0
+      },
+      "sec/web-csp-unsafe-inline": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/web-hsts-include-subdomains": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/web-missing-frame-protection": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0
       }
     },
     "total": {
-      "tp": 155,
+      "tp": 158,
       "fp": 0,
       "fn": 0,
       "precision": 1,
       "recall": 1,
-      "rulesCovered": 77
+      "rulesCovered": 81
     }
   },
   "performance": {
@@ -469,12 +497,12 @@
       "files": 3060,
       "linesOfCode": 48600,
       "parsedFiles": 3000,
-      "rulesRun": 77,
-      "medianMs": 1485,
-      "minMs": 1472,
-      "maxMs": 1516,
-      "filesPerSecond": 2060,
-      "linesPerSecond": 32720,
+      "rulesRun": 83,
+      "medianMs": 1565,
+      "minMs": 1478,
+      "maxMs": 1572,
+      "filesPerSecond": 1955,
+      "linesPerSecond": 31055,
       "peakRssMb": 130,
       "openFindings": 180
     },

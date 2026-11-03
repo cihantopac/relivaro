@@ -15,9 +15,10 @@ The corpus annotates every expected finding inline; anything else Relivaro repor
 | node-api | 54 | 0 | 0 | 100% | 100% |
 | python-app | 30 | 0 | 0 | 100% | 100% |
 | regressions | 5 | 0 | 0 | 100% | 100% |
-| **total** | **155** | **0** | **0** | **100.0%** | **100.0%** |
+| static-site | 3 | 0 | 0 | 100% | 100% |
+| **total** | **158** | **0** | **0** | **100.0%** | **100.0%** |
 
-77 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
+Detection accuracy re-measured 2026-11-03 with Relivaro 1.3.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
 
 ## Analysis performance
 

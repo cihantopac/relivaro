@@ -2,11 +2,13 @@
 
 Persistent record of scope, decisions, verified progress and open issues. Update it with every significant change.
 
-## Status (2026-11-01)
+## Status (2026-11-03)
 
-v1.2.2 released (GitHub, npm): report and README polished around the Relivaro identity designed with Markilo
-(brand palette, Light / Dark / System theme, Fix first, new screenshots). All acceptance
-criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
+v1.3.0 prepared from two field reports: pnpm 12 lockfiles, dependency parse errors surfaced as limitations,
+generated tool reports skipped, `accepted` review verdict, web server security header rules (Caddy, nginx,
+`_headers`), Next.js static export detection, workspace package-manager inheritance, a separate rule id for
+GitHub-owned actions and clearer CLI guidance. 89 rules; 8 fixture projects with 158 expected findings at 100%
+precision/recall. All acceptance criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
 
 ## Milestones (internal)
 

@@ -1,6 +1,6 @@
-# Release readiness — Relivaro 1.2.2
+# Release readiness — Relivaro 1.3.0
 
-Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261101-114103-d9cd63`, 2026-11-01, darwin/arm64, Node v22.23.2).
+Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261103-075123-d38fb3`, 2026-11-03, darwin/arm64, Node v22.23.2).
 
 ## Result: **READY** — score 90/100
 
@@ -9,10 +9,10 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 
 | Gate | Status | Basis | Evidence |
 | --- | --- | --- | --- |
-| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.4s |
-| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 12.0s (154 passed) |
-| Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.4s |
-| Lint passes | ✅ passed | executed | `npm run lint --silent` passed in 0.4s |
+| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.3s |
+| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 14.2s (176 passed) |
+| Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.2s |
+| Lint passes | ✅ passed | executed | `npm run lint --silent` passed in 0.2s |
 | No exposed secrets | ✅ passed | static | No secrets detected in analysed files. |
 | No unresolved high-risk security findings | ✅ passed | static | No security findings at medium or above with medium/high confidence. |
 | No known-vulnerable dependencies | ✅ passed | advisory-db | 133 resolved packages checked against OSV.dev; no advisories. |
@@ -36,8 +36,8 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 
 | Criterion | Evidence |
 | --- | --- |
-| Advertised features work | 154 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
-| Detection accuracy | Fixture corpus: 155 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
+| Advertised features work | 176 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
+| Detection accuracy | Fixture corpus: 8 projects, 158 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
 | Real-world validation | 5 local repositories, all significant findings verified, 19 false-positive patterns fixed and captured as regressions ([VALIDATION.md](VALIDATION.md)) |
 | Safe fix / verify / rollback | Integration tests: static verification, isolated command verification rejecting a regression without touching the tree, stale-plan and rollback-conflict refusal, exact restore, transactional multi-file apply (failed write restored), interrupted-apply rollback, forced rollback preserving later edits, corrupt-backup refusal, symlinks in the verification copy, unverifiable findings never counted as resolved |
 | Security boundaries | Security tests: secret redaction in all formats, untracked `.env` never read, symlink escape, git `core.fsmonitor` execution attempt, no-shell argv, env scrubbing, output caps, offline guarantee, load-target policy (incl. IPv4-mapped/NAT64/CGNAT and connection-time DNS re-validation), HTML injection and offline self-containment, EN/TR string parity |

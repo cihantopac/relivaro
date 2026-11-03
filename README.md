@@ -37,7 +37,7 @@
   </picture>
 </p>
 
-- **Audit** — 83 rules on tree-sitter syntax trees with taint tracking, plus project intelligence: stacks, monorepo
+- **Audit** — 89 rules on tree-sitter syntax trees with taint tracking, plus project intelligence: stacks, monorepo
   units, data stores, CI/CD, routes and environment variables. Offline and read-only.
 - **Evidence** — every finding carries `file:line`, a redacted snippet, facts, confidence, impact and CWE/OWASP mapping.
 - **Fix** — 15 deterministic fixers produce a reviewable diff; everything else becomes a fix prompt for your coding agent.
@@ -100,7 +100,7 @@ The report is one self-contained file: no network, no CDN, a strict CSP, secrets
 <td width="50%" valign="top">
 
 **Every claim is checkable.** Findings show the code that triggered them with the line highlighted, how to verify the
-fix, and whether someone reviewed them: *detected*, *confirmed*, *false positive* or *needs verification*
+fix, and whether someone reviewed them: *detected*, *confirmed*, *false positive*, *needs verification* or *accepted risk*
 (`relivaro review add`).
 
 <img alt="The report on a phone, dark theme, in Turkish" src="https://raw.githubusercontent.com/cihantopac/relivaro/main/assets/screenshots/report-mobile-tr-dark.png" width="200">
@@ -148,8 +148,8 @@ Reports land in `.relivaro/runs/<run-id>/` (`report.html`, `.md`, `.json`, optio
 
 ## Evidence
 
-- **154 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
-- **Detection corpus:** 7 fixture projects, 155 expected findings, **precision and recall 100%**, enforced in CI.
+- **176 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
+- **Detection corpus:** 8 fixture projects, 158 expected findings, **precision and recall 100%**, enforced in CI.
   A controlled corpus — real code will produce false positives and misses.
 - **Real repositories:** validated read-only on 5 production codebases; every significant finding checked by hand
   ([validation](docs/VALIDATION.md)).

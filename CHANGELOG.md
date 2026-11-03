@@ -3,6 +3,57 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.3.0] — 2026-11-03
+
+Fixes and blind spots found by auditing two real projects (a static Next.js site behind Caddy, and a pnpm 12 +
+Turborepo monorepo). Thanks to the field reports that made them reproducible.
+
+### Fixed
+
+- **pnpm 12 lockfiles were silently dropped.** pnpm 12 writes two YAML documents (an env lock for pnpm itself, then
+  the project lock); parsing failed, so the project showed 0 dependencies, queried nothing on OSV.dev and still
+  looked clean. Both documents are now read and the env lock is skipped.
+- **A lockfile or manifest that fails to parse never looks clean again.** Each one becomes a limitation
+  (``Lockfile `…` could not be parsed (…); its dependencies were not analysed.``), and the release `dependencies` gate
+  becomes *unverified* with `Could not parse …`, online or offline.
+- **Workspace packages inherit the root package manager.** In a pnpm, yarn or bun workspace, a package without its
+  own `packageManager` field or lockfile used to get `npm ci` in skip hints and `npm` commands; it now uses the
+  nearest parent's manager.
+
+### Added
+
+- **`accepted` review verdict.** `relivaro review add --verdict accepted --reason "…"` records a risk the user
+  explicitly accepted. Reports show it as *Accepted risk* (Markdown: `accepted risk`), it leaves the action-center
+  counts and *Fix first* like a false positive, and it stays in the explorer under its verification filter. Release
+  gates still count it, as they do for every verdict; use a baseline when an accepted finding should stop gating.
+- **Web server security headers.** Caddy (`Caddyfile`, `*.caddy`), nginx (`add_header`) and `_headers` files are
+  parsed, with five new rules: `sec/web-missing-csp` (a `<meta http-equiv>` CSP in served HTML counts),
+  `sec/web-csp-unsafe-inline`, `sec/web-missing-frame-protection`, `sec/web-missing-hsts` (low confidence: it may be
+  set at a CDN or tunnel) and the informational `sec/web-hsts-include-subdomains`. `discover` lists Caddy as a deploy
+  target.
+- **Next.js static export.** A literal `output: 'export'` in `next.config.*` makes the unit a frontend (`static
+  export` in `discover`), so server rules such as `rel/no-error-monitoring` and `rel/no-health-check` no longer fire on
+  it. A value computed at build time (`output: process.env.X`) is not treated as a static export.
+- `relivaro audit` (and the other analysis commands without a release verdict) ends with
+  `Next: relivaro release <path> for a release verdict (add --allow-exec --online to verify more)`.
+- The offline dependency limitation and release gate now say exactly what `--online` sends: ecosystem, package name
+  and version to OSV.dev, no source code.
+- `--help` mentions that boolean flags can be negated with `--no-<flag>`. (Unknown flags were already rejected with
+  exit code 2.)
+
+### Changed
+
+- **Generated reports are not analysed.** Reports written by Relivaro, Jourilo or Searvex (for example with `--out`
+  into the repository) are skipped, tracked or not, and counted in a limitation. They are recognised by exact output
+  markers (the HTML generator meta tag, the run-record JSON head, the Markdown header lines) and every `.sarif` file;
+  a project file that merely mentions a tool is still analysed. Searvex HTML reports carry no generator marker today,
+  so only Searvex Markdown and JSON reports are recognised.
+- **GitHub-owned actions have their own rule id.** Unpinned `actions/*` and `github/*` actions are reported as
+  `sec/gha-unpinned-first-party-action` (low); `sec/gha-unpinned-action` now covers third-party actions only
+  (medium), so counts by rule id are no longer mixed. The `gha-pin-action` fixer handles both. Baselines created
+  before 1.3.0 list the first-party findings as new once; re-run `relivaro baseline` to accept them.
+- File rules for one file now share a single context, so the workflow parse is reused across GitHub Actions rules.
+
 ## [1.2.2] — 2026-11-01
 
 Visual polish and brand consistency; no changes to analysis, CLI flags, run records or report formats.
