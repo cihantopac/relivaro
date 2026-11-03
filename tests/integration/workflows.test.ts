@@ -539,6 +539,28 @@ describe('web server headers', () => {
     ).toEqual([]);
   });
 
+  it('a config that only reverse-proxies the app, or an unrelated site.conf, is not a header source', async () => {
+    expect(
+      await ids({
+        'package.json': JSON.stringify({ name: 'api', dependencies: { express: '4.21.2', helmet: '8.0.0' } }),
+        'src/app.js': "const helmet = require('helmet');\nrequire('express')().use(helmet());\n",
+        'deploy/nginx.conf': 'server {\n  location / {\n    proxy_pass http://app:3000;\n  }\n}\n',
+      }),
+    ).toEqual([]);
+    expect(await ids({ 'config/site.conf': '[app]\nname=foo\n' })).toEqual([]);
+  });
+
+  it('a CSP meta tag in JSX served as a static export counts', async () => {
+    expect(
+      await ids({
+        Caddyfile:
+          'site.test {\n\troot * out\n\tfile_server\n\theader Strict-Transport-Security "max-age=63072000"\n\theader X-Frame-Options DENY\n}\n',
+        'app/layout.tsx':
+          'export default function Root({ children }) {\n  return (<html><head><meta httpEquiv="Content-Security-Policy" content="default-src \'self\'" /></head><body>{children}</body></html>);\n}\n',
+      }),
+    ).toEqual([]);
+  });
+
   it('no web server configuration, no web server findings', async () => {
     expect(await ids({ 'public/index.html': '<!doctype html><title>x</title>' })).toEqual([]);
   });
@@ -636,6 +658,32 @@ describe('workspace package manager', () => {
       expect(a.argv[0]).toBe('pnpm');
     } finally {
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('health endpoints in web server configs', () => {
+  it('an nginx health location counts as a health endpoint', async () => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const root = mkdtempSync(join(tmpdir(), 'relivaro-health-'));
+    try {
+      writeFileSync(
+        join(root, 'package.json'),
+        JSON.stringify({ name: 'api', dependencies: { express: '4.21.2' } }),
+      );
+      mkdirSync(join(root, 'src'));
+      writeFileSync(join(root, 'src/app.js'), "require('express')().listen(3000);\n");
+      writeFileSync(join(root, 'Dockerfile'), 'FROM node:22\nCOPY . .\nCMD ["node", "src/app.js"]\n');
+      mkdirSync(join(root, 'nginx'));
+      writeFileSync(
+        join(root, 'nginx/site.conf'),
+        'server {\n  location /healthcheck {\n    return 200;\n  }\n  location / {\n    proxy_pass http://app:3000;\n  }\n}\n',
+      );
+      const { run } = await runAudit({ root, command: 'audit', noWrite: true, categories: ['reliability'] });
+      expect(run.findings.map((f) => f.ruleId)).not.toContain('rel/no-health-check');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

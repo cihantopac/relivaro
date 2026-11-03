@@ -1,5 +1,5 @@
 import type { ProjectFile } from '../../core/types.js';
-import { cspOf, type HeaderDirective, headerDirectives } from '../../intel/webserver.js';
+import { cspOf, type HeaderDirective, headerDirectives, serverOf } from '../../intel/webserver.js';
 import { OWASP } from '../helpers.js';
 import type { Hit, ProjectContext, ProjectRule } from '../types.js';
 
@@ -9,15 +9,30 @@ import type { Hit, ProjectContext, ProjectRule } from '../types.js';
 interface ServerHeaders {
   files: ProjectFile[];
   headers: HeaderDirective[];
+  /** At least one config serves files itself; a config that only reverse-proxies leaves headers to the app. */
+  servesFiles: boolean;
 }
+
+/** `default.conf` / `site.conf` are generic names: count them only when they read like nginx. */
+const NGINX_LIKE = /^\s*(?:server|http|location\b[^{]*)\s*\{|^\s*add_header\s/m;
+const SERVES_FILES = /^\s*(?:file_server\b|root\s|try_files\s|alias\s)/m;
 
 const cache = new WeakMap<ProjectContext, ServerHeaders>();
 
 function serverHeaders(ctx: ProjectContext): ServerHeaders {
   let s = cache.get(ctx);
   if (!s) {
-    const files = ctx.files.files.filter((f) => f.kind === 'webserver');
-    s = { files, headers: files.flatMap((f) => headerDirectives(f.path, ctx.files.read(f.path) ?? '')) };
+    const texts = ctx.files.files
+      .filter((f) => f.kind === 'webserver')
+      .map((f) => ({ f, text: ctx.files.read(f.path) ?? '' }))
+      .filter(({ f, text }) => serverOf(f.path) !== 'nginx' || NGINX_LIKE.test(text));
+    s = {
+      files: texts.map((t) => t.f),
+      headers: texts.flatMap(({ f, text }) => headerDirectives(f.path, text)),
+      servesFiles: texts.some(
+        ({ f, text }) => serverOf(f.path) === 'static-headers' || SERVES_FILES.test(text),
+      ),
+    };
     cache.set(ctx, s);
   }
   return s;
@@ -34,7 +49,9 @@ function atConfig(s: ServerHeaders, message: string): Hit[] {
   ];
 }
 
-const META_CSP = /<meta\s[^>]*http-equiv\s*=\s*["']?content-security-policy["']?/i;
+// A CSP `<meta>` tag in served HTML or in the page templates/components that produce it (JSX uses `httpEquiv`).
+const META_CSP = /<meta\s[^>]*http-?equiv\s*=\s*\{?\s*["']?content-security-policy["']?/i;
+const PAGE_FILE = /\.(?:html?|[jt]sx|astro|vue|svelte)$/i;
 
 const webMissingCsp: ProjectRule = {
   kind: 'project',
@@ -55,9 +72,9 @@ const webMissingCsp: ProjectRule = {
     '`curl -sI https://<host>/` shows a `Content-Security-Policy` header and the browser console reports no violations on the main pages.',
   check(ctx) {
     const s = serverHeaders(ctx);
-    if (!s.files.length || named(s, 'Content-Security-Policy').length) return [];
+    if (!s.servesFiles || named(s, 'Content-Security-Policy').length) return [];
     for (const f of ctx.files.files)
-      if (/\.html?$/i.test(f.path) && META_CSP.test(ctx.files.read(f.path) ?? '')) return [];
+      if (!f.isTest && PAGE_FILE.test(f.path) && META_CSP.test(ctx.files.read(f.path) ?? '')) return [];
     return atConfig(s, 'No `Content-Security-Policy` header is set in the web server configuration.');
   },
 };
@@ -115,7 +132,7 @@ const webMissingFrameProtection: ProjectRule = {
     '`curl -sI https://<host>/` shows `frame-ancestors` in the CSP or an `X-Frame-Options` header.',
   check(ctx) {
     const s = serverHeaders(ctx);
-    if (!s.files.length || named(s, 'X-Frame-Options').length) return [];
+    if (!s.servesFiles || named(s, 'X-Frame-Options').length) return [];
     if (named(s, 'Content-Security-Policy').some((h) => cspOf(h.value).has('frame-ancestors'))) return [];
     return atConfig(s, 'No `frame-ancestors` CSP directive or `X-Frame-Options` header is set.');
   },
@@ -140,7 +157,7 @@ const webMissingHsts: ProjectRule = {
     '`curl -sI https://<host>/` shows a `Strict-Transport-Security` header with a long `max-age`.',
   check(ctx) {
     const s = serverHeaders(ctx);
-    if (!s.files.length || named(s, 'Strict-Transport-Security').length) return [];
+    if (!s.servesFiles || named(s, 'Strict-Transport-Security').length) return [];
     return atConfig(
       s,
       'No `Strict-Transport-Security` header is set in the web server configuration (it may be set at a CDN or tunnel, e.g. Cloudflare).',

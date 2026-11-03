@@ -3000,7 +3000,7 @@ var init_reliability = __esm({
           if (u.frameworks.every((f) => /^(?:Next\.js|Nuxt|Astro|SvelteKit|Remix)$/.test(f)) && !ctx.profile.containers.dockerfiles.length)
             continue;
           const files = ctx.files.files.filter(
-            (f) => !f.isTest && (f.kind === "source" || f.kind === "config" || f.kind === "dockerfile") && (u.path === "." || f.path.startsWith(`${u.path}/`))
+            (f) => !f.isTest && (f.kind === "source" || f.kind === "config" || f.kind === "dockerfile" || f.kind === "webserver") && (u.path === "." || f.path.startsWith(`${u.path}/`))
           );
           const has = files.some(
             (f) => /['"`]\/?(?:api\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i.test(
@@ -12760,8 +12760,14 @@ var init_webserver = __esm({
 function serverHeaders(ctx) {
   let s = cache2.get(ctx);
   if (!s) {
-    const files = ctx.files.files.filter((f) => f.kind === "webserver");
-    s = { files, headers: files.flatMap((f) => headerDirectives(f.path, ctx.files.read(f.path) ?? "")) };
+    const texts = ctx.files.files.filter((f) => f.kind === "webserver").map((f) => ({ f, text: ctx.files.read(f.path) ?? "" })).filter(({ f, text }) => serverOf(f.path) !== "nginx" || NGINX_LIKE.test(text));
+    s = {
+      files: texts.map((t2) => t2.f),
+      headers: texts.flatMap(({ f, text }) => headerDirectives(f.path, text)),
+      servesFiles: texts.some(
+        ({ f, text }) => serverOf(f.path) === "static-headers" || SERVES_FILES.test(text)
+      )
+    };
     cache2.set(ctx, s);
   }
   return s;
@@ -12772,15 +12778,18 @@ function atConfig(s, message) {
     { file, line: 1, message, anchor: file, facts: { configs: s.files.map((f) => f.path).join(", ") } }
   ];
 }
-var cache2, named, META_CSP, webMissingCsp, webCspUnsafeInline, webMissingFrameProtection, webMissingHsts, webHstsIncludeSubdomains, webServerRules;
+var NGINX_LIKE, SERVES_FILES, cache2, named, META_CSP, PAGE_FILE, webMissingCsp, webCspUnsafeInline, webMissingFrameProtection, webMissingHsts, webHstsIncludeSubdomains, webServerRules;
 var init_webserver2 = __esm({
   "src/rules/security/webserver.ts"() {
     "use strict";
     init_webserver();
     init_helpers();
+    NGINX_LIKE = /^\s*(?:server|http|location\b[^{]*)\s*\{|^\s*add_header\s/m;
+    SERVES_FILES = /^\s*(?:file_server\b|root\s|try_files\s|alias\s)/m;
     cache2 = /* @__PURE__ */ new WeakMap();
     named = (s, name2) => s.headers.filter((h) => h.name.toLowerCase() === name2.toLowerCase());
-    META_CSP = /<meta\s[^>]*http-equiv\s*=\s*["']?content-security-policy["']?/i;
+    META_CSP = /<meta\s[^>]*http-?equiv\s*=\s*\{?\s*["']?content-security-policy["']?/i;
+    PAGE_FILE = /\.(?:html?|[jt]sx|astro|vue|svelte)$/i;
     webMissingCsp = {
       kind: "project",
       id: "sec/web-missing-csp",
@@ -12796,9 +12805,9 @@ var init_webserver2 = __esm({
       verification: "`curl -sI https://<host>/` shows a `Content-Security-Policy` header and the browser console reports no violations on the main pages.",
       check(ctx) {
         const s = serverHeaders(ctx);
-        if (!s.files.length || named(s, "Content-Security-Policy").length) return [];
+        if (!s.servesFiles || named(s, "Content-Security-Policy").length) return [];
         for (const f of ctx.files.files)
-          if (/\.html?$/i.test(f.path) && META_CSP.test(ctx.files.read(f.path) ?? "")) return [];
+          if (!f.isTest && PAGE_FILE.test(f.path) && META_CSP.test(ctx.files.read(f.path) ?? "")) return [];
         return atConfig(s, "No `Content-Security-Policy` header is set in the web server configuration.");
       }
     };
@@ -12846,7 +12855,7 @@ var init_webserver2 = __esm({
       verification: "`curl -sI https://<host>/` shows `frame-ancestors` in the CSP or an `X-Frame-Options` header.",
       check(ctx) {
         const s = serverHeaders(ctx);
-        if (!s.files.length || named(s, "X-Frame-Options").length) return [];
+        if (!s.servesFiles || named(s, "X-Frame-Options").length) return [];
         if (named(s, "Content-Security-Policy").some((h) => cspOf(h.value).has("frame-ancestors"))) return [];
         return atConfig(s, "No `frame-ancestors` CSP directive or `X-Frame-Options` header is set.");
       }
@@ -12866,7 +12875,7 @@ var init_webserver2 = __esm({
       verification: "`curl -sI https://<host>/` shows a `Strict-Transport-Security` header with a long `max-age`.",
       check(ctx) {
         const s = serverHeaders(ctx);
-        if (!s.files.length || named(s, "Strict-Transport-Security").length) return [];
+        if (!s.servesFiles || named(s, "Strict-Transport-Security").length) return [];
         return atConfig(
           s,
           "No `Strict-Transport-Security` header is set in the web server configuration (it may be set at a CDN or tunnel, e.g. Cloudflare)."
@@ -14596,15 +14605,25 @@ function pnpmLock(file, text) {
     for (const d of list) if (d.errors.length) throw new Error(d.errors[0].message);
     const root = /* @__PURE__ */ new Set();
     const packages = {};
+    let projectDocs = 0;
+    let registryDeps = 0;
     for (const d of list) {
       const y = d.toJS({ maxAliasCount: -1 }) ?? {};
       const importers = y.importers ?? { ".": y };
       if (isEnvLock(importers)) continue;
+      projectDocs++;
       for (const imp of Object.values(importers))
         for (const f of ["dependencies", "devDependencies", "optionalDependencies"])
-          for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+          for (const [n, dep] of Object.entries(imp?.[f] ?? {})) {
+            root.add(n);
+            const v = String(typeof dep === "object" && dep ? dep.version : dep);
+            if (!/^(?:link|file|workspace):/.test(v)) registryDeps++;
+          }
       Object.assign(packages, y.packages ?? {});
     }
+    if (list.length && !projectDocs) throw new Error("incomplete lockfile: no project lock document");
+    if (registryDeps && !Object.keys(packages).length)
+      throw new Error("incomplete lockfile: importers list dependencies but there is no packages section");
     info2.rootDeps = root;
     for (const [key, p] of Object.entries(packages)) {
       const k = key.replace(/^\//, "").replace(/\(.*$/, "");
@@ -21869,15 +21888,8 @@ function assessRelease(run2, config, bench = []) {
     }
   );
   const vulns = all.filter((f) => f.ruleId === "sc/known-vulnerability");
-  const unparsed = [...run2.profile.lockfiles, ...run2.profile.manifests].filter((x) => x.error).map((x) => x.file);
-  if (unparsed.length)
-    gates.push({
-      id: "dependencies",
-      title: "No known-vulnerable dependencies",
-      status: "unverified",
-      detail: `Could not parse ${unparsed.join(", ")}; dependency risk is unverified.`
-    });
-  else if (!run2.options.online)
+  const depGateAt = gates.length;
+  if (!run2.options.online)
     gates.push({
       id: "dependencies",
       title: "No known-vulnerable dependencies",
@@ -21913,6 +21925,13 @@ function assessRelease(run2, config, bench = []) {
         detail: `${run2.metrics.osvQueried ?? 0} resolved packages checked against OSV.dev; no advisories.`
       }
     );
+  }
+  const unparsed = [...run2.profile.lockfiles, ...run2.profile.manifests].filter((x) => x.error).map((x) => x.file);
+  const dep = gates[depGateAt];
+  if (unparsed.length && dep) {
+    const note = `Could not parse ${unparsed.join(", ")}; dependency risk is unverified.`;
+    if (dep.status === "block") dep.detail = `${dep.detail} ${note}`;
+    else gates[depGateAt] = { ...dep, status: "unverified", detail: note };
   }
   const lock = all.filter(
     (f) => /^sc\/(?:missing-lockfile|lockfile-out-of-sync|multiple-lockfiles|non-registry-dependency|unpinned-dependency)$/.test(

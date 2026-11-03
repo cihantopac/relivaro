@@ -88,15 +88,26 @@ function pnpmLock(file: string, text: string): LockfileInfo {
     for (const d of list) if (d.errors.length) throw new Error(d.errors[0]!.message);
     const root = new Set<string>();
     const packages: Record<string, any> = {};
+    let projectDocs = 0;
+    let registryDeps = 0; // importer dependencies resolved from a registry (not `link:` / `file:` workspace deps)
     for (const d of list) {
       const y = (d.toJS({ maxAliasCount: -1 }) ?? {}) as Record<string, any>;
       const importers = (y.importers ?? { '.': y }) as Record<string, any>;
       if (isEnvLock(importers)) continue;
+      projectDocs++;
       for (const imp of Object.values(importers))
         for (const f of ['dependencies', 'devDependencies', 'optionalDependencies'])
-          for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+          for (const [n, dep] of Object.entries((imp?.[f] ?? {}) as Record<string, any>)) {
+            root.add(n);
+            const v = String(typeof dep === 'object' && dep ? dep.version : dep);
+            if (!/^(?:link|file|workspace):/.test(v)) registryDeps++;
+          }
       Object.assign(packages, y.packages ?? {});
     }
+    // A file cut at a line boundary is still valid YAML: catch a lock that lost its project part.
+    if (list.length && !projectDocs) throw new Error('incomplete lockfile: no project lock document');
+    if (registryDeps && !Object.keys(packages).length)
+      throw new Error('incomplete lockfile: importers list dependencies but there is no packages section');
     info.rootDeps = root;
     for (const [key, p] of Object.entries(packages)) {
       // v5/6: "/name@1.2.3" or "/name/1.2.3"; v9: "name@1.2.3" (peer suffix in parentheses).

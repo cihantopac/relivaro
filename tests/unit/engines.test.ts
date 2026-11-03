@@ -147,6 +147,38 @@ describe('release readiness', () => {
     expect(r.gates.find((g) => g.id === 'performance')!.basis).toBe('measured');
     expect(r.gates.find((g) => g.id === 'security')!.basis).toBe('static');
   });
+  it('a parse error never hides a blocking known vulnerability', () => {
+    const base = run();
+    const r = assessRelease(
+      run({
+        profile: {
+          ...base.profile,
+          lockfiles: [{ file: 'package-lock.json', ecosystem: 'npm', packages: 10 }],
+          manifests: [
+            {
+              file: 'tools/x/package.json',
+              ecosystem: 'npm',
+              dependencies: 0,
+              devDependencies: 0,
+              error: 'bad',
+            },
+          ],
+        },
+        findings: [
+          finding({
+            id: 'RLV-v',
+            ruleId: 'sc/known-vulnerability',
+            severity: 'critical',
+            category: 'supply-chain',
+          }),
+        ],
+      }),
+      defaultConfig(),
+    );
+    const g = r.gates.find((x) => x.id === 'dependencies')!;
+    expect(g.status).toBe('block');
+    expect(g.detail).toContain('Could not parse tools/x/package.json');
+  });
   it('never reports ready while a gate is unverified', () => {
     const r = assessRelease(run(), { ...defaultConfig(), performance: { budgets: {} } });
     expect(r.warnings).toEqual([]);

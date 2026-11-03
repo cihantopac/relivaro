@@ -192,17 +192,8 @@ export function assessRelease(
   );
 
   const vulns = all.filter((f) => f.ruleId === 'sc/known-vulnerability');
-  const unparsed = [...run.profile.lockfiles, ...run.profile.manifests]
-    .filter((x) => x.error)
-    .map((x) => x.file);
-  if (unparsed.length)
-    gates.push({
-      id: 'dependencies',
-      title: 'No known-vulnerable dependencies',
-      status: 'unverified',
-      detail: `Could not parse ${unparsed.join(', ')}; dependency risk is unverified.`,
-    });
-  else if (!run.options.online)
+  const depGateAt = gates.length;
+  if (!run.options.online)
     gates.push({
       id: 'dependencies',
       title: 'No known-vulnerable dependencies',
@@ -244,6 +235,17 @@ export function assessRelease(
               detail: `${run.metrics.osvQueried ?? 0} resolved packages checked against OSV.dev; no advisories.`,
             },
     );
+  }
+
+  // A lockfile or manifest that failed to parse leaves dependency risk unverified, but never hides a blocker.
+  const unparsed = [...run.profile.lockfiles, ...run.profile.manifests]
+    .filter((x) => x.error)
+    .map((x) => x.file);
+  const dep = gates[depGateAt];
+  if (unparsed.length && dep) {
+    const note = `Could not parse ${unparsed.join(', ')}; dependency risk is unverified.`;
+    if (dep.status === 'block') dep.detail = `${dep.detail} ${note}`;
+    else gates[depGateAt] = { ...dep, status: 'unverified', detail: note };
   }
 
   const lock = all.filter((f) =>

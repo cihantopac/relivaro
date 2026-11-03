@@ -181,6 +181,18 @@ describe('lockfiles', () => {
     expect(info.error).toBeTruthy();
     expect(info.packages).toEqual([]);
   });
+  it('pnpm: a lock cut at a line boundary or missing its project document is incomplete, not clean', () => {
+    const env = "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    configDependencies: {}\n";
+    const noPackages = `${env}---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      left-pad:\n        specifier: 1.3.0\n        version: 1.3.0\n`;
+    for (const text of [noPackages, env, `${env}---\n`]) {
+      const info = parseLockfile('pnpm-lock.yaml', text)!;
+      expect(info.error).toMatch(/incomplete/);
+      expect(info.packages).toEqual([]);
+    }
+    const linksOnly =
+      "lockfileVersion: '9.0'\nimporters:\n  .:\n    dependencies:\n      a:\n        specifier: workspace:*\n        version: link:packages/a\n";
+    expect(parseLockfile('pnpm-lock.yaml', linksOnly)!.error).toBeUndefined();
+  });
   it('pnpm v9, yarn v1, composer, poetry, go.sum, Gemfile.lock, pubspec.lock', () => {
     expect(
       parseLockfile(

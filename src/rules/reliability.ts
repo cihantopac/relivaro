@@ -552,7 +552,7 @@ const noHealthCheck: ProjectRule = {
       const files = ctx.files.files.filter(
         (f) =>
           !f.isTest &&
-          (f.kind === 'source' || f.kind === 'config' || f.kind === 'dockerfile') &&
+          (f.kind === 'source' || f.kind === 'config' || f.kind === 'dockerfile' || f.kind === 'webserver') &&
           (u.path === '.' || f.path.startsWith(`${u.path}/`)),
       );
       const has = files.some((f) =>

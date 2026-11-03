@@ -15,7 +15,8 @@ Turborepo monorepo). Thanks to the field reports that made them reproducible.
   looked clean. Both documents are now read and the env lock is skipped.
 - **A lockfile or manifest that fails to parse never looks clean again.** Each one becomes a limitation
   (``Lockfile `…` could not be parsed (…); its dependencies were not analysed.``), and the release `dependencies` gate
-  becomes *unverified* with `Could not parse …`, online or offline.
+  becomes *unverified* with `Could not parse …`, online or offline; a known-vulnerability blocker still blocks. A pnpm
+  lock cut at a line boundary (still valid YAML) is reported as incomplete instead of looking empty and clean.
 - **Workspace packages inherit the root package manager.** In a pnpm, yarn or bun workspace, a package without its
   own `packageManager` field or lockfile used to get `npm ci` in skip hints and `npm` commands; it now uses the
   nearest parent's manager.
@@ -30,7 +31,10 @@ Turborepo monorepo). Thanks to the field reports that made them reproducible.
   parsed, with five new rules: `sec/web-missing-csp` (a `<meta http-equiv>` CSP in served HTML counts),
   `sec/web-csp-unsafe-inline`, `sec/web-missing-frame-protection`, `sec/web-missing-hsts` (low confidence: it may be
   set at a CDN or tunnel) and the informational `sec/web-hsts-include-subdomains`. `discover` lists Caddy as a deploy
-  target.
+  target. The "missing header" rules need a config that serves files itself (`root`, `file_server`, `try_files`,
+  `_headers`); a config that only reverse-proxies an app leaves the headers to the app. Generic `default.conf` /
+  `site.conf` files count only when they read like nginx, and a CSP `<meta>` tag in HTML or page components (JSX
+  `httpEquiv`, Astro, Vue, Svelte) counts as a CSP.
 - **Next.js static export.** A literal `output: 'export'` in `next.config.*` makes the unit a frontend (`static
   export` in `discover`), so server rules such as `rel/no-error-monitoring` and `rel/no-health-check` no longer fire on
   it. A value computed at build time (`output: process.env.X`) is not treated as a static export.
