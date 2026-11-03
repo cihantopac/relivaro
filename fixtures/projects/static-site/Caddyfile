@@ -1,0 +1,14 @@
+# Static export served by Caddy behind a tunnel.
+example.test {
+	root * /srv/site
+	encode zstd gzip
+	file_server
+
+	header {
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; img-src 'self' data:" # expect: sec/web-csp-unsafe-inline
+		Strict-Transport-Security "max-age=63072000; includeSubDomains" # expect: sec/web-hsts-include-subdomains
+		X-Content-Type-Options nosniff
+		-Server
+	}
+	header /assets/* Cache-Control "public, max-age=31536000, immutable"
+}

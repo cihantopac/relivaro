@@ -499,3 +499,47 @@ describe('dependency parse errors', () => {
     }
   });
 });
+
+describe('web server headers', () => {
+  const ids = async (files: Record<string, string>) => {
+    const { mkdtempSync, rmSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const root = mkdtempSync(join(tmpdir(), 'relivaro-web-'));
+    try {
+      for (const [f, text] of Object.entries(files)) {
+        mkdirSync(join(root, f, '..'), { recursive: true });
+        writeFileSync(join(root, f), text);
+      }
+      const { run } = await runAudit({ root, command: 'audit', noWrite: true, categories: ['security'] });
+      return run.findings
+        .filter((f) => f.ruleId.startsWith('sec/web-'))
+        .map((f) => f.ruleId)
+        .sort();
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+
+  it('an nginx site without security headers misses CSP, frame protection and HSTS', async () => {
+    expect(await ids({ 'nginx/site.conf': 'server {\n  listen 80;\n  root /srv;\n}\n' })).toEqual([
+      'sec/web-missing-csp',
+      'sec/web-missing-frame-protection',
+      'sec/web-missing-hsts',
+    ]);
+  });
+
+  it('a CSP declared by a <meta http-equiv> tag in served HTML counts', async () => {
+    expect(
+      await ids({
+        Caddyfile:
+          'site.test {\n\theader Strict-Transport-Security "max-age=63072000"\n\theader X-Frame-Options DENY\n}\n',
+        'public/index.html':
+          '<!doctype html><head><meta http-equiv="Content-Security-Policy" content="default-src \'self\'"></head>',
+      }),
+    ).toEqual([]);
+  });
+
+  it('no web server configuration, no web server findings', async () => {
+    expect(await ids({ 'public/index.html': '<!doctype html><title>x</title>' })).toEqual([]);
+  });
+});

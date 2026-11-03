@@ -372,6 +372,7 @@ export function discover(files: FileSet): ProjectProfile {
     [/\.tf$/, 'Terraform'],
     [/^ecosystem\.config\.[cm]?js$/, 'PM2'],
     [/^(?:nginx|default|site)\.conf$|\/nginx\/.+\.conf$/, 'nginx'],
+    [/^Caddyfile(?:\.[\w-]+)?$/, 'Caddy'],
     [/\.service$/, 'systemd'],
     [/^supervisord?\.conf$|\/supervisor\/.+\.conf$/, 'Supervisor'],
     [/^wrangler\.(?:toml|jsonc?)$/, 'Cloudflare Workers'],

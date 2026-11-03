@@ -1,0 +1,3 @@
+{
+  "findings": [{ "rule": "sec/web-missing-frame-protection", "file": "Caddyfile", "line": 1 }]
+}

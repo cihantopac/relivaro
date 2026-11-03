@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parsePhpstan, parseTestSummary, parseTsc } from '../../src/checks/exec.js';
 import { parseLockfile, pinnedRequirements } from '../../src/deps/lockfiles.js';
 import { parseManifest } from '../../src/deps/manifests.js';
+import { cspOf, headerDirectives } from '../../src/intel/webserver.js';
 
 describe('manifests', () => {
   it('package.json', () => {
@@ -286,5 +287,65 @@ describe('tool output parsers', () => {
         message: 'Undefined variable $x',
       },
     ]);
+  });
+});
+
+describe('web server headers', () => {
+  const names = (file: string, text: string) => headerDirectives(file, text).map((d) => d.name);
+
+  it('Caddy: header blocks, inline headers and +/>/- prefixes', () => {
+    const block = [
+      'example.com {',
+      '  header {',
+      '    # security headers',
+      `    Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'"`,
+      '    -Server',
+      '    +X-Content-Type-Options nosniff',
+      '    >Referrer-Policy strict-origin',
+      '  }',
+      '  header /assets/* Cache-Control "max-age=31536000"',
+      '}',
+    ].join('\n');
+    const d = headerDirectives('Caddyfile', block);
+    expect(d.map((x) => [x.name, x.line, x.server])).toEqual([
+      ['Content-Security-Policy', 4, 'caddy'],
+      ['X-Content-Type-Options', 6, 'caddy'],
+      ['Referrer-Policy', 7, 'caddy'],
+      ['Cache-Control', 9, 'caddy'],
+    ]);
+    expect(d[0]!.value).toBe("default-src 'self'; script-src 'self' 'unsafe-inline'");
+    expect(d[1]!.value).toBe('nosniff');
+  });
+
+  it('Caddy: a backtick value may span lines', () => {
+    const d = headerDirectives(
+      'site.caddy',
+      "header {\n  Content-Security-Policy `default-src 'self';\n    img-src data:`\n}\n",
+    );
+    expect(d).toHaveLength(1);
+    expect(d[0]!.line).toBe(2);
+    expect(d[0]!.value.replace(/\s+/g, ' ')).toBe("default-src 'self'; img-src data:");
+  });
+
+  it('nginx add_header and _headers files', () => {
+    const n = headerDirectives(
+      'nginx/site.conf',
+      'server {\n  # add_header X-Old 1;\n  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;\n}\n',
+    );
+    expect(n.map((x) => [x.name, x.value, x.line, x.server])).toEqual([
+      ['Strict-Transport-Security', 'max-age=63072000; includeSubDomains', 3, 'nginx'],
+    ]);
+    expect(names('public/_headers', '/*\n  X-Frame-Options: DENY\n  # Note: x\n')).toEqual([
+      'X-Frame-Options',
+    ]);
+    expect(headerDirectives('public/_headers', '/*\n  X-Frame-Options: DENY\n')[0]!.server).toBe(
+      'static-headers',
+    );
+  });
+
+  it('cspOf splits directives with lower-cased names', () => {
+    const c = cspOf("default-src 'self'; Script-Src 'self' 'unsafe-inline' ;");
+    expect(c.get('script-src')).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(c.get('default-src')).toEqual(["'self'"]);
   });
 });

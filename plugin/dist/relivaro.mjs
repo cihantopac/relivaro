@@ -429,6 +429,8 @@ function classify(path) {
   if (lower === "dockerfile" || lower.startsWith("dockerfile.") || lower.endsWith(".dockerfile") || lower === "containerfile")
     return { kind: "dockerfile" };
   if (/^(?:docker-)?compose(?:\.[\w-]+)?\.ya?ml$/.test(lower)) return { kind: "compose" };
+  if (/^Caddyfile(?:\.[\w-]+)?$/.test(b) || lower.endsWith(".caddy") || b === "_headers" || /^(?:nginx|default|site)\.conf$/.test(lower) || /(?:^|\/)nginx\/.+\.conf$/.test(path))
+    return { kind: "webserver" };
   if (SENSITIVE_ENV.test(b) || isEnvTemplate(path)) return { kind: "env" };
   if (LOCKFILES.has(b)) return { kind: "lockfile" };
   if (MANIFESTS.has(b) || /^requirements(?:[-_.][\w.-]+)?\.(?:txt|in)$/i.test(b)) return { kind: "manifest" };
@@ -1374,13 +1376,13 @@ function isPropertyName(n) {
   const p = n.parent;
   return !!p && (p.type === "pair" || p.type === "pair_pattern") && p.childForFieldName("key")?.id === n.id;
 }
-function taintedAt(expr, lang, cache2) {
+function taintedAt(expr, lang, cache3) {
   if (!expr) return false;
   const fn = enclosingFunction(expr, lang) ?? rootOf(expr);
-  let names = cache2.get(fn.id);
+  let names = cache3.get(fn.id);
   if (!names) {
     names = taintedNames(fn, lang);
-    cache2.set(fn.id, names);
+    cache3.set(fn.id, names);
   }
   return isTaintedExpr(expr, lang, names);
 }
@@ -12623,6 +12625,261 @@ var init_files2 = __esm({
   }
 });
 
+// src/intel/webserver.ts
+function serverOf(file) {
+  const b = file.split("/").pop();
+  if (/^Caddyfile(?:\.[\w-]+)?$/.test(b) || b.endsWith(".caddy")) return "caddy";
+  if (b === "_headers") return "static-headers";
+  return "nginx";
+}
+function headerDirectives(file, text) {
+  const server = serverOf(file);
+  const lines = text.split(/\r?\n/);
+  if (server === "nginx") return nginx(file, lines);
+  if (server === "static-headers") return staticHeaders(file, lines);
+  return caddy(file, lines);
+}
+function cspOf(value) {
+  const out2 = /* @__PURE__ */ new Map();
+  for (const part of value.split(";")) {
+    const [name2, ...sources] = part.trim().split(/\s+/);
+    if (name2 && !out2.has(name2.toLowerCase())) out2.set(name2.toLowerCase(), sources);
+  }
+  return out2;
+}
+function nginx(file, lines) {
+  const out2 = [];
+  lines.forEach((raw, i2) => {
+    const m = /^\s*add_header\s+("[^"]+"|'[^']+'|[^\s;]+)\s+("[^"]*"|'[^']*'|[^\s;]+)/.exec(raw);
+    if (m) out2.push({ file, line: i2 + 1, name: unquote(m[1]), value: unquote(m[2]), server: "nginx" });
+  });
+  return out2;
+}
+function staticHeaders(file, lines) {
+  const out2 = [];
+  lines.forEach((raw, i2) => {
+    const m = /^\s+([A-Za-z][\w-]*)\s*:\s*(.*?)\s*$/.exec(raw);
+    if (m && !raw.trim().startsWith("#"))
+      out2.push({ file, line: i2 + 1, name: m[1], value: m[2], server: "static-headers" });
+  });
+  return out2;
+}
+function caddy(file, lines) {
+  const out2 = [];
+  const add = (name2, rest, i2) => {
+    const m = CADDY_NAME.exec(name2);
+    if (!m || !rest) return i2;
+    let value = rest;
+    let end = i2;
+    if (value.startsWith("`") && !/^`[^`]*`/.test(value)) {
+      while (end + 1 < lines.length && !value.slice(1).includes("`")) value += `
+${lines[++end]}`;
+    }
+    out2.push({ file, line: i2 + 1, name: m[1], value: unquote(value.trim()), server: "caddy" });
+    return end;
+  };
+  let depth = 0;
+  for (let i2 = 0; i2 < lines.length; i2++) {
+    const t2 = stripComment(lines[i2]).trim();
+    if (!t2) continue;
+    if (depth > 0) {
+      if (t2 === "}") {
+        depth--;
+        continue;
+      }
+      if (t2.endsWith("{")) {
+        depth++;
+        continue;
+      }
+      const [name2, ...rest] = t2.split(/\s+/);
+      i2 = add(name2, rest.join(" "), i2);
+      continue;
+    }
+    const tokens = t2.split(/\s+/);
+    if (tokens[0] !== "header") continue;
+    let k = 1;
+    if (tokens[k] && /^[/@*]/.test(tokens[k])) k++;
+    if (tokens[k] === "{") {
+      depth = 1;
+      continue;
+    }
+    if (tokens[k]) i2 = add(tokens[k], tokens.slice(k + 1).join(" "), i2);
+  }
+  return out2;
+}
+function stripComment(line) {
+  let q = "";
+  for (let i2 = 0; i2 < line.length; i2++) {
+    const c = line[i2];
+    if (q) {
+      if (c === q) q = "";
+    } else if (c === '"' || c === "`") q = c;
+    else if (c === "#" && (i2 === 0 || /\s/.test(line[i2 - 1]))) return line.slice(0, i2);
+  }
+  return line;
+}
+function unquote(v) {
+  const s = v.replace(/;$/, "");
+  if (s.length >= 2 && (s[0] === '"' || s[0] === "'" || s[0] === "`") && s.endsWith(s[0]))
+    return s.slice(1, -1);
+  return s;
+}
+var CADDY_NAME;
+var init_webserver = __esm({
+  "src/intel/webserver.ts"() {
+    "use strict";
+    CADDY_NAME = /^[+>?]?([A-Za-z][\w-]*)$/;
+  }
+});
+
+// src/rules/security/webserver.ts
+function serverHeaders(ctx) {
+  let s = cache2.get(ctx);
+  if (!s) {
+    const files = ctx.files.files.filter((f) => f.kind === "webserver");
+    s = { files, headers: files.flatMap((f) => headerDirectives(f.path, ctx.files.read(f.path) ?? "")) };
+    cache2.set(ctx, s);
+  }
+  return s;
+}
+function atConfig(s, message) {
+  const file = s.files[0].path;
+  return [
+    { file, line: 1, message, anchor: file, facts: { configs: s.files.map((f) => f.path).join(", ") } }
+  ];
+}
+var cache2, named, META_CSP, webMissingCsp, webCspUnsafeInline, webMissingFrameProtection, webMissingHsts, webHstsIncludeSubdomains, webServerRules;
+var init_webserver2 = __esm({
+  "src/rules/security/webserver.ts"() {
+    "use strict";
+    init_webserver();
+    init_helpers();
+    cache2 = /* @__PURE__ */ new WeakMap();
+    named = (s, name2) => s.headers.filter((h) => h.name.toLowerCase() === name2.toLowerCase());
+    META_CSP = /<meta\s[^>]*http-equiv\s*=\s*["']?content-security-policy["']?/i;
+    webMissingCsp = {
+      kind: "project",
+      id: "sec/web-missing-csp",
+      title: "Web server sets no Content-Security-Policy",
+      category: "security",
+      severity: "medium",
+      confidence: "medium",
+      cwe: ["CWE-1021", "CWE-79"],
+      owasp: [OWASP.A02],
+      description: "The project serves its site through Caddy, nginx or a `_headers` file, but none of them sets a `Content-Security-Policy` header and no served HTML page declares one in a `<meta http-equiv>` tag.",
+      impact: "Without a CSP, any injected script runs with the full privileges of the page, so a single XSS or compromised third-party script can read data and act as the user.",
+      recommendation: "Set a policy at the server, starting from `default-src 'self'; frame-ancestors 'none'; base-uri 'none'; object-src 'none'` and adding only the sources the site needs. For a static export, allow inline scripts by their hashes instead of `'unsafe-inline'`.",
+      verification: "`curl -sI https://<host>/` shows a `Content-Security-Policy` header and the browser console reports no violations on the main pages.",
+      check(ctx) {
+        const s = serverHeaders(ctx);
+        if (!s.files.length || named(s, "Content-Security-Policy").length) return [];
+        for (const f of ctx.files.files)
+          if (/\.html?$/i.test(f.path) && META_CSP.test(ctx.files.read(f.path) ?? "")) return [];
+        return atConfig(s, "No `Content-Security-Policy` header is set in the web server configuration.");
+      }
+    };
+    webCspUnsafeInline = {
+      kind: "project",
+      id: "sec/web-csp-unsafe-inline",
+      title: "Content-Security-Policy allows 'unsafe-inline' scripts",
+      category: "security",
+      severity: "low",
+      confidence: "high",
+      cwe: ["CWE-79"],
+      owasp: [OWASP.A02],
+      description: "The effective `script-src` of a Content-Security-Policy set by the web server (falling back to `default-src`) contains `'unsafe-inline'` without any nonce or hash source.",
+      impact: "Inline script injection, the most common XSS payload, is allowed, so the policy no longer stops the attacks it exists for.",
+      recommendation: "Remove `'unsafe-inline'` from `script-src`. Move inline scripts to files, or allow them by hash (`'sha256-\u2026'`); a static export can compute the hashes at build time. Server-rendered pages can use a per-request nonce.",
+      verification: "The served policy has no `'unsafe-inline'` in its effective `script-src`, and the pages still work with the browser console free of CSP violations.",
+      check(ctx) {
+        const out2 = [];
+        for (const h of named(serverHeaders(ctx), "Content-Security-Policy")) {
+          const csp = cspOf(h.value);
+          const scriptSrc = (csp.get("script-src") ?? csp.get("default-src") ?? []).map((x) => x.toLowerCase());
+          if (!scriptSrc.includes("'unsafe-inline'")) continue;
+          if (scriptSrc.some((x) => /^'(?:nonce-|sha256-|sha384-|sha512-)/.test(x))) continue;
+          out2.push({
+            file: h.file,
+            line: h.line,
+            message: `The Content-Security-Policy in \`${h.file}\` allows \`'unsafe-inline'\` scripts.`
+          });
+        }
+        return out2;
+      }
+    };
+    webMissingFrameProtection = {
+      kind: "project",
+      id: "sec/web-missing-frame-protection",
+      title: "Web server sets no clickjacking protection",
+      category: "security",
+      severity: "low",
+      confidence: "medium",
+      cwe: ["CWE-1021"],
+      owasp: [OWASP.A02],
+      description: "The web server configuration sets neither a CSP `frame-ancestors` directive nor an `X-Frame-Options` header, so any site may embed these pages in a frame. A `<meta>` CSP cannot set `frame-ancestors`.",
+      impact: "An attacker can frame the site under a decoy page and trick users into clicking its controls (clickjacking).",
+      recommendation: "Add `frame-ancestors 'none'` (or `'self'`) to the Content-Security-Policy; keep `X-Frame-Options: DENY` for older browsers.",
+      verification: "`curl -sI https://<host>/` shows `frame-ancestors` in the CSP or an `X-Frame-Options` header.",
+      check(ctx) {
+        const s = serverHeaders(ctx);
+        if (!s.files.length || named(s, "X-Frame-Options").length) return [];
+        if (named(s, "Content-Security-Policy").some((h) => cspOf(h.value).has("frame-ancestors"))) return [];
+        return atConfig(s, "No `frame-ancestors` CSP directive or `X-Frame-Options` header is set.");
+      }
+    };
+    webMissingHsts = {
+      kind: "project",
+      id: "sec/web-missing-hsts",
+      title: "Web server sets no Strict-Transport-Security",
+      category: "security",
+      severity: "low",
+      confidence: "low",
+      cwe: ["CWE-319"],
+      owasp: [OWASP.A02],
+      description: "The web server configuration does not set a `Strict-Transport-Security` header. It may still be set in front of the server, by a CDN or tunnel such as Cloudflare, which Relivaro cannot see.",
+      impact: "Browsers will try plain HTTP first on new visits, where a network attacker can downgrade or intercept the connection.",
+      recommendation: "Set `Strict-Transport-Security: max-age=63072000` once the site serves HTTPS only. Add `includeSubDomains` only when every subdomain serves HTTPS.",
+      verification: "`curl -sI https://<host>/` shows a `Strict-Transport-Security` header with a long `max-age`.",
+      check(ctx) {
+        const s = serverHeaders(ctx);
+        if (!s.files.length || named(s, "Strict-Transport-Security").length) return [];
+        return atConfig(
+          s,
+          "No `Strict-Transport-Security` header is set in the web server configuration (it may be set at a CDN or tunnel, e.g. Cloudflare)."
+        );
+      }
+    };
+    webHstsIncludeSubdomains = {
+      kind: "project",
+      id: "sec/web-hsts-include-subdomains",
+      title: "HSTS includeSubDomains applies to every subdomain",
+      category: "security",
+      severity: "info",
+      confidence: "medium",
+      cwe: ["CWE-319"],
+      owasp: [OWASP.A02],
+      description: "A `Strict-Transport-Security` header uses `includeSubDomains`. This is not a defect: it tells browsers to use HTTPS for every subdomain of the host, including mail, legacy or internal hosts.",
+      impact: "A subdomain that does not serve valid HTTPS becomes unreachable in browsers for the whole `max-age`.",
+      recommendation: "Confirm that every subdomain serves HTTPS with a valid certificate before keeping `includeSubDomains`; otherwise drop it.",
+      verification: "Every DNS name under the host answers over HTTPS with a valid certificate.",
+      check(ctx) {
+        return named(serverHeaders(ctx), "Strict-Transport-Security").filter((h) => /\bincludesubdomains\b/i.test(h.value)).map((h) => ({
+          file: h.file,
+          line: h.line,
+          message: `HSTS in \`${h.file}\` uses \`includeSubDomains\`: confirm every subdomain serves HTTPS.`
+        }));
+      }
+    };
+    webServerRules = [
+      webMissingCsp,
+      webCspUnsafeInline,
+      webMissingFrameProtection,
+      webMissingHsts,
+      webHstsIncludeSubdomains
+    ];
+  }
+});
+
 // src/rules/supply-chain.ts
 function dirOf(p) {
   const i2 = p.lastIndexOf("/");
@@ -13127,11 +13384,13 @@ var init_rules = __esm({
     init_reliability();
     init_code();
     init_files2();
+    init_webserver2();
     init_supply_chain();
     RULES = [
       ...securityCodeRules,
       ...securityFileRules,
       ...securityProjectRules,
+      ...webServerRules,
       ...supplyChainRules,
       ...reliabilityAstRules,
       ...reliabilityFileRules,
@@ -13328,13 +13587,13 @@ async function queryOsv(lockfiles, opts = {}) {
   const entries = [...unique.values()];
   const result2 = { queried: entries.length, vulnerable: 0, hits: [], errors: [] };
   if (!entries.length) return result2;
-  let cache2 = {};
+  let cache3 = {};
   if (opts.cacheFile && existsSync8(opts.cacheFile)) {
     try {
       if (Date.now() - statSync4(opts.cacheFile).mtimeMs < 24 * 36e5)
-        cache2 = JSON.parse(readFileSync6(opts.cacheFile, "utf8"));
+        cache3 = JSON.parse(readFileSync6(opts.cacheFile, "utf8"));
     } catch {
-      cache2 = {};
+      cache3 = {};
     }
   }
   const idsPer = new Array(entries.length).fill(null).map(() => []);
@@ -13360,7 +13619,7 @@ async function queryOsv(lockfiles, opts = {}) {
   const allIds = [...new Set(idsPer.flat())];
   const details = /* @__PURE__ */ new Map();
   const todo = allIds.filter((id) => {
-    const c = cache2[id];
+    const c = cache3[id];
     if (c) details.set(id, c.vuln);
     return !c;
   });
@@ -13372,7 +13631,7 @@ async function queryOsv(lockfiles, opts = {}) {
         try {
           const v = await getJson(fetchImpl, `${API2}/vulns/${encodeURIComponent(id)}`);
           details.set(id, v);
-          cache2[id] = { at: Date.now(), vuln: v };
+          cache3[id] = { at: Date.now(), vuln: v };
         } catch (e) {
           result2.errors.push(`${id}: ${e.message}`);
         }
@@ -13381,7 +13640,7 @@ async function queryOsv(lockfiles, opts = {}) {
   );
   if (opts.cacheFile && todo.length) {
     try {
-      atomicWrite(opts.cacheFile, JSON.stringify(cache2));
+      atomicWrite(opts.cacheFile, JSON.stringify(cache3));
     } catch {
     }
   }
@@ -15389,6 +15648,7 @@ function discover(files) {
     [/\.tf$/, "Terraform"],
     [/^ecosystem\.config\.[cm]?js$/, "PM2"],
     [/^(?:nginx|default|site)\.conf$|\/nginx\/.+\.conf$/, "nginx"],
+    [/^Caddyfile(?:\.[\w-]+)?$/, "Caddy"],
     [/\.service$/, "systemd"],
     [/^supervisord?\.conf$|\/supervisor\/.+\.conf$/, "Supervisor"],
     [/^wrangler\.(?:toml|jsonc?)$/, "Cloudflare Workers"],
@@ -17074,11 +17334,11 @@ var Language = class _Language {
   /**
    * Get the node type id for a node type name.
    */
-  idForNodeType(type, named) {
+  idForNodeType(type, named2) {
     const typeLength = C.lengthBytesUTF8(type);
     const typeAddress = C._malloc(typeLength + 1);
     C.stringToUTF8(type, typeAddress, typeLength + 1);
-    const result2 = C._ts_language_symbol_for_name(this[0], typeAddress, typeLength, named ? 1 : 0);
+    const result2 = C._ts_language_symbol_for_name(this[0], typeAddress, typeLength, named2 ? 1 : 0);
     C._free(typeAddress);
     return result2 || null;
   }
@@ -25614,6 +25874,11 @@ var MANUAL = {
   "qual/high-complexity": "architecture",
   "rel/no-error-monitoring": "operational",
   "rel/no-health-check": "operational",
+  "sec/web-missing-csp": "operational",
+  "sec/web-csp-unsafe-inline": "operational",
+  "sec/web-missing-frame-protection": "operational",
+  "sec/web-missing-hsts": "operational",
+  "sec/web-hsts-include-subdomains": "operational",
   "rel/queue-job-without-retry-policy": "operational",
   "rel/destructive-migration": "data",
   "rel/destructive-sql-migration": "data",

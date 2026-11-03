@@ -95,6 +95,7 @@ export type FileKind =
   | 'workflow'
   | 'dockerfile'
   | 'compose'
+  | 'webserver'
   | 'env'
   | 'template'
   | 'migration'

@@ -282,6 +282,14 @@ export function classify(path: string): { kind: FileKind; language?: Language } 
   )
     return { kind: 'dockerfile' };
   if (/^(?:docker-)?compose(?:\.[\w-]+)?\.ya?ml$/.test(lower)) return { kind: 'compose' };
+  if (
+    /^Caddyfile(?:\.[\w-]+)?$/.test(b) ||
+    lower.endsWith('.caddy') ||
+    b === '_headers' ||
+    /^(?:nginx|default|site)\.conf$/.test(lower) ||
+    /(?:^|\/)nginx\/.+\.conf$/.test(path)
+  )
+    return { kind: 'webserver' };
   if (SENSITIVE_ENV.test(b) || isEnvTemplate(path)) return { kind: 'env' };
   if (LOCKFILES.has(b)) return { kind: 'lockfile' };
   if (MANIFESTS.has(b) || /^requirements(?:[-_.][\w.-]+)?\.(?:txt|in)$/i.test(b)) return { kind: 'manifest' };
