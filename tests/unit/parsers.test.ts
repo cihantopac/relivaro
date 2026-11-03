@@ -137,6 +137,49 @@ describe('lockfiles', () => {
     ]);
     expect([...l.rootDeps!]).toEqual(['a']);
   });
+  it('pnpm 12: two YAML documents, env lock skipped, project lock parsed', () => {
+    const text = [
+      '---',
+      "lockfileVersion: '9.0'",
+      '',
+      'importers:',
+      '  .:',
+      '    configDependencies: {}',
+      '    packageManagerDependencies:',
+      '      pnpm:',
+      '        specifier: 12.16.1',
+      '        version: 12.16.1',
+      '',
+      'packages:',
+      "  '@pnpm/exe.darwin-arm64@12.16.1':",
+      '    resolution: {integrity: sha512-x}',
+      '---',
+      "lockfileVersion: '9.0'",
+      '',
+      'importers:',
+      '  .:',
+      '    devDependencies:',
+      "      '@biomejs/biome':",
+      '        specifier: 2.6.4',
+      '        version: 2.6.4',
+      '',
+      'packages:',
+      "  '@biomejs/biome@2.6.4':",
+      '    resolution: {integrity: sha512-y}',
+    ].join('\n');
+    const info = parseLockfile('pnpm-lock.yaml', text)!;
+    expect(info.error).toBeUndefined();
+    expect(info.packages.map((p) => `${p.name}@${p.version}`)).toEqual(['@biomejs/biome@2.6.4']);
+    expect([...info.rootDeps!]).toEqual(['@biomejs/biome']);
+  });
+  it('pnpm: a broken second document is an error, not the env packages', () => {
+    const info = parseLockfile(
+      'pnpm-lock.yaml',
+      "---\nlockfileVersion: '9.0'\nimporters:\n  .:\n    configDependencies: {}\n---\nimporters: [\n",
+    )!;
+    expect(info.error).toBeTruthy();
+    expect(info.packages).toEqual([]);
+  });
   it('pnpm v9, yarn v1, composer, poetry, go.sum, Gemfile.lock, pubspec.lock', () => {
     expect(
       parseLockfile(

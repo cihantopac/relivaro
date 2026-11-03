@@ -448,3 +448,54 @@ describe('OSV lookup', () => {
     expect(r.errors[0]).toMatch(/503/);
   });
 });
+
+describe('dependency parse errors', () => {
+  const project = async (files: Record<string, string>) => {
+    const { mkdtempSync } = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const dir = mkdtempSync(join(tmpdir(), 'relivaro-parse-'));
+    for (const [f, text] of Object.entries(files)) writeFileSync(join(dir, f), text);
+    return dir;
+  };
+  const fetchImpl = (() => {
+    throw new Error('fetch must not be called');
+  }) as unknown as typeof fetch;
+
+  it('an unparsable lockfile is a limitation and leaves the dependencies gate unverified', async () => {
+    const { rmSync } = await import('node:fs');
+    const { assessRelease } = await import('../../src/release/readiness.js');
+    const root = await project({
+      'package.json': JSON.stringify({ name: 'p', dependencies: { left: '1.0.0' } }),
+      'pnpm-lock.yaml': 'importers: [\n',
+    });
+    try {
+      const { run } = await runAudit({
+        root,
+        command: 'release',
+        release: true,
+        online: true,
+        noWrite: true,
+        fetchImpl,
+      });
+      expect(run.limitations.join('\n')).toMatch(
+        /Lockfile `pnpm-lock\.yaml` could not be parsed .*dependencies were not analysed/,
+      );
+      const gate = assessRelease(run, defaultConfig(), []).gates.find((g) => g.id === 'dependencies')!;
+      expect(gate.status).toBe('unverified');
+      expect(gate.detail).toMatch(/^Could not parse/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('an unparsable manifest is a limitation', async () => {
+    const { rmSync } = await import('node:fs');
+    const root = await project({ 'package.json': '{' });
+    try {
+      const { run } = await runAudit({ root, command: 'audit', noWrite: true });
+      expect(run.limitations.join('\n')).toMatch(/Manifest `package\.json` could not be parsed/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+});

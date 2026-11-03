@@ -11673,7 +11673,7 @@ var require_public_api = __commonJS({
       const lineCounter$1 = options.lineCounter || prettyErrors && new lineCounter.LineCounter() || null;
       return { lineCounter: lineCounter$1, prettyErrors };
     }
-    function parseAllDocuments(source, options = {}) {
+    function parseAllDocuments2(source, options = {}) {
       const { lineCounter: lineCounter2, prettyErrors } = parseOptions(options);
       const parser$1 = new parser.Parser(lineCounter2?.addNewLine);
       const composer$1 = new composer.Composer(options);
@@ -11748,7 +11748,7 @@ var require_public_api = __commonJS({
       return new Document.Document(value, _replacer, options).toString(options);
     }
     exports.parse = parse3;
-    exports.parseAllDocuments = parseAllDocuments;
+    exports.parseAllDocuments = parseAllDocuments2;
     exports.parseDocument = parseDocument2;
     exports.stringify = stringify2;
   }
@@ -14269,17 +14269,29 @@ function npmLock(file, text) {
   }
   return info2;
 }
+function isEnvLock(importers) {
+  const imps = Object.values(importers);
+  return imps.length > 0 && imps.every((imp) => imp && typeof imp === "object" && Object.keys(imp).every((k) => ENV_LOCK_KEYS.has(k)));
+}
 function pnpmLock(file, text) {
   const info2 = { file, ecosystem: "npm", packages: [] };
   try {
-    const y = (0, import_yaml2.parse)(text, { maxAliasCount: -1 }) ?? {};
+    const docs = (0, import_yaml2.parseAllDocuments)(text);
+    const list = Array.isArray(docs) ? docs : [docs];
+    for (const d of list) if (d.errors.length) throw new Error(d.errors[0].message);
     const root = /* @__PURE__ */ new Set();
-    const importers = y.importers ?? { ".": y };
-    for (const imp of Object.values(importers))
-      for (const f of ["dependencies", "devDependencies", "optionalDependencies"])
-        for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+    const packages = {};
+    for (const d of list) {
+      const y = d.toJS({ maxAliasCount: -1 }) ?? {};
+      const importers = y.importers ?? { ".": y };
+      if (isEnvLock(importers)) continue;
+      for (const imp of Object.values(importers))
+        for (const f of ["dependencies", "devDependencies", "optionalDependencies"])
+          for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+      Object.assign(packages, y.packages ?? {});
+    }
     info2.rootDeps = root;
-    for (const [key, p] of Object.entries(y.packages ?? {})) {
+    for (const [key, p] of Object.entries(packages)) {
       const k = key.replace(/^\//, "").replace(/\(.*$/, "");
       const at = k.lastIndexOf("@");
       let name2;
@@ -14457,12 +14469,13 @@ function parseLockfile(file, text) {
       return null;
   }
 }
-var import_yaml2;
+var import_yaml2, ENV_LOCK_KEYS;
 var init_lockfiles = __esm({
   "src/deps/lockfiles.ts"() {
     "use strict";
     init_dist();
     import_yaml2 = __toESM(require_dist(), 1);
+    ENV_LOCK_KEYS = /* @__PURE__ */ new Set(["configDependencies", "packageManagerDependencies"]);
   }
 });
 
@@ -21398,6 +21411,7 @@ function validateConfig(raw, file = "config") {
 
 // src/audit.ts
 init_errors();
+init_secrets();
 init_workspace();
 init_osv();
 init_files();
@@ -21522,7 +21536,15 @@ function assessRelease(run2, config, bench = []) {
     }
   );
   const vulns = all.filter((f) => f.ruleId === "sc/known-vulnerability");
-  if (!run2.options.online)
+  const unparsed = [...run2.profile.lockfiles, ...run2.profile.manifests].filter((x) => x.error).map((x) => x.file);
+  if (unparsed.length)
+    gates.push({
+      id: "dependencies",
+      title: "No known-vulnerable dependencies",
+      status: "unverified",
+      detail: `Could not parse ${unparsed.join(", ")}; dependency risk is unverified.`
+    });
+  else if (!run2.options.online)
     gates.push({
       id: "dependencies",
       title: "No known-vulnerable dependencies",
@@ -22144,6 +22166,20 @@ function summarizeProfile(p) {
     }))
   };
 }
+function parseErrorLimitations(profile) {
+  const clip = (raw) => {
+    const e = raw.split("\n", 1)[0].trim().replace(/:$/, "");
+    return redact(e.length > 160 ? `${e.slice(0, 157)}...` : e);
+  };
+  return [
+    ...profile.lockfiles.filter((l) => l.error).map(
+      (l) => `Lockfile \`${l.file}\` could not be parsed (${clip(l.error)}); its dependencies were not analysed.`
+    ),
+    ...profile.manifests.filter((m) => m.error).map(
+      (m) => `Manifest \`${m.file}\` could not be parsed (${clip(m.error)}); its dependencies were not analysed.`
+    )
+  ];
+}
 async function runAudit(opts) {
   const started = performance.now();
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
@@ -22170,6 +22206,7 @@ async function runAudit(opts) {
   let osvQueried;
   const wantsSupplyChain = categories.includes("supply-chain");
   if (wantsSupplyChain) {
+    limitations.push(...parseErrorLimitations(profile));
     if (opts.online) {
       progress("querying OSV.dev for known vulnerabilities");
       const osv = await queryOsv(profile.lockfiles, {

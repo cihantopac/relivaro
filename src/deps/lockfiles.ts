@@ -1,5 +1,5 @@
 import { parse as parseToml } from 'smol-toml';
-import { parse as parseYaml } from 'yaml';
+import { parseAllDocuments, parse as parseYaml } from 'yaml';
 import type { Ecosystem } from './manifests.js';
 
 /** A resolved (installed) package version from a lockfile. */
@@ -68,17 +68,37 @@ function npmLock(file: string, text: string): LockfileInfo {
   return info;
 }
 
+const ENV_LOCK_KEYS = new Set(['configDependencies', 'packageManagerDependencies']);
+
+/** A pnpm env lock: every importer only pins pnpm itself or config dependencies. */
+function isEnvLock(importers: Record<string, any>): boolean {
+  const imps = Object.values(importers);
+  return (
+    imps.length > 0 &&
+    imps.every((imp) => imp && typeof imp === 'object' && Object.keys(imp).every((k) => ENV_LOCK_KEYS.has(k)))
+  );
+}
+
 function pnpmLock(file: string, text: string): LockfileInfo {
   const info: LockfileInfo = { file, ecosystem: 'npm', packages: [] };
   try {
-    const y = (parseYaml(text, { maxAliasCount: -1 }) ?? {}) as Record<string, any>;
+    // pnpm 12 writes two YAML documents: an env lock (pnpm's own binaries) and the project lock.
+    const docs = parseAllDocuments(text);
+    const list = Array.isArray(docs) ? docs : [docs];
+    for (const d of list) if (d.errors.length) throw new Error(d.errors[0]!.message);
     const root = new Set<string>();
-    const importers = y.importers ?? { '.': y };
-    for (const imp of Object.values(importers) as any[])
-      for (const f of ['dependencies', 'devDependencies', 'optionalDependencies'])
-        for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+    const packages: Record<string, any> = {};
+    for (const d of list) {
+      const y = (d.toJS({ maxAliasCount: -1 }) ?? {}) as Record<string, any>;
+      const importers = (y.importers ?? { '.': y }) as Record<string, any>;
+      if (isEnvLock(importers)) continue;
+      for (const imp of Object.values(importers))
+        for (const f of ['dependencies', 'devDependencies', 'optionalDependencies'])
+          for (const n of Object.keys(imp?.[f] ?? {})) root.add(n);
+      Object.assign(packages, y.packages ?? {});
+    }
     info.rootDeps = root;
-    for (const [key, p] of Object.entries((y.packages ?? {}) as Record<string, any>)) {
+    for (const [key, p] of Object.entries(packages)) {
       // v5/6: "/name@1.2.3" or "/name/1.2.3"; v9: "name@1.2.3" (peer suffix in parentheses).
       const k = key.replace(/^\//, '').replace(/\(.*$/, '');
       const at = k.lastIndexOf('@');

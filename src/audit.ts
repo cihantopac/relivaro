@@ -2,6 +2,7 @@ import { readCoverage, type TestGap, testGaps } from './checks/coverage.js';
 import { type CheckKind, type CheckResult, planChecks, runChecks } from './checks/exec.js';
 import { loadConfig, type RelivaroConfig } from './core/config.js';
 import { RelivaroError } from './core/errors.js';
+import { redact } from './core/secrets.js';
 import {
   CATEGORIES,
   type Category,
@@ -163,6 +164,32 @@ function summarizeProfile(p: ProjectProfile): ProfileSummary {
   };
 }
 
+/** One limitation per manifest or lockfile that failed to parse, so its dependencies never look clean. */
+export function parseErrorLimitations(profile: {
+  manifests: { file: string; error?: string }[];
+  lockfiles: { file: string; error?: string }[];
+}): string[] {
+  const clip = (raw: string) => {
+    // Parser messages may carry a multi-line source excerpt; the first line names the problem.
+    const e = raw.split('\n', 1)[0]!.trim().replace(/:$/, '');
+    return redact(e.length > 160 ? `${e.slice(0, 157)}...` : e);
+  };
+  return [
+    ...profile.lockfiles
+      .filter((l) => l.error)
+      .map(
+        (l) =>
+          `Lockfile \`${l.file}\` could not be parsed (${clip(l.error!)}); its dependencies were not analysed.`,
+      ),
+    ...profile.manifests
+      .filter((m) => m.error)
+      .map(
+        (m) =>
+          `Manifest \`${m.file}\` could not be parsed (${clip(m.error!)}); its dependencies were not analysed.`,
+      ),
+  ];
+}
+
 export async function runAudit(
   opts: AuditOptions,
 ): Promise<{ run: RunRecord; config: RelivaroConfig; workspace: Workspace }> {
@@ -191,6 +218,7 @@ export async function runAudit(
   let osvQueried: number | undefined;
   const wantsSupplyChain = categories.includes('supply-chain');
   if (wantsSupplyChain) {
+    limitations.push(...parseErrorLimitations(profile));
     if (opts.online) {
       progress('querying OSV.dev for known vulnerabilities');
       const osv = await queryOsv(profile.lockfiles, {

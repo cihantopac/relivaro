@@ -192,7 +192,17 @@ export function assessRelease(
   );
 
   const vulns = all.filter((f) => f.ruleId === 'sc/known-vulnerability');
-  if (!run.options.online)
+  const unparsed = [...run.profile.lockfiles, ...run.profile.manifests]
+    .filter((x) => x.error)
+    .map((x) => x.file);
+  if (unparsed.length)
+    gates.push({
+      id: 'dependencies',
+      title: 'No known-vulnerable dependencies',
+      status: 'unverified',
+      detail: `Could not parse ${unparsed.join(', ')}; dependency risk is unverified.`,
+    });
+  else if (!run.options.online)
     gates.push({
       id: 'dependencies',
       title: 'No known-vulnerable dependencies',
