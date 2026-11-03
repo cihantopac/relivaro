@@ -240,7 +240,7 @@ export async function runAudit(
         );
     } else if (profile.lockfiles.length) {
       limitations.push(
-        'Known vulnerabilities in dependencies were not checked (offline mode). Re-run with --online to query OSV.dev.',
+        `Known vulnerabilities in ${profile.lockfiles.reduce((s, l) => s + l.packages.length, 0)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
       );
     }
   }

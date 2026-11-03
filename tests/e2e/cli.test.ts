@@ -90,6 +90,26 @@ describe('relivaro CLI', () => {
     expect(cli(['performance', fx.dir, '--fail-on', 'critical', '--no-write', '--quiet']).code).toBe(0);
   });
 
+  it('audit ends with the release next step and an explicit offline OSV disclosure', () => {
+    const a = cli(['audit', fx.dir, '--no-write']);
+    expect(a.code).toBe(0);
+    expect(a.stdout).toContain(
+      `Next: relivaro release ${fx.dir} for a release verdict (add --allow-exec --online to verify more)`,
+    );
+    const run = JSON.parse(cli(['audit', fx.dir, '--no-write', '--json']).stdout);
+    expect(JSON.stringify(run)).not.toContain('Next:');
+    expect(run.limitations).toContain(
+      `Known vulnerabilities in ${run.metrics.dependencies} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
+    );
+    const r = cli(['release', fx.dir, '--no-write']);
+    expect(r.stdout).not.toContain('Next:');
+    const rel = JSON.parse(cli(['release', fx.dir, '--no-write', '--json']).stdout);
+    expect(rel.release.gates.find((g: { id: string }) => g.id === 'dependencies').detail).toBe(
+      `Not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
+    );
+    expect(cli(['audit', '--help']).stdout).toContain('Boolean flags can be negated: --no-<flag>.');
+  });
+
   it('emits a machine-readable run with --json and --workspace keeps the project untouched', () => {
     const ws = mkdtempSync(join(tmpdir(), 'relivaro-ws-'));
     try {

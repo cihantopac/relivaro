@@ -143,6 +143,7 @@ export function helpText(spec: CommandSpec): string {
         `  ${flag.padEnd(34)} ${o.description}${o.default !== undefined && o.type !== 'boolean' ? ` (default: ${o.default})` : ''}`,
       );
     }
+    if (opts.some((o) => o.type === 'boolean')) lines.push('', 'Boolean flags can be negated: --no-<flag>.');
     lines.push('');
   }
   if (spec.examples?.length) {

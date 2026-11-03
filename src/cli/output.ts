@@ -80,6 +80,8 @@ export function printRunSummary(
   files: Record<string, string>,
   maxFindings = 15,
   openCommand?: (file: string) => string,
+  /** The path argument as the user typed it; analysis runs without a release verdict end with the next step. */
+  typedPath = '.',
 ): void {
   const on = out.color;
   const s = run.summary;
@@ -169,5 +171,12 @@ export function printRunSummary(
           `Open it: ${openCommand(files.html)}  (or re-run with --open). Select findings there to generate a fix prompt.`,
         ),
       );
+  }
+  if (!run.release && !out.quiet) {
+    const path = /[\s'"$`\\]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
+    out.print('');
+    out.print(
+      `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`,
+    );
   }
 }

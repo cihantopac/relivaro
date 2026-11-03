@@ -182,7 +182,7 @@ describe('network boundaries', () => {
     try {
       const { run } = await runAudit({ root: fx.dir, command: 'audit', noWrite: true });
       expect(spy).not.toHaveBeenCalled();
-      expect(run.limitations.some((l) => /offline mode/.test(l))).toBe(true);
+      expect(run.limitations.some((l) => /not checked \(offline\)\. --online sends only/.test(l))).toBe(true);
     } finally {
       spy.mockRestore();
       fx.cleanup();

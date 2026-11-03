@@ -208,7 +208,7 @@ export function assessRelease(
       title: 'No known-vulnerable dependencies',
       status: run.profile.lockfiles.length ? 'unverified' : 'n/a',
       detail: run.profile.lockfiles.length
-        ? 'Not checked (offline). Run with --online to query OSV.dev.'
+        ? 'Not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.'
         : 'No lockfiles to check.',
     });
   else if (run.errors.network.length)

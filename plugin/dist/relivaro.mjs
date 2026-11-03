@@ -20569,6 +20569,7 @@ function helpText(spec) {
         `  ${flag.padEnd(34)} ${o.description}${o.default !== void 0 && o.type !== "boolean" ? ` (default: ${o.default})` : ""}`
       );
     }
+    if (opts.some((o) => o.type === "boolean")) lines.push("", "Boolean flags can be negated: --no-<flag>.");
     lines.push("");
   }
   if (spec.examples?.length) {
@@ -21881,7 +21882,7 @@ function assessRelease(run2, config, bench = []) {
       id: "dependencies",
       title: "No known-vulnerable dependencies",
       status: run2.profile.lockfiles.length ? "unverified" : "n/a",
-      detail: run2.profile.lockfiles.length ? "Not checked (offline). Run with --online to query OSV.dev." : "No lockfiles to check."
+      detail: run2.profile.lockfiles.length ? "Not checked (offline). --online sends only ecosystem, package name and version to OSV.dev \u2014 no source code." : "No lockfiles to check."
     });
   else if (run2.errors.network.length)
     gates.push({
@@ -22559,7 +22560,7 @@ async function runAudit(opts) {
         );
     } else if (profile.lockfiles.length) {
       limitations.push(
-        "Known vulnerabilities in dependencies were not checked (offline mode). Re-run with --online to query OSV.dev."
+        `Known vulnerabilities in ${profile.lockfiles.reduce((s, l) => s + l.packages.length, 0)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev \u2014 no source code.`
       );
     }
   }
@@ -26532,7 +26533,7 @@ function findingLine(on, f) {
   return `${sevLabel(on, f.severity)} ${paint(on, "bold", f.title)}${where ? `  ${paint(on, "cyan", where)}` : ""}
          ${f.message}  ${paint(on, "gray", `[${f.ruleId} \xB7 ${f.confidence} confidence \xB7 ${f.id}]`)}`;
 }
-function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2) {
+function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, typedPath = ".") {
   const on = out2.color;
   const s = run2.summary;
   out2.print(
@@ -26605,6 +26606,13 @@ function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2) {
           `Open it: ${openCommand2(files.html)}  (or re-run with --open). Select findings there to generate a fix prompt.`
         )
       );
+  }
+  if (!run2.release && !out2.quiet) {
+    const path = /[\s'"$`\\]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
+    out2.print("");
+    out2.print(
+      `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`
+    );
   }
 }
 
@@ -26842,7 +26850,15 @@ async function analysisCommand(p, out2, cfg) {
         compactRun(run2, 30, files, p.opts["no-write"] ? {} : effectiveReview(workspace, run2))
       ) : JSON.stringify(run2, null, 2)
     );
-  else printRunSummary(out2, run2, files, Number(p.opts["max-findings"] ?? 15), openCommand);
+  else
+    printRunSummary(
+      out2,
+      run2,
+      files,
+      Number(p.opts["max-findings"] ?? 15),
+      openCommand,
+      p.positionals[0] ?? "."
+    );
   if (p.opts.open && files.html) openFile(files.html);
   const failOn = p.opts["fail-on"] ?? config.failOn;
   if (cfg.release && run2.release) {

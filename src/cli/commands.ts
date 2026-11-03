@@ -328,7 +328,15 @@ async function analysisCommand(
           )
         : JSON.stringify(run, null, 2),
     );
-  else printRunSummary(out, run, files, Number(p.opts['max-findings'] ?? 15), openCommand);
+  else
+    printRunSummary(
+      out,
+      run,
+      files,
+      Number(p.opts['max-findings'] ?? 15),
+      openCommand,
+      p.positionals[0] ?? '.',
+    );
   if (p.opts.open && files.html) openFile(files.html);
   const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? config.failOn;
   if (cfg.release && run.release) {
