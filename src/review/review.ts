@@ -12,7 +12,7 @@ import type { Workspace } from '../core/workspace.js';
  * conclusion side by side. Entries exist only for findings someone actually reviewed; nothing is inferred.
  */
 export const REVIEW_SCHEMA_VERSION = 1;
-export const VERDICTS = ['confirmed', 'false-positive', 'needs-runtime'] as const;
+export const VERDICTS = ['confirmed', 'false-positive', 'needs-runtime', 'accepted'] as const;
 export type Verdict = (typeof VERDICTS)[number];
 
 export interface ReviewEvidence {
@@ -139,11 +139,13 @@ export function reviewSummary(run: RunRecord, index: Record<string, ReviewEntry>
   const confirmed = count('confirmed');
   const falsePositive = count('false-positive');
   const needsRuntime = count('needs-runtime');
+  const accepted = count('accepted');
   return {
     confirmed,
     falsePositive,
     needsRuntime,
-    unreviewed: open.length - confirmed - falsePositive - needsRuntime,
+    accepted,
+    unreviewed: open.length - confirmed - falsePositive - needsRuntime - accepted,
   };
 }
 

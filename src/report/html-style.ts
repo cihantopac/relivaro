@@ -238,6 +238,7 @@ details.f>summary:hover{background:var(--surface-2)}
 .vs-confirmed{color:var(--block);background:var(--block-bg)}
 .vs-false-positive{color:var(--na);background:var(--na-bg);text-decoration:line-through}
 .vs-needs-runtime{color:var(--warn);background:var(--warn-bg)}
+.vs-accepted{color:var(--na);background:var(--na-bg)}
 .flabel{font-size:12px;color:var(--muted);font-weight:600}
 .chip[disabled]{opacity:.45;cursor:default}
 .selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}

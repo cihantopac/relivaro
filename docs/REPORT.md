@@ -36,6 +36,7 @@ Each open finding has a **verification state** and a **remediation path**, shown
 | Confirmed | Reviewed in code and real, or observed by running a project tool (a failing test, a type error) |
 | False positive | Reviewed in code and not a problem; nothing to change |
 | Needs verification | The reviewer needs runtime evidence before deciding |
+| Accepted risk | Real, but the user explicitly accepted the risk; no change planned. Not struck through, because the finding stands |
 
 | Remediation | Meaning |
 | --- | --- |
@@ -67,6 +68,9 @@ pages), the text is selected so you can press Ctrl+C / ⌘C, and *Download .md* 
 ([schema](../schemas/review.schema.json)) and re-renders the report. The raw detection stays visible next to the
 verdict, with reviewer, time, justification and evidence locations. A verdict applies only to a finding with the same
 id and fingerprint; later runs show verdicts recorded for the same code in an earlier run, labelled with that run.
+False positives and accepted risks leave the action-center counts and *Fix first*, but stay in the explorer under
+their verification filter. Release gates are computed from detection and ignore verdicts, so an accepted risk still
+counts in `relivaro release`; use a baseline (`relivaro baseline`) when an accepted finding should stop gating.
 
 **Opening the report.** The terminal summary and `--json --compact` output print the absolute report path and the
 open command for the platform; `--open` (on analysis commands and `relivaro report`) opens it in the default browser.

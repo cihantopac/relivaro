@@ -602,7 +602,8 @@ function samePath(a: string, b: string): boolean {
 const reviewCmd: Command = {
   spec: {
     name: 'review',
-    summary: 'Record verified verdicts (confirmed, false positive, needs runtime) for findings of a run',
+    summary:
+      'Record verified verdicts (confirmed, false positive, needs runtime, accepted risk) for findings of a run',
     usage: 'relivaro review <add|list> [--finding <ids>] [--verdict <v>] [--reason <text>] [options]',
     description: [
       'Subcommands:',
@@ -622,7 +623,8 @@ const reviewCmd: Command = {
         type: 'string',
         value: '<verdict>',
         choices: VERDICTS,
-        description: 'add: confirmed, false-positive or needs-runtime.',
+        description:
+          'add: confirmed, false-positive, needs-runtime or accepted (an explicitly accepted risk).',
       },
       {
         name: 'reason',
@@ -691,7 +693,7 @@ const reviewCmd: Command = {
         );
       else {
         out.print(
-          `Recorded ${new Set(p.opts.finding as string[]).size} review(s) for run ${run.runId}: ${summary.confirmed} confirmed, ${summary.falsePositive} false positive, ${summary.needsRuntime} need runtime verification, ${summary.unreviewed} not reviewed.`,
+          `Recorded ${new Set(p.opts.finding as string[]).size} review(s) for run ${run.runId}: ${summary.confirmed} confirmed, ${summary.falsePositive} false positive, ${summary.needsRuntime} need runtime verification, ${summary.accepted} accepted, ${summary.unreviewed} not reviewed.`,
         );
         if (files.html) out.print(`HTML report updated: ${files.html}`);
       }

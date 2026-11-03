@@ -179,6 +179,29 @@ describe('review artifact', () => {
     expect(md).toContain('**Status:** detected, not reviewed');
   });
 
+  it('records an accepted risk, counts it apart and reports it as accepted', async () => {
+    const { ws, run } = await auditedProject();
+    const yaml = run.findings.find((f) => f.ruleId === 'sec/unsafe-deserialization')!;
+    const file = recordReview(ws, run, {
+      findingIds: [yaml.id],
+      verdict: 'accepted',
+      justification: 'static site, uptime check covers it',
+    });
+    const index = reviewIndex(run, file);
+    const open = run.findings.filter((f) => f.status === 'open').length;
+    expect(reviewSummary(run, index)).toEqual({
+      confirmed: 0,
+      falsePositive: 0,
+      needsRuntime: 0,
+      accepted: 1,
+      unreviewed: open - 1,
+    });
+    expect(toMarkdown(run, { review: index })).toContain('**Status:** accepted risk (agent review by agent)');
+    const html = toHtml(run, { review: index });
+    expect(html).toContain('"verdict":"accepted"');
+    expect(html).toContain('"reason":"accepted"');
+  });
+
   it('carries verdicts to later runs only for the same finding, and labels where they came from', async () => {
     const { ws, run } = await auditedProject();
     const [a, b] = run.findings;

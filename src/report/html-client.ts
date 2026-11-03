@@ -9,7 +9,7 @@ var P = JSON.parse(document.getElementById('data').textContent);
 var D = P.run, X = P.extra || {}, I = P.i18n;
 var REV = P.review || {}, REM = P.rem || {}, REMTXT = P.remText || {};
 var REM_KINDS = ['deterministic', 'agent', 'manual'];
-var VSTATES = ['detected', 'confirmed', 'false-positive', 'needs-runtime'];
+var VSTATES = ['detected', 'confirmed', 'false-positive', 'needs-runtime', 'accepted'];
 var SEV = ['critical', 'high', 'medium', 'low', 'info'];
 var CATS = ['security', 'supply-chain', 'reliability', 'performance', 'quality', 'testing', 'release'];
 var SEV_W = { critical: 16, high: 8, medium: 4, low: 2, info: 1 };
@@ -274,11 +274,11 @@ function actionCenter() {
   return card(t('ac.title'), t('ac.hint'), [tiles, el('div', { cls: 'ac-foot' }, [fixFirst(), steps])]);
 }
 
-/* The three most severe root causes (rules) among open findings that were not reviewed as false positives. */
+/* The three most severe root causes (rules) among open findings not reviewed as false positives or accepted risks. */
 function priorities() {
   var groups = {}, order = [];
   open.forEach(function (f) {
-    if (vstate(f) === 'false-positive') return;
+    if (vstate(f) === 'false-positive' || vstate(f) === 'accepted') return;
     if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); }
     groups[f.ruleId].push(f);
   });

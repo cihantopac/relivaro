@@ -19,6 +19,7 @@ const REVIEW_LABEL: Record<ReviewEntry['verdict'], string> = {
   confirmed: 'confirmed',
   'false-positive': 'false positive',
   'needs-runtime': 'needs runtime verification',
+  accepted: 'accepted risk',
 };
 
 export function toMarkdown(

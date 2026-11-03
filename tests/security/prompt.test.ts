@@ -159,6 +159,25 @@ describe('fix prompt', () => {
   });
 });
 
+describe('accepted risk', () => {
+  it("lists accepted among the verdicts and asks for the user's explicit decision", () => {
+    const p = build([
+      {
+        finding: finding({ id: 'RLV-55555555' }),
+        rem: remediationOf(finding({}), { verdict: 'accepted' }),
+        review: { verdict: 'accepted', justification: 'static site', reviewer: { kind: 'human' } },
+      },
+    ]);
+    expect(p).toContain('<confirmed|false-positive|needs-runtime|accepted>');
+    expect(p).toContain('Use accepted only when the user explicitly decides to accept the risk.');
+    expect(p).toContain('- Status: accepted risk (human review): static site');
+    expect(remediationOf(finding({ fixer: 'py-yaml-safe-load' }), { verdict: 'accepted' })).toEqual({
+      kind: 'none',
+      reason: 'accepted',
+    });
+  });
+});
+
 describe('remediation', () => {
   it('separates deterministic, agent-assisted and manual remediation', () => {
     expect(remediationOf(finding({ fixer: 'py-yaml-safe-load' }))).toMatchObject({

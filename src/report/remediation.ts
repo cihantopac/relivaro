@@ -27,7 +27,8 @@ export type RemediationReason =
   | 'payment'
   | 'container'
   | 'reviewed-runtime'
-  | 'false-positive';
+  | 'false-positive'
+  | 'accepted';
 
 export interface Remediation {
   kind: RemediationKind;
@@ -82,10 +83,12 @@ export const REMEDIATION_TEXT: Record<RemediationReason, string> = {
   container: 'container runtime change; needs deployment testing and approval',
   'reviewed-runtime': 'reviewer asked for runtime verification first',
   'false-positive': 'reviewed as a false positive; no change needed',
+  accepted: 'risk accepted by a reviewer; no change planned',
 };
 
 export function remediationOf(f: Finding, review?: Pick<ReviewEntry, 'verdict'>): Remediation {
   if (review?.verdict === 'false-positive') return { kind: 'none', reason: 'false-positive' };
+  if (review?.verdict === 'accepted') return { kind: 'none', reason: 'accepted' };
   if (review?.verdict === 'needs-runtime') return { kind: 'manual', reason: 'reviewed-runtime' };
   const fixer = f.fixer ? findFixer(f.fixer) : undefined;
   if (fixer)

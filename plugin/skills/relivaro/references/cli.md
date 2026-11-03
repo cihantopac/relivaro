@@ -358,7 +358,7 @@ relivaro compare [base=previous] [head=latest] [--path <project>] [--fail-on <se
 
 ## `relivaro review`
 
-Record verified verdicts (confirmed, false positive, needs runtime) for findings of a run.
+Record verified verdicts (confirmed, false positive, needs runtime, accepted risk) for findings of a run.
 
 ```
 relivaro review <add|list> [--finding <ids>] [--verdict <v>] [--reason <text>] [options]
@@ -377,7 +377,7 @@ what was actually checked in the code; unreviewed findings stay "detected".
 | Option | Description |
 | --- | --- |
 | `--finding <ids>` | add: finding id(s) of the run. |
-| `--verdict <verdict>` | add: confirmed, false-positive or needs-runtime. |
+| `--verdict <verdict>` | add: confirmed, false-positive, needs-runtime or accepted (an explicitly accepted risk). |
 | `--reason <text>` | add: short justification (required). |
 | `--evidence <file:line>` | add: code locations that support the verdict (project-relative). |
 | `--severity <severity>` | add: severity the reviewer considers appropriate, if different. |
