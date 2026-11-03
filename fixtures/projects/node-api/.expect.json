@@ -17,7 +17,7 @@
     { "rule": "sec/compose-insecure-service", "file": "docker-compose.yml", "line": 10 },
     { "rule": "sec/gha-pwn-request", "file": ".github/workflows/ci.yml", "line": 10 },
     { "rule": "sec/gha-unpinned-action", "file": ".github/workflows/ci.yml", "line": 13 },
-    { "rule": "sec/gha-unpinned-action", "file": ".github/workflows/ci.yml", "line": 10 },
+    { "rule": "sec/gha-unpinned-first-party-action", "file": ".github/workflows/ci.yml", "line": 10 },
     { "rule": "sec/gha-script-injection", "file": ".github/workflows/ci.yml", "line": 16 },
     { "rule": "sec/gha-excessive-permissions", "file": ".github/workflows/ci.yml", "line": 2 },
     { "rule": "rel/gha-no-timeout", "file": ".github/workflows/ci.yml", "line": 7 }

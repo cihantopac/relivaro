@@ -11889,6 +11889,27 @@ function findLine(lines, re, from = 0) {
   for (let i2 = from; i2 < lines.length; i2++) if (re.test(lines[i2])) return i2 + 1;
   return 1;
 }
+function unpinnedSteps(ctx) {
+  const wf = loadWorkflow(ctx);
+  if (!wf) return null;
+  const thirdParty = [];
+  const firstParty = [];
+  for (const s of wf.steps) {
+    if (!s.uses || s.uses.startsWith("./") || s.uses.startsWith("docker://")) continue;
+    const [name2, ref] = s.uses.split("@");
+    if (!ref || /^[0-9a-f]{40}$/.test(ref)) continue;
+    if (FIRST_PARTY_ACTION.test(name2)) {
+      if (!firstParty.includes(s.uses)) firstParty.push(s.uses);
+      continue;
+    }
+    thirdParty.push({
+      line: s.line,
+      message: `\`${s.uses}\` is pinned to a mutable ref.`,
+      facts: { action: name2, ref }
+    });
+  }
+  return { thirdParty, firstParty };
+}
 function dockerInstructions(text) {
   const out2 = [];
   const lines = text.split(/\r?\n/);
@@ -11906,7 +11927,7 @@ function dockerInstructions(text) {
   }
   return out2;
 }
-var import_yaml, SECRET_SCAN_SKIP, SECRET_HINT, GENERIC_HINT, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
+var import_yaml, SECRET_SCAN_SKIP, SECRET_HINT, GENERIC_HINT, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, ghaUnpinnedFirstParty, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
 var init_files2 = __esm({
   "src/rules/security/files.ts"() {
     "use strict";
@@ -12084,33 +12105,35 @@ var init_files2 = __esm({
       fixer: "gha-pin-action",
       appliesTo: (f) => f.kind === "workflow",
       check(ctx) {
-        const wf = loadWorkflow(ctx);
-        if (!wf) return [];
-        const out2 = [];
-        const firstParty = [];
-        for (const s of wf.steps) {
-          if (!s.uses || s.uses.startsWith("./") || s.uses.startsWith("docker://")) continue;
-          const [name2, ref] = s.uses.split("@");
-          if (!ref || /^[0-9a-f]{40}$/.test(ref)) continue;
-          if (FIRST_PARTY_ACTION.test(name2)) {
-            firstParty.push(s.uses);
-            continue;
-          }
-          out2.push({
-            line: s.line,
-            message: `\`${s.uses}\` is pinned to a mutable ref.`,
-            facts: { action: name2, ref }
-          });
-        }
-        if (firstParty.length)
-          out2.push({
+        return unpinnedSteps(ctx)?.thirdParty ?? [];
+      }
+    };
+    ghaUnpinnedFirstParty = {
+      kind: "file",
+      id: "sec/gha-unpinned-first-party-action",
+      title: "GitHub-owned action not pinned to a commit SHA",
+      category: "supply-chain",
+      severity: "low",
+      confidence: "high",
+      cwe: ["CWE-829", "CWE-1357"],
+      owasp: [OWASP.A03],
+      description: "A GitHub-owned action (`actions/*`, `github/*`) is referenced by a mutable tag instead of a full commit SHA. GitHub controls these repositories, so the risk is lower than for third-party actions, but a moved tag still changes what runs in CI (OpenSSF Scorecard: Pinned-Dependencies).",
+      impact: "The code that runs with your CI secrets can change without a change in your repository.",
+      recommendation: "Pin to the full 40-character commit SHA and keep the version in a comment (`uses: actions/checkout@<sha> # v4.2.2`); let Dependabot/Renovate update the pins.",
+      verification: "Every `uses:` of a GitHub-owned action ends in a 40-hex-character SHA.",
+      fixer: "gha-pin-action",
+      appliesTo: (f) => f.kind === "workflow",
+      check(ctx) {
+        const firstParty = unpinnedSteps(ctx)?.firstParty ?? [];
+        if (!firstParty.length) return [];
+        return [
+          {
             line: findLine(ctx.lines, /uses:\s*(?:actions|github)\//),
-            message: `GitHub-owned actions use mutable tags: ${[...new Set(firstParty)].join(", ")}.`,
-            severity: "low",
-            facts: { actions: [...new Set(firstParty)].join(",") },
-            anchor: `first-party:${[...new Set(firstParty)].sort().join(",")}`
-          });
-        return out2;
+            message: `GitHub-owned actions use mutable tags: ${firstParty.join(", ")}.`,
+            facts: { actions: firstParty.join(",") },
+            anchor: `first-party:${[...firstParty].sort().join(",")}`
+          }
+        ];
       }
     };
     WRITES_NEEDED = /softprops\/action-gh-release|peter-evans\/create-pull-request|actions\/deploy-pages|actions\/create-release|ncipollo\/release-action|stefanzweifel\/git-auto-commit|changesets\/action|release-please|semantic-release|gh release|gh pr (?:create|merge|comment)|git push|actions\/github-script|docker\/login-action|github\.token|GITHUB_TOKEN|codecov|upload-sarif|dependabot|pages/;
@@ -12605,6 +12628,7 @@ var init_files2 = __esm({
       ghaScriptInjection,
       ghaPwnRequest,
       ghaUnpinned,
+      ghaUnpinnedFirstParty,
       ghaPermissions,
       ghaTimeout,
       dockerRoot,
@@ -22360,11 +22384,10 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     const text = project.files.read(file.path);
     if (text === void 0) continue;
     if (applicableFileRules.length) {
-      const lines = text.split(/\r?\n/);
+      const fctx = { project, file, text, lines: text.split(/\r?\n/) };
       for (const rule of applicableFileRules) {
         try {
-          for (const hit of rule.check({ project, file, text, lines }))
-            builder.add(rule, { ...hit, file: hit.file ?? file.path });
+          for (const hit of rule.check(fctx)) builder.add(rule, { ...hit, file: hit.file ?? file.path });
         } catch (e) {
           ruleErrors.push({ rule: rule.id, file: file.path, message: e.message });
         }

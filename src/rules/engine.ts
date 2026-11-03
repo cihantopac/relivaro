@@ -286,11 +286,11 @@ export async function analyze(
     const text = project.files.read(file.path);
     if (text === undefined) continue;
     if (applicableFileRules.length) {
-      const lines = text.split(/\r?\n/);
+      // One context per file, shared by its rules, so per-file parse caches (e.g. workflows) are reused.
+      const fctx = { project, file, text, lines: text.split(/\r?\n/) };
       for (const rule of applicableFileRules) {
         try {
-          for (const hit of rule.check({ project, file, text, lines }))
-            builder.add(rule, { ...hit, file: hit.file ?? file.path });
+          for (const hit of rule.check(fctx)) builder.add(rule, { ...hit, file: hit.file ?? file.path });
         } catch (e) {
           ruleErrors.push({ rule: rule.id, file: file.path, message: (e as Error).message });
         }
