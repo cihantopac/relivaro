@@ -256,7 +256,9 @@ describe('inline annotations', () => {
   it('reports show an inline acceptance with its reason', async () => {
     const { toMarkdown } = await import('../../src/report/markdown.js');
     const { toSarif } = await import('../../src/report/sarif.js');
-    const run = await auditSource(fn('// relivaro-accept-next-line perf/query-in-loop: bounded by plan size'));
+    const run = await auditSource(
+      fn('// relivaro-accept-next-line perf/query-in-loop: bounded by plan size'),
+    );
     expect(toMarkdown(run)).toContain('Accepted in code: bounded by plan size');
     const result = (toSarif(run) as any).runs[0].results.find((r: any) => r.ruleId === 'perf/query-in-loop');
     expect(result.suppressions).toEqual([

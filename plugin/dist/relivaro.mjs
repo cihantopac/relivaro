@@ -1718,7 +1718,7 @@ function isConstantMap(n, lang) {
     if (e.type === "parenthesized_expression") return formatsParam(e.namedChildren[0]);
     if (e.type === "template_string")
       return e.namedChildren.every(
-        (c) => !c || c.type !== "template_substitution" || formatsParam(c.namedChildren[0])
+        (c) => c?.type !== "template_substitution" || formatsParam(c.namedChildren[0])
       );
     if (e.type === "binary_expression" && e.childForFieldName("operator")?.text === "+")
       return formatsParam(e.childForFieldName("left")) && formatsParam(e.childForFieldName("right"));
