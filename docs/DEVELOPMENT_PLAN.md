@@ -9,7 +9,7 @@ progress, run limits with partial results (exit code 4) and graceful SIGTERM, `-
 controls, richer SARIF, a programmatic API, OSV cache/mirror/offline mode, a coverage line, `rules list --json`, a
 baseline hint and `--since`. Hosted dry run on a copy of frameva-engines with `--lockdown --root-label repo
 --max-duration 60 --format sarif,md`: exit 0, 8 findings, no absolute path in any output, SARIF base URI
-`file:///repo/`. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall; 326 tests.
+`file:///repo/`. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall; 333 tests.
 Next: 1.6.0 (new rule families).
 
 ## Milestones (internal)

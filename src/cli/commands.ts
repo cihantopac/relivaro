@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { BASELINE_FILE, type BaselineFile, gateFailed, type RunRecord, runAudit } from '../audit.js';
 import type { CheckKind } from '../checks/exec.js';
 import { diffSpecs, loadSpec, validateSpec } from '../contract/openapi.js';
@@ -232,7 +232,6 @@ function groupBy<T>(items: T[], key: (x: T) => string): Map<string, T[]> {
   return m;
 }
 
-/** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
 /** A positive budget flag (a whole number when `integer`); 0, negative or non-numeric values are usage errors. */
 function positiveOpt(p: Parsed, name: string, integer: boolean, map: (n: number) => number = (n) => n) {
   const v = p.opts[name];
@@ -257,11 +256,28 @@ function snippetLinesOpt(v: unknown): number | undefined {
   return n;
 }
 
+/** Report paths under the project root rewritten to start with the root label (`<label>/.relivaro/runs/…`). */
+function labelPaths(files: Record<string, string>, root: string, label: string): Record<string, string> {
+  const roots = [resolve(root)];
+  try {
+    roots.push(realpathSync.native(resolve(root)));
+  } catch {
+    /* the root was already read; keep the resolved path */
+  }
+  return Object.fromEntries(
+    Object.entries(files).map(([k, v]) => {
+      const r = roots.find((x) => isInside(x, v));
+      return [k, r ? `${label}/${relative(r, v).split(sep).join('/')}` : v];
+    }),
+  );
+}
+
 function reportDir(files: Record<string, string>): string | null {
   const any = files.json ?? files.html ?? files.md ?? files.sarif;
   return any ? dirname(any) : null;
 }
 
+/** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
 export function compactRun(
   run: RunRecord,
   maxFindings = 30,
@@ -462,12 +478,15 @@ async function analysisCommand(
         exitCode,
       );
   if (!p.opts['no-write']) out.event({ type: 'stage', stage: 'report', state: 'end', elapsedMs: elapsed() });
+  // With --root-label, report paths inside the project and the path in next-step hints show the label too.
+  const label = p.opts['root-label'] as string | undefined;
+  const shown = label ? labelPaths(files, root, label) : files;
   if (out.json)
     out.print(
       // Compact output is for agents: unindented, so a large run stays small enough to read in one go.
       p.opts.compact
         ? JSON.stringify(
-            compactRun(run, 30, files, p.opts['no-write'] ? {} : effectiveReview(workspace, run)),
+            compactRun(run, 30, shown, p.opts['no-write'] ? {} : effectiveReview(workspace, run)),
           )
         : JSON.stringify(run, null, 2),
     );
@@ -475,10 +494,10 @@ async function analysisCommand(
     printRunSummary(
       out,
       run,
-      files,
+      shown,
       Number(p.opts['max-findings'] ?? 15),
-      openCommand,
-      p.positionals[0] ?? '.',
+      label ? undefined : openCommand,
+      label ?? p.positionals[0] ?? '.',
     );
   if (p.opts.open && files.html) openFile(files.html);
   return exitCode;

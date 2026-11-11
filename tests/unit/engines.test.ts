@@ -597,3 +597,32 @@ describe('archive entry paths', () => {
     expect(hits).toHaveLength(1);
   });
 });
+
+describe('deferred minors', () => {
+  it('tar extractall without filter= is not reported when the project requires Python 3.14+', async () => {
+    const code =
+      'import os, tarfile\n\ndef unpack(path, dest):\n    with tarfile.open(path) as tar:\n        tar.extractall(dest)\n';
+    expect(await ruleHits(makeTree({ 'app.py': code }), 'sec/path-traversal')).toHaveLength(1);
+    const modern = makeTree({
+      'app.py': code,
+      'pyproject.toml': '[project]\nname = "x"\nrequires-python = ">=3.14"\n',
+    });
+    expect(await ruleHits(modern, 'sec/path-traversal')).toEqual([]);
+  });
+
+  it('a namelist() loop variable in one function does not taint a same-named parameter elsewhere', async () => {
+    const code = [
+      'import zipfile',
+      '',
+      'def listing(z):',
+      '    for name in z.namelist():',
+      '        print(name)',
+      '',
+      'def write_report(name):',
+      '    with open(name, "w") as f:',
+      '        f.write("ok")',
+      '',
+    ].join('\n');
+    expect(await ruleHits(makeTree({ 'app.py': code }), 'sec/path-traversal')).toEqual([]);
+  });
+});

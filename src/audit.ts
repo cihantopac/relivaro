@@ -21,7 +21,7 @@ import { changedLines } from './fs/changed.js';
 import { classify, FileSet, runGit } from './fs/files.js';
 import { discover, type ProjectProfile } from './intel/discover.js';
 import { assessRelease, type ReleaseAssessment } from './release/readiness.js';
-import { credentialFreeUrl } from './report/sarif.js';
+import { remoteForProvenance } from './report/sarif.js';
 import { analyze, FindingBuilder } from './rules/engine.js';
 import { RULES } from './rules/index.js';
 import type { ProjectContext } from './rules/types.js';
@@ -276,7 +276,7 @@ export async function runAudit(
       profile.vcs = {
         revisionId,
         ...(branch && branch !== 'HEAD' ? { branch } : {}),
-        ...(remote ? { repositoryUri: credentialFreeUrl(remote) } : {}),
+        ...(remote && remoteForProvenance(remote) ? { repositoryUri: remoteForProvenance(remote) } : {}),
       };
     }
   }

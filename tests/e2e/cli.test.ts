@@ -187,6 +187,19 @@ describe('relivaro CLI', () => {
     }
   });
 
+  it('--root-label also hides the project path in compact report paths and the summary', () => {
+    const own = materialize('python-app');
+    try {
+      const c = cli(['audit', own.dir, '--root-label', 'repo', '--json', '--compact']);
+      expect(c.stdout).not.toContain(own.dir);
+      expect(JSON.parse(c.stdout).reports).toMatch(/^repo\//);
+      const t = cli(['audit', own.dir, '--root-label', 'repo']);
+      expect(t.stdout).not.toContain(own.dir);
+    } finally {
+      own.cleanup();
+    }
+  });
+
   it('prints a coverage line for every run', () => {
     const a = cli(['audit', fx.dir, '--no-write']);
     expect(a.stdout).toMatch(/^Coverage: security \d+ rules\/\d+ files · /m);

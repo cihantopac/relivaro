@@ -669,3 +669,38 @@ describe('1.5 review fixes', () => {
     }
   });
 });
+
+describe('deferred minors (1.5)', () => {
+  it('a -next-line accept and a trailing accept on the same target line both apply', async () => {
+    const { parseSuppressions } = await import('../../src/rules/engine.js');
+    const s = parseSuppressions([
+      '// relivaro-accept-next-line perf/query-in-loop: sequential by design',
+      'run(); // relivaro-accept sec/xss: escaped upstream',
+    ]);
+    const line = s.accept.get(2)!;
+    expect(line.get('perf/query-in-loop')).toBe('sequential by design');
+    expect(line.get('sec/xss')).toBe('escaped upstream');
+  });
+
+  it('a local-path remote is not recorded as provenance', async () => {
+    const { remoteForProvenance } = await import('../../src/report/sarif.js');
+    expect(remoteForProvenance('/Users/me/repos/x.git')).toBeUndefined();
+    expect(remoteForProvenance('../x.git')).toBeUndefined();
+    expect(remoteForProvenance('file:///srv/x.git')).toBeUndefined();
+    expect(remoteForProvenance('https://u:t@github.com/x/y.git')).toBe('https://github.com/x/y.git');
+    expect(remoteForProvenance('git@github.com:x/y.git')).toBe('git@github.com:x/y.git');
+  });
+
+  it('SARIF leaves out a snippet whose line was truncated', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-long-'));
+    try {
+      writeFileSync(join(dir, 'a.js'), `eval(process.argv[2]); // ${'x'.repeat(300)}\n`);
+      const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true, useGit: false });
+      const r = (toSarif(run) as any).runs[0].results.find((x: any) => x.ruleId === 'sec/code-injection');
+      expect(r.locations[0].physicalLocation.region.snippet).toBeUndefined();
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

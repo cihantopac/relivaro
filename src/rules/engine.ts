@@ -112,7 +112,7 @@ interface Suppressions {
   file: { all: boolean; rules: Set<string> };
   lines: Map<number, { all: boolean; rules: Set<string>; reason?: string }>;
   /** Inline acceptances by line: the rule ids accepted on that line and the stated reason. */
-  accept: Map<number, { rules: Set<string>; reason: string }>;
+  accept: Map<number, Map<string, string>>;
   /** Malformed acceptance annotations: 1-based line numbers. */
   invalidAccept: number[];
 }
@@ -159,9 +159,12 @@ export function parseSuppressions(lines: string[]): Suppressions {
         const reason = (body?.[2] ?? '').replace(COMMENT_END, '').trim();
         if (!rules.size || reason.length < 3) s.invalidAccept.push(i + 1);
         else {
-          const entry = { rules, reason };
           // Narrower than relivaro-ignore: an acceptance covers exactly one line, its own or (-next-line) the next.
-          s.accept.set(a[1] === '-next-line' ? i + 2 : i + 1, entry);
+          // Two comments aimed at the same line (a -next-line above, a trailing one on it) both apply.
+          const target = a[1] === '-next-line' ? i + 2 : i + 1;
+          const byRule = s.accept.get(target) ?? new Map<string, string>();
+          for (const r of rules) byRule.set(r, reason);
+          s.accept.set(target, byRule);
         }
       }
     }
@@ -307,7 +310,8 @@ export class FindingBuilder {
       const sup = suppressedBy(notes, rule.id, line);
       if (sup) suppression = { kind: 'inline', reason: sup.reason };
       const acc = line !== undefined ? notes.accept.get(line) : undefined;
-      if (!suppression && acc?.rules.has(rule.id)) accepted = { reason: acc.reason, source: 'inline' };
+      const reason = acc?.get(rule.id);
+      if (!suppression && reason !== undefined) accepted = { reason, source: 'inline' };
     }
 
     const finding: Finding = {

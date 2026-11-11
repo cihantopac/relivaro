@@ -160,7 +160,7 @@ also ignores the repository's `relivaro.config.json` and inline `relivaro-ignore
 
 ## Evidence
 
-- **326 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
+- **333 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
 - **Detection corpus:** 10 fixture projects, 172 expected findings, **precision and recall 100%**, enforced in CI.
   A controlled corpus — real code will produce false positives and misses.
 - **Real repositories:** validated read-only on 5 production codebases; every significant finding checked by hand

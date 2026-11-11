@@ -3357,6 +3357,10 @@ function hostIsFixed(arg, lang) {
   const t2 = arg.text.replace(/^[fFbBrR]+(?=['"])/, "");
   return /^[`'"]https?:\/\/[^/$`'"{}]+\//.test(t2) || lang === "php" && /^['"]https?:\/\/[^/$'"{}]+\//.test(t2);
 }
+function requiresPython314(project) {
+  const m = /requires-python\s*=\s*["']\s*>=?\s*3\.(\d+)/.exec(project.files.readAny("pyproject.toml") ?? "");
+  return !!m && Number(m[1]) >= 14;
+}
 function archiveEntryName(arg, lang, source) {
   if (lang === "php") return false;
   if (!(isJs(lang) ? ARCHIVE_MODULE_JS : ARCHIVE_MODULE_PY).test(source)) return false;
@@ -3365,8 +3369,9 @@ function archiveEntryName(arg, lang, source) {
   const loopVars = /* @__PURE__ */ new Set();
   if (lang === "python") {
     let fn = arg;
-    while (fn?.parent) fn = fn.parent;
+    while (fn?.parent && fn.type !== "function_definition") fn = fn.parent;
     walk2(fn, (n) => {
+      if (n !== fn && n.type === "function_definition") return false;
       if (n.type !== "for_statement") return;
       const right = n.childForFieldName("right");
       if (right && /\.(?:namelist|infolist|getmembers|getnames)\(\s*\)$/.test(right.text))
@@ -3421,7 +3426,7 @@ function redirectValidated(arg, call) {
   }
   return false;
 }
-var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, ARCHIVE_MODULE_JS, ARCHIVE_MODULE_PY, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
+var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, ARCHIVE_MODULE_JS, ARCHIVE_MODULE_PY, TARFILE_IMPORT, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
 var init_code = __esm({
   "src/rules/security/code.ts"() {
     "use strict";
@@ -3809,7 +3814,7 @@ var init_code = __esm({
             facts: { sink: c.callee, ...fromArchive ? { archiveEntry: true } : {} }
           });
         }
-        if (lang === "python" && /^\s*(?:import\s+tarfile|from\s+tarfile\s+import)/m.test(ctx.source)) {
+        if (lang === "python" && TARFILE_IMPORT.test(ctx.source) && !requiresPython314(ctx.project)) {
           for (const c of ctx.calls)
             if (c.name === "extractall" && !c.kwargs.has("filter") && !/zip/i.test(c.receiver ?? ""))
               out2.push({
@@ -3843,7 +3848,8 @@ var init_code = __esm({
     ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
     ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
     ARCHIVE_MODULE_JS = /\bfrom\s+['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|@zip\.js\/zip\.js|fflate|node-7z)['"]|\brequire\(\s*['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|fflate|node-7z)['"]\s*\)/;
-    ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:zipfile|tarfile)|from\s+(?:zipfile|tarfile)\s+import)\b/m;
+    ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*(?:zipfile|tarfile)\b|from\s+(?:zipfile|tarfile)\s+import)/m;
+    TARFILE_IMPORT = /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*tarfile\b|from\s+tarfile\s+import)/m;
     PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
     openRedirect = {
       kind: "ast",
@@ -12183,6 +12189,19 @@ function scriptsOf(dir) {
     return {};
   }
 }
+function packageGlob(glob) {
+  let re = "";
+  for (let i2 = 0; i2 < glob.length; i2++) {
+    const c = glob[i2];
+    if (c === "*" && glob[i2 + 1] === "*") {
+      re += ".*";
+      i2++;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
 function findWorkspaceRoot(auditRoot, opts = {}) {
   const start2 = realOrResolved(auditRoot);
   const maxDepth = opts.maxDepth ?? 6;
@@ -12194,7 +12213,7 @@ function findWorkspaceRoot(auditRoot, opts = {}) {
     const globs = workspaceGlobs(dir);
     if (!globs.length) continue;
     const rel = relative2(dir, start2).split(sep).join("/");
-    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
+    if (!(globs.includes(rel) || globs.some((g) => packageGlob(g).test(rel)))) continue;
     const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
     const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
     const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);
@@ -12222,7 +12241,6 @@ var init_ancestors = __esm({
   "src/fs/ancestors.ts"() {
     "use strict";
     import_yaml = __toESM(require_dist(), 1);
-    init_glob();
     ANCESTOR_META = [
       "package.json",
       "pnpm-workspace.yaml",
@@ -18359,7 +18377,14 @@ function regionText(snippet, start2, end) {
     const m = /^\s*(\d+) \| (.*)$/.exec(l);
     if (m && Number(m[1]) >= start2 && Number(m[1]) <= end) picked.push(m[2]);
   }
+  if (picked.some((l) => l.length > 220 && l.endsWith("\u2026"))) return void 0;
   return picked.length ? picked.join("\n") : void 0;
+}
+function remoteForProvenance(url) {
+  const u = url.trim();
+  if (!u || /^file:/i.test(u)) return void 0;
+  const network = /^[a-z][a-z0-9+.-]*:\/\//i.test(u) || /^[\w.-]+@[\w.-]+:/.test(u);
+  return network ? credentialFreeUrl(u) : void 0;
 }
 function credentialFreeUrl(url) {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, "$1");
@@ -22708,8 +22733,10 @@ function parseSuppressions(lines) {
         const reason = (body2?.[2] ?? "").replace(COMMENT_END, "").trim();
         if (!rules2.size || reason.length < 3) s.invalidAccept.push(i2 + 1);
         else {
-          const entry2 = { rules: rules2, reason };
-          s.accept.set(a[1] === "-next-line" ? i2 + 2 : i2 + 1, entry2);
+          const target = a[1] === "-next-line" ? i2 + 2 : i2 + 1;
+          const byRule = s.accept.get(target) ?? /* @__PURE__ */ new Map();
+          for (const r of rules2) byRule.set(r, reason);
+          s.accept.set(target, byRule);
         }
       }
     }
@@ -22830,7 +22857,8 @@ var FindingBuilder = class {
       const sup = suppressedBy(notes, rule.id, line);
       if (sup) suppression = { kind: "inline", reason: sup.reason };
       const acc = line !== void 0 ? notes.accept.get(line) : void 0;
-      if (!suppression && acc?.rules.has(rule.id)) accepted = { reason: acc.reason, source: "inline" };
+      const reason = acc?.get(rule.id);
+      if (!suppression && reason !== void 0) accepted = { reason, source: "inline" };
     }
     const finding = {
       id: findingId(fp),
@@ -23094,7 +23122,7 @@ async function runAudit(opts) {
       profile.vcs = {
         revisionId,
         ...branch && branch !== "HEAD" ? { branch } : {},
-        ...remote ? { repositoryUri: credentialFreeUrl(remote) } : {}
+        ...remote && remoteForProvenance(remote) ? { repositoryUri: remoteForProvenance(remote) } : {}
       };
     }
   }

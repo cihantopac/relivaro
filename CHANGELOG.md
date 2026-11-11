@@ -54,6 +54,18 @@ anything new or different.
 - **`--since <git-ref>`** shows only findings on lines changed since the ref (new, renamed, copied, binary and
   untracked files count in full) while still analysing the whole tree. Without git it is a usage error.
 
+### Fixed
+
+- `sec/path-traversal` recognises `import os, tarfile`, skips `extractall()` without `filter=` when the project
+  requires Python 3.14 or later (where `filter='data'` is the default), and only treats `namelist()` loop variables of
+  the same function as archive entry names.
+- A workspace glob such as `packages/*` matches the package directory itself, not a directory below it, when Relivaro
+  looks for the workspace root above the audit root.
+- Two `relivaro-accept` comments aimed at the same line (one `-next-line` above it, one trailing on it) both apply.
+- `--root-label` also hides the project path in report paths of the summary and `--json --compact`, and a local-path
+  `origin` remote is no longer recorded as SARIF provenance.
+- A SARIF `region.snippet` is left out when its source line was too long to show in full.
+
 ### Changed
 
 - `--json --compact`: `reports` is the directory the reports were written to, or `null` with `--no-write`; `partial`

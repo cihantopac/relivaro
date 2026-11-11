@@ -1,7 +1,6 @@
 import { lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { parse as parseYaml } from 'yaml';
-import { matchesAny } from '../core/glob.js';
 
 /**
  * The only file names Relivaro reads above the audit root. They describe the workspace a package belongs to
@@ -122,6 +121,24 @@ function scriptsOf(dir: string): Record<string, string> {
 }
 
 /**
+ * A workspace glob as package managers read it: it names package directories, so `packages/*` matches
+ * `packages/foo` but not `packages/foo/src`; `**` spans directories.
+ */
+function packageGlob(glob: string): RegExp {
+  let re = '';
+  for (let i = 0; i < glob.length; i++) {
+    const c = glob[i]!;
+    if (c === '*' && glob[i + 1] === '*') {
+      re += '.*';
+      i++;
+    } else if (c === '*') re += '[^/]*';
+    else if (c === '?') re += '[^/]';
+    else re += c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp(`^${re}$`);
+}
+
+/**
  * The nearest ancestor (at most `maxDepth` levels up, default 6) whose workspace globs (`pnpm-workspace.yaml`
  * `packages`, or `package.json` `workspaces`) include the audit root. An ancestor that merely has a
  * `package.json` (an archive unpacked under `/work`, the home directory) is not a workspace root.
@@ -137,7 +154,7 @@ export function findWorkspaceRoot(auditRoot: string, opts: { maxDepth?: number }
     const globs = workspaceGlobs(dir);
     if (!globs.length) continue;
     const rel = relative(dir, start).split(sep).join('/');
-    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
+    if (!(globs.includes(rel) || globs.some((g) => packageGlob(g).test(rel)))) continue;
     const lockfiles = LOCKFILES.filter((n) => hasMeta(dir, n));
     const out: WorkspaceRoot = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
     const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);

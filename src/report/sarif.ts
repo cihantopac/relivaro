@@ -33,7 +33,20 @@ function regionText(snippet: string | undefined, start: number, end: number): st
     const m = /^\s*(\d+) \| (.*)$/.exec(l);
     if (m && Number(m[1]) >= start && Number(m[1]) <= end) picked.push(m[2]!);
   }
+  // A line cut at 220 characters ends with an ellipsis: not the real region text, so leave it out.
+  if (picked.some((l) => l.length > 220 && l.endsWith('…'))) return undefined;
   return picked.length ? picked.join('\n') : undefined;
+}
+
+/**
+ * The `origin` remote as SARIF provenance: a network URL without credentials, or undefined for a local path or
+ * `file:` URL (it would reveal a path on the scanning machine).
+ */
+export function remoteForProvenance(url: string): string | undefined {
+  const u = url.trim();
+  if (!u || /^file:/i.test(u)) return undefined;
+  const network = /^[a-z][a-z0-9+.-]*:\/\//i.test(u) || /^[\w.-]+@[\w.-]+:/.test(u);
+  return network ? credentialFreeUrl(u) : undefined;
 }
 
 /** A remote URL without user name, password or token (`https://user:tok@host/x` → `https://host/x`). */

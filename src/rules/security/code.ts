@@ -591,8 +591,9 @@ const pathTraversal: AstRule = {
         facts: { sink: c.callee, ...(fromArchive ? { archiveEntry: true } : {}) },
       });
     }
-    // `tarfile` extracts `../` and absolute member names unless a `filter=` (e.g. `'data'`) is given.
-    if (lang === 'python' && /^\s*(?:import\s+tarfile|from\s+tarfile\s+import)/m.test(ctx.source))
+    // `tarfile` extracts `../` and absolute member names unless a `filter=` (e.g. `'data'`) is given; Python 3.14
+    // made `filter='data'` the default, so a project that requires 3.14+ is safe without it.
+    if (lang === 'python' && TARFILE_IMPORT.test(ctx.source) && !requiresPython314(ctx.project))
       for (const c of ctx.calls)
         if (c.name === 'extractall' && !c.kwargs.has('filter') && !/zip/i.test(c.receiver ?? ''))
           out.push({
@@ -627,7 +628,15 @@ const ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name
 
 const ARCHIVE_MODULE_JS =
   /\bfrom\s+['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|@zip\.js\/zip\.js|fflate|node-7z)['"]|\brequire\(\s*['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|fflate|node-7z)['"]\s*\)/;
-const ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:zipfile|tarfile)|from\s+(?:zipfile|tarfile)\s+import)\b/m;
+const ARCHIVE_MODULE_PY =
+  /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*(?:zipfile|tarfile)\b|from\s+(?:zipfile|tarfile)\s+import)/m;
+const TARFILE_IMPORT = /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*tarfile\b|from\s+tarfile\s+import)/m;
+
+/** The project declares `requires-python = ">=3.14"` (or higher) in pyproject.toml. */
+function requiresPython314(project: { files: { readAny(p: string): string | undefined } }): boolean {
+  const m = /requires-python\s*=\s*["']\s*>=?\s*3\.(\d+)/.exec(project.files.readAny('pyproject.toml') ?? '');
+  return !!m && Number(m[1]) >= 14;
+}
 
 /**
  * The path contains an archive entry name (`entry.path`, `header.name`, `member.name`, a `namelist()` element) in a
@@ -640,9 +649,11 @@ function archiveEntryName(arg: Node, lang: Language, source: string): boolean {
   let hit = false;
   const loopVars = new Set<string>();
   if (lang === 'python') {
+    // Only loops in the same function (or module level when the path is built there) name archive entries.
     let fn: Node | null = arg;
-    while (fn?.parent) fn = fn.parent;
+    while (fn?.parent && fn.type !== 'function_definition') fn = fn.parent;
     walk(fn!, (n) => {
+      if (n !== fn && n.type === 'function_definition') return false;
       if (n.type !== 'for_statement') return;
       const right = n.childForFieldName('right');
       if (right && /\.(?:namelist|infolist|getmembers|getnames)\(\s*\)$/.test(right.text))

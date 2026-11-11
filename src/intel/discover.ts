@@ -85,12 +85,12 @@ export interface ProjectProfile {
   lockfiles: LockfileInfo[];
   migrations: string[];
   stats: { files: number; bytes: number };
+  /** Git revision of the audited tree (set by the audit when git is available; the remote has no credentials). */
+  vcs?: { revisionId: string; branch?: string; repositoryUri?: string };
   /**
    * The workspace this directory belongs to, when it is a package audited on its own (read from the allowlisted
    * metadata files above the audit root). Its absolute path is never stored.
    */
-  /** Git revision of the audited tree (set by the audit when git is available; the remote has no credentials). */
-  vcs?: { revisionId: string; branch?: string; repositoryUri?: string };
   workspaceRoot?: {
     rel: string;
     lockfiles: string[];

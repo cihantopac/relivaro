@@ -2207,7 +2207,7 @@ function redosRisk(pattern) {
       const frame = stack.length > 1 ? stack.pop() : top;
       const parent = stack[stack.length - 1];
       const outerUnbounded = isUnboundedAt(i2 + 1);
-      const unambiguous = !frame.alternation && frame.separators.some((sep2) => disjoint(sep2, frame.repeated));
+      const unambiguous = !frame.alternation && frame.separators.some((sep3) => disjoint(sep3, frame.repeated));
       if (outerUnbounded && frame.unbounded && !unambiguous) return true;
       if (outerUnbounded && frame.alternation) {
         const firsts = frame.altFirst;
@@ -3381,6 +3381,10 @@ function hostIsFixed(arg, lang) {
   const t2 = arg.text.replace(/^[fFbBrR]+(?=['"])/, "");
   return /^[`'"]https?:\/\/[^/$`'"{}]+\//.test(t2) || lang === "php" && /^['"]https?:\/\/[^/$'"{}]+\//.test(t2);
 }
+function requiresPython314(project) {
+  const m = /requires-python\s*=\s*["']\s*>=?\s*3\.(\d+)/.exec(project.files.readAny("pyproject.toml") ?? "");
+  return !!m && Number(m[1]) >= 14;
+}
 function archiveEntryName(arg, lang, source) {
   if (lang === "php") return false;
   if (!(isJs(lang) ? ARCHIVE_MODULE_JS : ARCHIVE_MODULE_PY).test(source)) return false;
@@ -3389,8 +3393,9 @@ function archiveEntryName(arg, lang, source) {
   const loopVars = /* @__PURE__ */ new Set();
   if (lang === "python") {
     let fn = arg;
-    while (fn?.parent) fn = fn.parent;
+    while (fn?.parent && fn.type !== "function_definition") fn = fn.parent;
     walk2(fn, (n) => {
+      if (n !== fn && n.type === "function_definition") return false;
       if (n.type !== "for_statement") return;
       const right = n.childForFieldName("right");
       if (right && /\.(?:namelist|infolist|getmembers|getnames)\(\s*\)$/.test(right.text))
@@ -3445,7 +3450,7 @@ function redirectValidated(arg, call) {
   }
   return false;
 }
-var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, ARCHIVE_MODULE_JS, ARCHIVE_MODULE_PY, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
+var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, ARCHIVE_MODULE_JS, ARCHIVE_MODULE_PY, TARFILE_IMPORT, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
 var init_code = __esm({
   "src/rules/security/code.ts"() {
     "use strict";
@@ -3833,7 +3838,7 @@ var init_code = __esm({
             facts: { sink: c.callee, ...fromArchive ? { archiveEntry: true } : {} }
           });
         }
-        if (lang === "python" && /^\s*(?:import\s+tarfile|from\s+tarfile\s+import)/m.test(ctx.source)) {
+        if (lang === "python" && TARFILE_IMPORT.test(ctx.source) && !requiresPython314(ctx.project)) {
           for (const c of ctx.calls)
             if (c.name === "extractall" && !c.kwargs.has("filter") && !/zip/i.test(c.receiver ?? ""))
               out2.push({
@@ -3867,7 +3872,8 @@ var init_code = __esm({
     ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
     ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
     ARCHIVE_MODULE_JS = /\bfrom\s+['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|@zip\.js\/zip\.js|fflate|node-7z)['"]|\brequire\(\s*['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|fflate|node-7z)['"]\s*\)/;
-    ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:zipfile|tarfile)|from\s+(?:zipfile|tarfile)\s+import)\b/m;
+    ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*(?:zipfile|tarfile)\b|from\s+(?:zipfile|tarfile)\s+import)/m;
+    TARFILE_IMPORT = /^\s*(?:import\s+(?:[\w.]+\s*,\s*)*tarfile\b|from\s+tarfile\s+import)/m;
     PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
     openRedirect = {
       kind: "ast",
@@ -8774,10 +8780,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep2, value } = collItem;
+        const { start: start2, key, sep: sep3, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -8791,7 +8797,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep2) {
+          if (!keyProps.anchor && !keyProps.tag && !sep3) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -8815,7 +8821,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -8831,7 +8837,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -8922,7 +8928,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep2 = "";
+        let sep3 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -8936,13 +8942,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep2 + cb;
-              sep2 = "";
+                comment += sep3 + cb;
+              sep3 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep2 += source;
+                sep3 += source;
               hasSpace = true;
               break;
             default:
@@ -8985,18 +8991,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i2 = 0; i2 < fc.items.length; ++i2) {
         const collItem = fc.items[i2];
-        const { start: start2, key, sep: sep2, value } = collItem;
+        const { start: start2, key, sep: sep3, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep2 && !value) {
+          if (!props.anchor && !props.tag && !sep3 && !value) {
             if (i2 === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i2 < fc.items.length - 1)
@@ -9050,8 +9056,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap2 && !sep2 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
+        if (!isMap2 && !sep3 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -9063,7 +9069,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -9074,8 +9080,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap2 && !props.found && ctx.options.strict) {
-              if (sep2)
-                for (const st of sep2) {
+              if (sep3)
+                for (const st of sep3) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -9092,7 +9098,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -9272,7 +9278,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i2 + 1;
       }
       let value = "";
-      let sep2 = "";
+      let sep3 = "";
       let prevMoreIndented = false;
       for (let i2 = 0; i2 < contentStart; ++i2)
         value += lines[i2][0].slice(trimIndent) + "\n";
@@ -9289,24 +9295,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep2 === " ")
-            sep2 = "\n";
-          else if (!prevMoreIndented && sep2 === "\n")
-            sep2 = "\n\n";
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          if (sep3 === " ")
+            sep3 = "\n";
+          else if (!prevMoreIndented && sep3 === "\n")
+            sep3 = "\n\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep2 === "\n")
+          if (sep3 === "\n")
             value += "\n";
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          value += sep2 + content;
-          sep2 = " ";
+          value += sep3 + content;
+          sep3 = " ";
           prevMoreIndented = false;
         }
       }
@@ -9489,25 +9495,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match[1].replace(trimEnd, "");
-      let sep2 = " ";
+      let sep3 = " ";
       let pos2 = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep2 === "\n")
-            res += sep2;
+          if (sep3 === "\n")
+            res += sep3;
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          res += sep2 + lm;
-          sep2 = " ";
+          res += sep3 + lm;
+          sep3 = " ";
         }
         pos2 = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos2;
       match = last.exec(source);
-      return res + sep2 + (match?.[1] ?? "");
+      return res + sep3 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -10317,14 +10323,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep2, value }) {
+    function stringifyItem({ start: start2, key, sep: sep3, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep2)
-        for (const st of sep2)
+      if (sep3)
+        for (const st of sep3)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -11491,18 +11497,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep2;
+          let sep3;
           if (scalar.end) {
-            sep2 = scalar.end;
-            sep2.push(this.sourceToken);
+            sep3 = scalar.end;
+            sep3.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep2 = [this.sourceToken];
+            sep3 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep2 }]
+            items: [{ start: start2, key: scalar, sep: sep3 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -11655,15 +11661,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep2 = it.sep;
-                  sep2.push(this.sourceToken);
+                  const sep3 = it.sep;
+                  sep3.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep2 }]
+                    items: [{ start: start3, key, sep: sep3 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -11857,13 +11863,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep2 = fc.end.splice(1, fc.end.length);
-            sep2.push(this.sourceToken);
+            const sep3 = fc.end.splice(1, fc.end.length);
+            sep3.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep2 }]
+              items: [{ start: start2, key: fc, sep: sep3 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -12207,6 +12213,19 @@ function scriptsOf(dir) {
     return {};
   }
 }
+function packageGlob(glob) {
+  let re = "";
+  for (let i2 = 0; i2 < glob.length; i2++) {
+    const c = glob[i2];
+    if (c === "*" && glob[i2 + 1] === "*") {
+      re += ".*";
+      i2++;
+    } else if (c === "*") re += "[^/]*";
+    else if (c === "?") re += "[^/]";
+    else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${re}$`);
+}
 function findWorkspaceRoot(auditRoot, opts = {}) {
   const start2 = realOrResolved(auditRoot);
   const maxDepth = opts.maxDepth ?? 6;
@@ -12218,7 +12237,7 @@ function findWorkspaceRoot(auditRoot, opts = {}) {
     const globs = workspaceGlobs(dir);
     if (!globs.length) continue;
     const rel = relative2(dir, start2).split(sep).join("/");
-    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
+    if (!(globs.includes(rel) || globs.some((g) => packageGlob(g).test(rel)))) continue;
     const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
     const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
     const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);
@@ -12246,7 +12265,6 @@ var init_ancestors = __esm({
   "src/fs/ancestors.ts"() {
     "use strict";
     import_yaml = __toESM(require_dist(), 1);
-    init_glob();
     ANCESTOR_META = [
       "package.json",
       "pnpm-workspace.yaml",
@@ -21240,8 +21258,8 @@ ${out2}`;
       const has = (p) => text.split(/\r?\n/).some((l) => l.trim() === p || l.trim() === `/${p}`);
       const add = [".env", ".env.*", "!.env.example"].filter((p) => !has(p));
       if (!add.length || has(".env") && has(".env.*")) return null;
-      const sep2 = text === "" || text.endsWith("\n") ? "" : "\n";
-      return `${text}${sep2}${text ? "\n" : ""}# Local environment files (added by Relivaro)
+      const sep3 = text === "" || text.endsWith("\n") ? "" : "\n";
+      return `${text}${sep3}${text ? "\n" : ""}# Local environment files (added by Relivaro)
 ${add.join("\n")}
 `;
     }
@@ -21395,7 +21413,7 @@ function helpText(spec) {
 // src/cli/commands.ts
 import { spawn as spawn2 } from "node:child_process";
 import { existsSync as existsSync11, readFileSync as readFileSync9, realpathSync as realpathSync3 } from "node:fs";
-import { dirname as dirname5, join as join10, resolve as resolve4 } from "node:path";
+import { dirname as dirname5, join as join10, relative as relative3, resolve as resolve4, sep as sep2 } from "node:path";
 
 // src/checks/coverage.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3, statSync as statSync2 } from "node:fs";
@@ -23133,7 +23151,14 @@ function regionText(snippet, start2, end) {
     const m = /^\s*(\d+) \| (.*)$/.exec(l);
     if (m && Number(m[1]) >= start2 && Number(m[1]) <= end) picked.push(m[2]);
   }
+  if (picked.some((l) => l.length > 220 && l.endsWith("\u2026"))) return void 0;
   return picked.length ? picked.join("\n") : void 0;
+}
+function remoteForProvenance(url) {
+  const u = url.trim();
+  if (!u || /^file:/i.test(u)) return void 0;
+  const network = /^[a-z][a-z0-9+.-]*:\/\//i.test(u) || /^[\w.-]+@[\w.-]+:/.test(u);
+  return network ? credentialFreeUrl(u) : void 0;
 }
 function credentialFreeUrl(url) {
   return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, "$1");
@@ -23370,8 +23395,10 @@ function parseSuppressions(lines) {
         const reason = (body2?.[2] ?? "").replace(COMMENT_END, "").trim();
         if (!rules2.size || reason.length < 3) s.invalidAccept.push(i2 + 1);
         else {
-          const entry2 = { rules: rules2, reason };
-          s.accept.set(a[1] === "-next-line" ? i2 + 2 : i2 + 1, entry2);
+          const target = a[1] === "-next-line" ? i2 + 2 : i2 + 1;
+          const byRule = s.accept.get(target) ?? /* @__PURE__ */ new Map();
+          for (const r of rules2) byRule.set(r, reason);
+          s.accept.set(target, byRule);
         }
       }
     }
@@ -23492,7 +23519,8 @@ var FindingBuilder = class {
       const sup = suppressedBy(notes, rule.id, line);
       if (sup) suppression = { kind: "inline", reason: sup.reason };
       const acc = line !== void 0 ? notes.accept.get(line) : void 0;
-      if (!suppression && acc?.rules.has(rule.id)) accepted = { reason: acc.reason, source: "inline" };
+      const reason = acc?.get(rule.id);
+      if (!suppression && reason !== void 0) accepted = { reason, source: "inline" };
     }
     const finding = {
       id: findingId(fp),
@@ -23756,7 +23784,7 @@ async function runAudit(opts) {
       profile.vcs = {
         revisionId,
         ...branch && branch !== "HEAD" ? { branch } : {},
-        ...remote ? { repositoryUri: credentialFreeUrl(remote) } : {}
+        ...remote && remoteForProvenance(remote) ? { repositoryUri: remoteForProvenance(remote) } : {}
       };
     }
   }
@@ -28112,6 +28140,19 @@ function snippetLinesOpt(v) {
     );
   return n;
 }
+function labelPaths(files, root, label) {
+  const roots = [resolve4(root)];
+  try {
+    roots.push(realpathSync3.native(resolve4(root)));
+  } catch {
+  }
+  return Object.fromEntries(
+    Object.entries(files).map(([k, v]) => {
+      const r = roots.find((x) => isInside(x, v));
+      return [k, r ? `${label}/${relative3(r, v).split(sep2).join("/")}` : v];
+    })
+  );
+}
 function reportDir(files) {
   const any = files.json ?? files.html ?? files.md ?? files.sarif;
   return any ? dirname5(any) : null;
@@ -28282,21 +28323,23 @@ async function analysisCommand(p, out2, cfg) {
     exitCode
   );
   if (!p.opts["no-write"]) out2.event({ type: "stage", stage: "report", state: "end", elapsedMs: elapsed() });
+  const label = p.opts["root-label"];
+  const shown = label ? labelPaths(files, root, label) : files;
   if (out2.json)
     out2.print(
       // Compact output is for agents: unindented, so a large run stays small enough to read in one go.
       p.opts.compact ? JSON.stringify(
-        compactRun(run2, 30, files, p.opts["no-write"] ? {} : effectiveReview(workspace, run2))
+        compactRun(run2, 30, shown, p.opts["no-write"] ? {} : effectiveReview(workspace, run2))
       ) : JSON.stringify(run2, null, 2)
     );
   else
     printRunSummary(
       out2,
       run2,
-      files,
+      shown,
       Number(p.opts["max-findings"] ?? 15),
-      openCommand,
-      p.positionals[0] ?? "."
+      label ? void 0 : openCommand,
+      label ?? p.positionals[0] ?? "."
     );
   if (p.opts.open && files.html) openFile(files.html);
   return exitCode;

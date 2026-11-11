@@ -66,6 +66,12 @@ describe('findWorkspaceRoot', () => {
     expect(findWorkspaceRoot(join(root, 'repo'))).toBeNull();
   });
 
+  it('a workspace glob matches the package directory itself, not a directory below it', () => {
+    const root = tree(PNPM_TREE);
+    expect(findWorkspaceRoot(join(root, 'packages/preflight/src'))).toBeNull();
+    expect(findWorkspaceRoot(join(root, 'packages/preflight'))?.rel).toBe('packages/preflight');
+  });
+
   it('stops at maxDepth (default 6)', () => {
     const deep = 'a/b/c/d/e/f/g';
     const root = tree({
