@@ -1,4 +1,5 @@
 import { EXIT, errorMessage, RelivaroError } from '../core/errors.js';
+import type { ProgressMode } from '../core/progress.js';
 import { redact } from '../core/secrets.js';
 import { VERSION } from '../core/version.js';
 import { FIXERS } from '../fix/fixers.js';
@@ -144,6 +145,7 @@ export async function main(argv: string[]): Promise<number> {
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,
       color: parsed.opts['no-color'] ? false : undefined,
+      progress: parsed.opts.progress as ProgressMode | undefined,
     });
     return await cmd.run(parsed, out);
   } catch (e) {

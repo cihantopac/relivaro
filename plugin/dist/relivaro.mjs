@@ -21134,6 +21134,13 @@ var GLOBAL_OPTIONS = [
     description: "Only print the essential result (no progress)."
   },
   { name: "no-color", type: "boolean", description: "Disable colored output (also honours NO_COLOR)." },
+  {
+    name: "progress",
+    type: "string",
+    value: "<mode>",
+    choices: ["tty", "plain", "ndjson", "off"],
+    description: "Progress on stderr: tty, plain (also RELIVARO_PROGRESS=1), ndjson (one JSON event per line, also with --json) or off."
+  },
   { name: "help", type: "boolean", short: "h", description: "Show help for the command." }
 ];
 function parseArgs(argv, spec) {
@@ -22848,6 +22855,9 @@ function findingId(fp) {
   return `RLV-${fp.slice(0, 8)}`;
 }
 
+// src/core/progress.ts
+var FILE_EVENT_EVERY = 200;
+
 // src/rules/engine.ts
 init_secrets();
 init_ast();
@@ -23098,7 +23108,10 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
   let filesParsed = 0;
   let functions = 0;
   const complexity2 = /* @__PURE__ */ new Map();
+  const total = project.files.files.length;
+  let done = 0;
   for (const file of project.files.files) {
+    if (++done % FILE_EVENT_EVERY === 0 && done < total) opts.onFiles?.(done, total);
     const applicableFileRules = fileRules.filter((r) => r.appliesTo(file));
     const lang = file.language;
     const applicableAst = lang ? astRules.filter((r) => r.languages.includes(lang)) : [];
@@ -23158,6 +23171,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
       tree.delete();
     }
   }
+  opts.onFiles?.(total, total);
   for (const rule of projectRules) {
     try {
       for (const hit of rule.check(project)) builder.add(rule, hit);
@@ -23244,7 +23258,11 @@ async function runAudit(opts) {
   const { config, path: configFile } = loadConfig(opts.root, opts.configPath);
   const progress = opts.onProgress ?? (() => {
   });
+  const emit = opts.onEvent ?? (() => {
+  });
+  const stage = (s, state) => emit({ type: "stage", stage: s, state, elapsedMs: Math.round(performance.now() - started) });
   progress("indexing files");
+  stage("index", "start");
   const files = new FileSet(opts.root, {
     include: config.include,
     exclude: config.exclude,
@@ -23254,14 +23272,24 @@ async function runAudit(opts) {
     respectGitignore: opts.respectGitignore,
     assumeTracked: opts.assumeTracked
   });
+  stage("index", "end");
   progress(`discovering project (${files.files.length} files)`);
+  stage("discover", "start");
   const profile = discover(files);
+  stage("discover", "end");
   const ctx = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
   const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
   progress("analysing");
-  const analysis2 = await analyze(ctx, RULES, { categories, rules: opts.rules }, builder);
+  stage("analyse", "start");
+  const analysis2 = await analyze(
+    ctx,
+    RULES,
+    { categories, rules: opts.rules, onFiles: (done, total) => emit({ type: "files", done, total }) },
+    builder
+  );
+  stage("analyse", "end");
   const limitations = [];
   const networkErrors = [];
   let osvQueried;
@@ -23270,11 +23298,13 @@ async function runAudit(opts) {
     limitations.push(...parseErrorLimitations(profile));
     if (opts.online) {
       progress("querying OSV.dev for known vulnerabilities");
+      stage("osv", "start");
       const osv = await queryOsv(profile.lockfiles, {
         cacheFile: opts.noWrite ? void 0 : workspace.path("cache", "osv.json"),
         fetchImpl: opts.fetchImpl,
         onProgress: progress
       });
+      stage("osv", "end");
       osvQueried = osv.queried;
       networkErrors.push(...osv.errors);
       const { OSV_RULE: OSV_RULE2 } = await Promise.resolve().then(() => (init_osv(), osv_exports));
@@ -23296,6 +23326,7 @@ async function runAudit(opts) {
   let checks = [];
   const checkKinds = opts.checks ?? [];
   if (checkKinds.length) {
+    stage("checks", "start");
     const planned = planChecks(files, profile, config, checkKinds);
     const exec = await runChecks(planned, {
       allowExec: !!opts.allowExec,
@@ -23303,6 +23334,7 @@ async function runAudit(opts) {
       root: files.root,
       onProgress: progress
     });
+    stage("checks", "end");
     checks = exec.results;
     for (const h of exec.hits) builder.add(h.rule, h.hit, h.provenance);
     if (!opts.allowExec && planned.length)
@@ -27259,20 +27291,31 @@ function withLock(lock, fn) {
 init_rules();
 
 // src/cli/output.ts
+function progressModeOf(opts) {
+  if (opts.progress) return opts.progress;
+  if (opts.json || opts.quiet) return "off";
+  if (process.stderr.isTTY) return "tty";
+  return process.env.RELIVARO_PROGRESS ? "plain" : "off";
+}
 function makeOut(opts) {
   const color = opts.color !== false && !process.env.NO_COLOR && !!process.stdout.isTTY && !opts.json;
+  const mode = progressModeOf(opts);
   return {
     json: !!opts.json,
     quiet: !!opts.quiet,
     color,
+    progressMode: mode,
     print: (s = "") => {
       process.stdout.write(`${s}
 `);
     },
     progress: (s) => {
-      if (!opts.quiet && !opts.json && process.stderr.isTTY)
-        process.stderr.write(`\r\x1B[2K${dim(color, `\u2026 ${s}`)}`);
-      else if (!opts.quiet && !opts.json && process.env.RELIVARO_PROGRESS) process.stderr.write(`\u2026 ${s}
+      if (mode === "tty") process.stderr.write(`\r\x1B[2K${dim(color, `\u2026 ${s}`)}`);
+      else if (mode === "plain") process.stderr.write(`\u2026 ${s}
+`);
+    },
+    event: (e) => {
+      if (mode === "ndjson") process.stderr.write(`${JSON.stringify(e)}
 `);
     },
     warn: (s) => {
@@ -27635,17 +27678,23 @@ async function analysisCommand(p, out2, cfg) {
     respectGitignore: p.opts["no-gitignore"] ? false : void 0,
     assumeTracked: p.opts["assume-tracked"] ? true : void 0,
     noWrite: !!p.opts["no-write"],
-    onProgress: out2.progress
+    onProgress: out2.progress,
+    onEvent: out2.event
   });
   if (cfg.release) run2.release = assessRelease(run2, config, benchSnapshots(workspace));
   clearProgress();
   const formats = p.opts.format ?? ["json", "md", "html"];
+  const reportStart = performance.now();
+  const elapsed = () => Math.round(run2.durationMs + performance.now() - reportStart);
+  if (!p.opts["no-write"])
+    out2.event({ type: "stage", stage: "report", state: "start", elapsedMs: elapsed() });
   const files = p.opts["no-write"] ? {} : writeReports(
     workspace,
     run2,
     Array.isArray(formats) ? formats : String(formats).split(","),
     p.opts.out
   );
+  if (!p.opts["no-write"]) out2.event({ type: "stage", stage: "report", state: "end", elapsedMs: elapsed() });
   if (out2.json)
     out2.print(
       // Compact output is for agents: unindented, so a large run stays small enough to read in one go.
@@ -29073,7 +29122,8 @@ async function main(argv) {
     const out2 = makeOut({
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,
-      color: parsed.opts["no-color"] ? false : void 0
+      color: parsed.opts["no-color"] ? false : void 0,
+      progress: parsed.opts.progress
     });
     return await cmd.run(parsed, out2);
   } catch (e) {

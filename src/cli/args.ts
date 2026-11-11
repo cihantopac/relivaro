@@ -44,6 +44,14 @@ export const GLOBAL_OPTIONS: OptSpec[] = [
     description: 'Only print the essential result (no progress).',
   },
   { name: 'no-color', type: 'boolean', description: 'Disable colored output (also honours NO_COLOR).' },
+  {
+    name: 'progress',
+    type: 'string',
+    value: '<mode>',
+    choices: ['tty', 'plain', 'ndjson', 'off'],
+    description:
+      'Progress on stderr: tty, plain (also RELIVARO_PROGRESS=1), ndjson (one JSON event per line, also with --json) or off.',
+  },
   { name: 'help', type: 'boolean', short: 'h', description: 'Show help for the command.' },
 ];
 

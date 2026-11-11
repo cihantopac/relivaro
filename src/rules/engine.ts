@@ -1,5 +1,6 @@
 import { matchesAny } from '../core/glob.js';
 import { findingId, fingerprint } from '../core/hash.js';
+import { FILE_EVENT_EVERY } from '../core/progress.js';
 import { redact } from '../core/secrets.js';
 import { type Category, type Finding, type ProjectFile, SEVERITIES, type Severity } from '../core/types.js';
 import { collect, calls as collectCalls, FUNCTION_TYPES, forgetTree, taintedAt } from '../parse/ast.js';
@@ -10,6 +11,8 @@ import type { AstContext, AstRule, FileRule, Hit, ProjectContext, ProjectRule, R
 export interface AnalysisOptions {
   categories?: Category[];
   rules?: string[];
+  /** Called every FILE_EVENT_EVERY files and once at the end with `done === total`. */
+  onFiles?: (done: number, total: number) => void;
 }
 
 export interface AnalysisResult {
@@ -345,7 +348,10 @@ export async function analyze(
   let functions = 0;
   const complexity = new Map<string, number>();
 
+  const total = project.files.files.length;
+  let done = 0;
   for (const file of project.files.files) {
+    if (++done % FILE_EVENT_EVERY === 0 && done < total) opts.onFiles?.(done, total);
     const applicableFileRules = fileRules.filter((r) => r.appliesTo(file));
     const lang = file.language;
     const applicableAst = lang ? astRules.filter((r) => r.languages.includes(lang)) : [];
@@ -407,6 +413,7 @@ export async function analyze(
     }
   }
 
+  opts.onFiles?.(total, total);
   for (const rule of projectRules) {
     try {
       for (const hit of rule.check(project)) builder.add(rule, hit);

@@ -577,4 +577,5 @@ relivaro doctor
 | `--json` | Print machine-readable JSON to stdout (errors as JSON on stderr). |
 | `--quiet` | Only print the essential result (no progress). |
 | `--no-color` | Disable colored output (also honours NO_COLOR). |
+| `--progress` | Progress on stderr: tty, plain (also RELIVARO_PROGRESS=1), ndjson (one JSON event per line, also with --json) or off. |
 | `--help` | Show help for the command. |

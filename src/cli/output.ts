@@ -1,4 +1,5 @@
 import type { RunRecord } from '../audit.js';
+import type { ProgressEvent, ProgressMode } from '../core/progress.js';
 import { type Finding, SEVERITIES, type Severity } from '../core/types.js';
 import { releaseTally } from '../release/readiness.js';
 
@@ -6,24 +7,52 @@ export interface Out {
   json: boolean;
   quiet: boolean;
   color: boolean;
+  /** How progress is shown on stderr. */
+  progressMode: ProgressMode;
   print(s?: string): void;
   progress(s: string): void;
+  /** Structured progress; written only in `ndjson` mode. */
+  event(e: ProgressEvent): void;
   warn(s: string): void;
 }
 
-export function makeOut(opts: { json?: boolean; quiet?: boolean; color?: boolean }): Out {
+/**
+ * `--progress` wins when given. Otherwise: off with `--json` or `--quiet`, `tty` on an interactive stderr, `plain`
+ * when `RELIVARO_PROGRESS` is set, off otherwise.
+ */
+export function progressModeOf(opts: {
+  json?: boolean;
+  quiet?: boolean;
+  progress?: ProgressMode;
+}): ProgressMode {
+  if (opts.progress) return opts.progress;
+  if (opts.json || opts.quiet) return 'off';
+  if (process.stderr.isTTY) return 'tty';
+  return process.env.RELIVARO_PROGRESS ? 'plain' : 'off';
+}
+
+export function makeOut(opts: {
+  json?: boolean;
+  quiet?: boolean;
+  color?: boolean;
+  progress?: ProgressMode;
+}): Out {
   const color = opts.color !== false && !process.env.NO_COLOR && !!process.stdout.isTTY && !opts.json;
+  const mode = progressModeOf(opts);
   return {
     json: !!opts.json,
     quiet: !!opts.quiet,
     color,
+    progressMode: mode,
     print: (s = '') => {
       process.stdout.write(`${s}\n`);
     },
     progress: (s) => {
-      if (!opts.quiet && !opts.json && process.stderr.isTTY)
-        process.stderr.write(`\r\u001b[2K${dim(color, `… ${s}`)}`);
-      else if (!opts.quiet && !opts.json && process.env.RELIVARO_PROGRESS) process.stderr.write(`… ${s}\n`);
+      if (mode === 'tty') process.stderr.write(`\r\u001b[2K${dim(color, `… ${s}`)}`);
+      else if (mode === 'plain') process.stderr.write(`… ${s}\n`);
+    },
+    event: (e) => {
+      if (mode === 'ndjson') process.stderr.write(`${JSON.stringify(e)}\n`);
     },
     warn: (s) => {
       process.stderr.write(`${s}\n`);

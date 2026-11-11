@@ -27,6 +27,37 @@ beforeAll(() => {
 afterAll(() => fx.cleanup());
 
 describe('relivaro CLI', () => {
+  it('--progress ndjson writes ordered stage events to stderr, even with --json', () => {
+    const a = cli(['audit', fx.dir, '--json', '--progress', 'ndjson', '--no-write']);
+    expect(a.code).toBe(0);
+    expect(() => JSON.parse(a.stdout)).not.toThrow();
+    const lines = a.stderr.split('\n').filter(Boolean);
+    expect(lines.length).toBeGreaterThan(0);
+    const events = lines.map((l) => JSON.parse(l));
+    const stages = events.filter((e) => e.type === 'stage').map((e) => `${e.stage}:${e.state}`);
+    expect(stages).toEqual([
+      'index:start',
+      'index:end',
+      'discover:start',
+      'discover:end',
+      'analyse:start',
+      'analyse:end',
+      'checks:start',
+      'checks:end',
+    ]);
+    for (const e of events.filter((x) => x.type === 'stage')) expect(typeof e.elapsedMs).toBe('number');
+    const files = events.filter((e) => e.type === 'files');
+    expect(files.length).toBeGreaterThan(0);
+    expect(files[files.length - 1].done).toBe(files[files.length - 1].total);
+  });
+
+  it('--progress off and --json print nothing on stderr', () => {
+    const a = cli(['audit', fx.dir, '--json', '--no-write']);
+    expect(a.stderr).toBe('');
+    const b = cli(['audit', fx.dir, '--progress', 'off', '--no-write']);
+    expect(b.stderr).toBe('');
+  });
+
   it('prints help and version', () => {
     const h = cli(['--help']);
     expect(h.code).toBe(0);

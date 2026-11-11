@@ -2,6 +2,7 @@ import { readCoverage, type TestGap, testGaps } from './checks/coverage.js';
 import { type CheckKind, type CheckResult, planChecks, runChecks } from './checks/exec.js';
 import { loadConfig, type RelivaroConfig } from './core/config.js';
 import { RelivaroError } from './core/errors.js';
+import type { ProgressEvent, ProgressStage } from './core/progress.js';
 import { redact } from './core/secrets.js';
 import {
   CATEGORIES,
@@ -46,6 +47,8 @@ export interface AuditOptions {
   /** Do not write anything to disk. */
   noWrite?: boolean;
   onProgress?: (msg: string) => void;
+  /** Structured stage and file-count events (`--progress ndjson`). */
+  onEvent?: (e: ProgressEvent) => void;
   fetchImpl?: typeof fetch;
 }
 
@@ -216,7 +219,11 @@ export async function runAudit(
   const startedAt = new Date().toISOString();
   const { config, path: configFile } = loadConfig(opts.root, opts.configPath);
   const progress = opts.onProgress ?? (() => {});
+  const emit = opts.onEvent ?? (() => {});
+  const stage = (s: ProgressStage, state: 'start' | 'end') =>
+    emit({ type: 'stage', stage: s, state, elapsedMs: Math.round(performance.now() - started) });
   progress('indexing files');
+  stage('index', 'start');
   const files = new FileSet(opts.root, {
     include: config.include,
     exclude: config.exclude,
@@ -226,14 +233,24 @@ export async function runAudit(
     respectGitignore: opts.respectGitignore,
     assumeTracked: opts.assumeTracked,
   });
+  stage('index', 'end');
   progress(`discovering project (${files.files.length} files)`);
+  stage('discover', 'start');
   const profile = discover(files);
+  stage('discover', 'end');
   const ctx: ProjectContext = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
   const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
   progress('analysing');
-  const analysis = await analyze(ctx, RULES, { categories, rules: opts.rules }, builder);
+  stage('analyse', 'start');
+  const analysis = await analyze(
+    ctx,
+    RULES,
+    { categories, rules: opts.rules, onFiles: (done, total) => emit({ type: 'files', done, total }) },
+    builder,
+  );
+  stage('analyse', 'end');
 
   const limitations: string[] = [];
   const networkErrors: string[] = [];
@@ -243,11 +260,13 @@ export async function runAudit(
     limitations.push(...parseErrorLimitations(profile));
     if (opts.online) {
       progress('querying OSV.dev for known vulnerabilities');
+      stage('osv', 'start');
       const osv = await queryOsv(profile.lockfiles, {
         cacheFile: opts.noWrite ? undefined : workspace.path('cache', 'osv.json'),
         fetchImpl: opts.fetchImpl,
         onProgress: progress,
       });
+      stage('osv', 'end');
       osvQueried = osv.queried;
       networkErrors.push(...osv.errors);
       const { OSV_RULE } = await import('./deps/osv.js');
@@ -270,6 +289,7 @@ export async function runAudit(
   let checks: CheckResult[] = [];
   const checkKinds = opts.checks ?? [];
   if (checkKinds.length) {
+    stage('checks', 'start');
     const planned = planChecks(files, profile, config, checkKinds);
     const exec = await runChecks(planned, {
       allowExec: !!opts.allowExec,
@@ -277,6 +297,7 @@ export async function runAudit(
       root: files.root,
       onProgress: progress,
     });
+    stage('checks', 'end');
     checks = exec.results;
     for (const h of exec.hits) builder.add(h.rule, h.hit, h.provenance);
     if (!opts.allowExec && planned.length)

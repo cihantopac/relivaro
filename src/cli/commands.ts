@@ -328,10 +328,15 @@ async function analysisCommand(
     assumeTracked: p.opts['assume-tracked'] ? true : undefined,
     noWrite: !!p.opts['no-write'],
     onProgress: out.progress,
+    onEvent: out.event,
   });
   if (cfg.release) run.release = assessRelease(run, config, benchSnapshots(workspace));
   clearProgress();
   const formats = (p.opts.format as string[] | undefined) ?? ['json', 'md', 'html'];
+  const reportStart = performance.now();
+  const elapsed = () => Math.round(run.durationMs + performance.now() - reportStart);
+  if (!p.opts['no-write'])
+    out.event({ type: 'stage', stage: 'report', state: 'start', elapsedMs: elapsed() });
   const files = p.opts['no-write']
     ? {}
     : writeReports(
@@ -340,6 +345,7 @@ async function analysisCommand(
         Array.isArray(formats) ? formats : String(formats).split(','),
         p.opts.out as string | undefined,
       );
+  if (!p.opts['no-write']) out.event({ type: 'stage', stage: 'report', state: 'end', elapsedMs: elapsed() });
   if (out.json)
     out.print(
       // Compact output is for agents: unindented, so a large run stays small enough to read in one go.
