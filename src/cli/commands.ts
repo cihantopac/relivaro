@@ -6,6 +6,7 @@ import type { CheckKind } from '../checks/exec.js';
 import { diffSpecs, loadSpec, validateSpec } from '../contract/openapi.js';
 import { defaultConfig, loadConfig } from '../core/config.js';
 import { EXIT, RelivaroError } from '../core/errors.js';
+import { parseSize, processAbort } from '../core/limits.js';
 import { CATEGORIES, type Category, SEVERITIES, SEVERITY_RANK, type Severity } from '../core/types.js';
 import { VERSION } from '../core/version.js';
 import { atomicWrite, Workspace } from '../core/workspace.js';
@@ -100,6 +101,24 @@ const ANALYSIS_OPTS: OptSpec[] = [
   },
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
+  {
+    name: 'max-duration',
+    type: 'number',
+    value: '<seconds>',
+    description: 'Stop the analysis after this many seconds; the run is partial (exit code 4).',
+  },
+  {
+    name: 'max-files',
+    type: 'number',
+    value: '<n>',
+    description: 'Analyse at most this many files (root manifests and lockfiles first); partial beyond it.',
+  },
+  {
+    name: 'max-bytes',
+    type: 'string',
+    value: '<size>',
+    description: 'Analyse at most this many bytes of files (K, M or G suffix); partial beyond it.',
+  },
   {
     name: 'no-gitignore',
     type: 'boolean',
@@ -329,6 +348,12 @@ async function analysisCommand(
     noWrite: !!p.opts['no-write'],
     onProgress: out.progress,
     onEvent: out.event,
+    signal: processAbort.signal,
+    limits: {
+      maxDurationMs: p.opts['max-duration'] !== undefined ? Number(p.opts['max-duration']) * 1000 : undefined,
+      maxFiles: p.opts['max-files'] !== undefined ? Number(p.opts['max-files']) : undefined,
+      maxBytes: p.opts['max-bytes'] !== undefined ? parseSize(String(p.opts['max-bytes'])) : undefined,
+    },
   });
   if (cfg.release) run.release = assessRelease(run, config, benchSnapshots(workspace));
   clearProgress();
@@ -366,6 +391,8 @@ async function analysisCommand(
     );
   if (p.opts.open && files.html) openFile(files.html);
   const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? config.failOn;
+  // A partial run is reported as partial, whatever its findings say: it never passes as complete.
+  if (run.partial) return EXIT.PARTIAL;
   if (cfg.release && run.release) {
     if (run.release.status === 'not-ready') return EXIT.GATE_FAILED;
     if (p.opts.strict && run.release.status !== 'ready' && run.release.status !== 'ready-with-warnings')

@@ -12,6 +12,7 @@ Version 1.4.0. All commands accept `--json` (machine-readable output on stdout, 
 | 1 | A gate failed: findings at/above `--fail-on`, release not ready, breaking API change, fix verification failed, rollback conflict |
 | 2 | Usage or configuration error, missing permission flag (`--allow-exec`, `--yes`), refused target |
 | 3 | Unexpected runtime error |
+| 4 | Partial run: a limit (`--max-duration`, `--max-files`, `--max-bytes`) or SIGTERM/SIGINT stopped it early; the record is written with `partial` |
 
 ## `relivaro audit`
 
@@ -37,6 +38,9 @@ Runs every rule category. With --allow-exec it also runs the project's type chec
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -76,6 +80,9 @@ Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, COR
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -115,6 +122,9 @@ N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handl
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -154,6 +164,9 @@ Timeouts, error handling, idempotency, race conditions, migrations, retries, gra
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -193,6 +206,9 @@ Debug leftovers, complexity, disabled type checking; with --allow-exec the type 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -232,6 +248,9 @@ Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
@@ -271,6 +290,9 @@ Runs all analyses plus build, tests, type check and lint (with --allow-exec), de
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
+| `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
+| `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
 | `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
 | `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |

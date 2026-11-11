@@ -65,7 +65,9 @@ var init_errors = __esm({
       /** Invalid arguments or configuration. */
       USAGE: 2,
       /** Unexpected runtime error. */
-      RUNTIME: 3
+      RUNTIME: 3,
+      /** The run stopped early (a limit or SIGTERM/SIGINT); results are partial. */
+      PARTIAL: 4
     };
     USAGE_CODES = /* @__PURE__ */ new Set([
       "USAGE",
@@ -16612,6 +16614,50 @@ var init_discover = __esm({
 
 // src/cli/main.ts
 init_errors();
+
+// src/core/limits.ts
+init_errors();
+var DEFAULT_PARSE_TIMEOUT_MS = 5e3;
+var Budget = class {
+  constructor(limits, now = () => performance.now()) {
+    this.limits = limits;
+    this.now = now;
+    this.start = now();
+  }
+  limits;
+  now;
+  files = 0;
+  bytes = 0;
+  start;
+  exceeded() {
+    const { maxDurationMs, maxFiles, maxBytes } = this.limits;
+    if (maxDurationMs !== void 0 && this.now() - this.start >= maxDurationMs) return "duration";
+    if (maxFiles !== void 0 && this.files >= maxFiles) return "files";
+    if (maxBytes !== void 0 && this.bytes >= maxBytes) return "bytes";
+    return null;
+  }
+  noteFile(bytes) {
+    this.files++;
+    this.bytes += bytes;
+  }
+  get filesAnalysed() {
+    return this.files;
+  }
+};
+function parseSize(text) {
+  const m = /^(\d+(?:\.\d+)?)([KMG])?B?$/i.exec(text.replace(/\s/g, ""));
+  if (!m)
+    throw new RelivaroError(
+      "USAGE",
+      `--max-bytes must be a number with an optional K, M or G suffix, got "${text}".`
+    );
+  const unit = (m[2] ?? "").toUpperCase();
+  const mult = unit === "K" ? 1024 : unit === "M" ? 1024 ** 2 : unit === "G" ? 1024 ** 3 : 1;
+  return Math.round(Number(m[1]) * mult);
+}
+var processAbort = new AbortController();
+
+// src/cli/main.ts
 init_secrets();
 
 // src/core/version.ts
@@ -22267,6 +22313,7 @@ function defaultConfig() {
     maxLockfileSizeKb: 51200,
     commands: {},
     timeouts: { commandSeconds: 600 },
+    limits: {},
     release: { requireTests: true, requireCi: true, blockOn: "high" },
     performance: { budgets: {} },
     env: { optional: [] }
@@ -22309,6 +22356,7 @@ var KNOWN_KEYS = /* @__PURE__ */ new Set([
   "maxLockfileSizeKb",
   "commands",
   "timeouts",
+  "limits",
   "release",
   "performance",
   "env"
@@ -22362,6 +22410,23 @@ function validateConfig(raw, file = "config") {
         fail(file, `commands.${k} is not a known command`);
       if (typeof v !== "string" || !v.trim()) fail(file, `commands.${k} must be a non-empty string`);
       c.commands[k] = v;
+    }
+  }
+  if (raw.limits !== void 0) {
+    if (!isObj(raw.limits)) fail(file, '"limits" must be an object');
+    for (const [k, v] of Object.entries(raw.limits)) {
+      if (!["maxDuration", "maxFiles", "maxBytes"].includes(k))
+        fail(file, `limits.${k} is not a known limit`);
+      if (k === "maxBytes" && typeof v === "string") {
+        try {
+          c.limits.maxBytes = parseSize(v);
+        } catch {
+          fail(file, 'limits.maxBytes must be a number of bytes or a size such as "500M"');
+        }
+        continue;
+      }
+      if (typeof v !== "number" || !(v > 0)) fail(file, `limits.${k} must be a positive number`);
+      c.limits[k] = v;
     }
   }
   if (raw.timeouts !== void 0) {
@@ -22781,6 +22846,13 @@ function assessRelease(run2, config, bench = []) {
     status: docIssues.length ? "warn" : "pass",
     detail: docIssues.length ? docIssues.join(", ") : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ", LICENSE" : ""}${d.changelog ? ", CHANGELOG" : ""}${d.security ? ", SECURITY policy" : ""}.`
   });
+  if (run2.partial)
+    gates.unshift({
+      id: "complete",
+      title: "The analysis covered the whole project",
+      status: "unverified",
+      detail: `The run stopped early (${run2.partial.reason}); findings and gates cover only part of the project.`
+    });
   for (const g of gates) g.basis = gateBasis(run2, g, bench);
   const blockers = gates.filter((g) => g.status === "block");
   const warnings = gates.filter((g) => g.status === "warn");
@@ -22792,9 +22864,7 @@ function assessRelease(run2, config, bench = []) {
   score = Math.max(0, Math.round(score));
   const scoreCapped = blockers.length > 0 && score > 40;
   if (blockers.length) score = Math.min(score, 40);
-  const critUnverified = gates.some(
-    (g) => (g.id === "build" || g.id === "tests") && g.status === "unverified"
-  );
+  const critUnverified = !!run2.partial || gates.some((g) => (g.id === "build" || g.id === "tests") && g.status === "unverified");
   const status = blockers.length ? "not-ready" : critUnverified ? "needs-verification" : warnings.length || unverified.length ? "ready-with-warnings" : "ready";
   const tally = { pass: 0, warn: 0, block: 0, unverified: 0, "n/a": 0 };
   for (const g of gates) tally[g.status]++;
@@ -22862,6 +22932,10 @@ var FILE_EVENT_EVERY = 200;
 init_secrets();
 init_ast();
 init_quality();
+function analysisOrder(files) {
+  const meta = (f) => !f.path.includes("/") && (f.kind === "manifest" || f.kind === "lockfile");
+  return [...files.files.filter(meta), ...files.files.filter((f) => !meta(f))];
+}
 var SERVER_PATH = /(?:^|\/)(?:api|server|servers|routes?|controllers?|handlers?|middlewares?|services?|jobs?|workers?|queues?|lambdas?|functions|backend|actions|webhooks?|resolvers?|cron|commands?|console|listeners?|app\/Http|app\/Models|app\/Jobs|app\/Services|app\/Console|app\/Listeners|src\/main)\//i;
 var CLIENT_PATH = /(?:^|\/)(?:components?|ui|hooks|styles|public|assets|stories|pages(?!\/api)|views)\//i;
 function isServerSide(file, source, project) {
@@ -23110,7 +23184,13 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
   const complexity2 = /* @__PURE__ */ new Map();
   const total = project.files.files.length;
   let done = 0;
-  for (const file of project.files.files) {
+  let stopped;
+  for (const file of analysisOrder(project.files)) {
+    if (opts.signal?.aborted) stopped = "signal";
+    else if (opts.budget) stopped = opts.budget.exceeded() ?? void 0;
+    if (stopped) break;
+    opts.budget?.noteFile(file.size);
+    if (done % 50 === 0) await new Promise((r) => setImmediate(r));
     if (++done % FILE_EVENT_EVERY === 0 && done < total) opts.onFiles?.(done, total);
     const applicableFileRules = fileRules.filter((r) => r.appliesTo(file));
     const lang = file.language;
@@ -23131,6 +23211,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     }
     if (lang && applicableAst.length) {
       let tree;
+      const parseStarted = performance.now();
       try {
         tree = await parse(lang, text);
       } catch (e) {
@@ -23139,6 +23220,16 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
       }
       if (!tree) {
         parseErrors.push({ file: file.path, message: "parser returned no tree" });
+        continue;
+      }
+      const parseMs = performance.now() - parseStarted;
+      if (opts.parseTimeoutMs !== void 0 && parseMs > opts.parseTimeoutMs) {
+        parseErrors.push({
+          file: file.path,
+          message: `Parsing timed out (${Math.round(parseMs)} ms > ${opts.parseTimeoutMs} ms); AST rules were skipped.`
+        });
+        forgetTree(tree);
+        tree.delete();
         continue;
       }
       filesParsed++;
@@ -23171,8 +23262,8 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
       tree.delete();
     }
   }
-  opts.onFiles?.(total, total);
-  for (const rule of projectRules) {
+  opts.onFiles?.(done, total);
+  for (const rule of stopped === "signal" ? [] : projectRules) {
     try {
       for (const hit of rule.check(project)) builder.add(rule, hit);
     } catch (e) {
@@ -23188,7 +23279,10 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     ruleErrors,
     durationMs: Math.round(performance.now() - started),
     complexity: complexity2,
-    functions
+    functions,
+    ...stopped ? { stopped } : {},
+    filesAnalysed: done,
+    filesTotal: total
   };
 }
 
@@ -23281,22 +23375,42 @@ async function runAudit(opts) {
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
   const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
+  const limits = {
+    maxDurationMs: config.limits.maxDuration !== void 0 ? config.limits.maxDuration * 1e3 : void 0,
+    maxFiles: config.limits.maxFiles,
+    maxBytes: config.limits.maxBytes,
+    parseTimeoutMs: DEFAULT_PARSE_TIMEOUT_MS,
+    ...Object.fromEntries(Object.entries(opts.limits ?? {}).filter(([, v]) => v !== void 0))
+  };
+  const budget = new Budget(limits, () => performance.now() - started);
   progress("analysing");
   stage("analyse", "start");
   const analysis2 = await analyze(
     ctx,
     RULES,
-    { categories, rules: opts.rules, onFiles: (done, total) => emit({ type: "files", done, total }) },
+    {
+      categories,
+      rules: opts.rules,
+      onFiles: (done, total) => emit({ type: "files", done, total }),
+      budget,
+      signal: opts.signal,
+      parseTimeoutMs: limits.parseTimeoutMs
+    },
     builder
   );
   stage("analyse", "end");
+  let stopped = analysis2.stopped;
+  const stopNow = () => {
+    stopped ??= opts.signal?.aborted ? "signal" : budget.exceeded() === "duration" ? "duration" : void 0;
+    return stopped !== void 0;
+  };
   const limitations = [];
   const networkErrors = [];
   let osvQueried;
   const wantsSupplyChain = categories.includes("supply-chain");
   if (wantsSupplyChain) {
     limitations.push(...parseErrorLimitations(profile));
-    if (opts.online) {
+    if (opts.online && !stopNow()) {
       progress("querying OSV.dev for known vulnerabilities");
       stage("osv", "start");
       const osv = await queryOsv(profile.lockfiles, {
@@ -23317,7 +23431,7 @@ async function runAudit(opts) {
         limitations.push(
           "No lockfiles found: known vulnerabilities could not be checked against resolved versions."
         );
-    } else if (profile.lockfiles.length) {
+    } else if (!opts.online && profile.lockfiles.length) {
       limitations.push(
         `Known vulnerabilities in ${uniquePackageCount(profile.lockfiles)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev \u2014 no source code.`
       );
@@ -23325,7 +23439,7 @@ async function runAudit(opts) {
   }
   let checks = [];
   const checkKinds = opts.checks ?? [];
-  if (checkKinds.length) {
+  if (checkKinds.length && !stopNow()) {
     stage("checks", "start");
     const planned = planChecks(files, profile, config, checkKinds);
     const exec = await runChecks(planned, {
@@ -23490,7 +23604,13 @@ async function runAudit(opts) {
       osvQueried,
       filesSkipped: { ...files.skipped }
     },
-    limitations: [...new Set(limitations)],
+    limitations: [
+      ...stopped ? [
+        `The run stopped early (${stopped}); results cover ${analysis2.filesAnalysed} of ${analysis2.filesTotal} files and are incomplete.`
+      ] : [],
+      ...new Set(limitations)
+    ],
+    ...stopped ? { partial: { reason: stopped, at: (/* @__PURE__ */ new Date()).toISOString() } } : {},
     errors: {
       parse: analysis2.parseErrors.slice(0, 50),
       rules: analysis2.ruleErrors.slice(0, 50),
@@ -27495,6 +27615,24 @@ var ANALYSIS_OPTS = [
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
   {
+    name: "max-duration",
+    type: "number",
+    value: "<seconds>",
+    description: "Stop the analysis after this many seconds; the run is partial (exit code 4)."
+  },
+  {
+    name: "max-files",
+    type: "number",
+    value: "<n>",
+    description: "Analyse at most this many files (root manifests and lockfiles first); partial beyond it."
+  },
+  {
+    name: "max-bytes",
+    type: "string",
+    value: "<size>",
+    description: "Analyse at most this many bytes of files (K, M or G suffix); partial beyond it."
+  },
+  {
     name: "no-gitignore",
     type: "boolean",
     description: "Without git, also analyse files matched by .gitignore (they are counted and named otherwise)."
@@ -27679,7 +27817,13 @@ async function analysisCommand(p, out2, cfg) {
     assumeTracked: p.opts["assume-tracked"] ? true : void 0,
     noWrite: !!p.opts["no-write"],
     onProgress: out2.progress,
-    onEvent: out2.event
+    onEvent: out2.event,
+    signal: processAbort.signal,
+    limits: {
+      maxDurationMs: p.opts["max-duration"] !== void 0 ? Number(p.opts["max-duration"]) * 1e3 : void 0,
+      maxFiles: p.opts["max-files"] !== void 0 ? Number(p.opts["max-files"]) : void 0,
+      maxBytes: p.opts["max-bytes"] !== void 0 ? parseSize(String(p.opts["max-bytes"])) : void 0
+    }
   });
   if (cfg.release) run2.release = assessRelease(run2, config, benchSnapshots(workspace));
   clearProgress();
@@ -27713,6 +27857,7 @@ async function analysisCommand(p, out2, cfg) {
     );
   if (p.opts.open && files.html) openFile(files.html);
   const failOn = p.opts["fail-on"] ?? config.failOn;
+  if (run2.partial) return EXIT.PARTIAL;
   if (cfg.release && run2.release) {
     if (run2.release.status === "not-ready") return EXIT.GATE_FAILED;
     if (p.opts.strict && run2.release.status !== "ready" && run2.release.status !== "ready-with-warnings")
@@ -29015,6 +29160,7 @@ function cliMarkdown() {
     "| 1 | A gate failed: findings at/above `--fail-on`, release not ready, breaking API change, fix verification failed, rollback conflict |",
     "| 2 | Usage or configuration error, missing permission flag (`--allow-exec`, `--yes`), refused target |",
     "| 3 | Unexpected runtime error |",
+    "| 4 | Partial run: a limit (`--max-duration`, `--max-files`, `--max-bytes`) or SIGTERM/SIGINT stopped it early; the record is written with `partial` |",
     ""
   ];
   for (const c of COMMANDS) {
@@ -29147,6 +29293,14 @@ async function main(argv) {
 }
 var isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
 if (isEntry) {
+  for (const [sig, code] of [
+    ["SIGTERM", 143],
+    ["SIGINT", 130]
+  ])
+    process.on(sig, () => {
+      if (processAbort.signal.aborted) process.exit(code);
+      processAbort.abort();
+    });
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

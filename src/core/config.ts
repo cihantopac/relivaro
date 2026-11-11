@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RelivaroError } from './errors.js';
+import { parseSize } from './limits.js';
 import { SEVERITIES, type Severity } from './types.js';
 
 /**
@@ -17,6 +18,8 @@ export interface RelivaroConfig {
   maxLockfileSizeKb: number;
   commands: Partial<Record<'build' | 'test' | 'typecheck' | 'lint', string>>;
   timeouts: { commandSeconds: number };
+  /** Run limits (CLI flags override them). A reached limit makes the run partial (exit code 4). */
+  limits: { maxDuration?: number; maxFiles?: number; maxBytes?: number };
   release: {
     requireTests: boolean;
     requireCi: boolean;
@@ -44,6 +47,7 @@ export function defaultConfig(): RelivaroConfig {
     maxLockfileSizeKb: 51200,
     commands: {},
     timeouts: { commandSeconds: 600 },
+    limits: {},
     release: { requireTests: true, requireCi: true, blockOn: 'high' },
     performance: { budgets: {} },
     env: { optional: [] },
@@ -92,6 +96,7 @@ const KNOWN_KEYS = new Set([
   'maxLockfileSizeKb',
   'commands',
   'timeouts',
+  'limits',
   'release',
   'performance',
   'env',
@@ -150,6 +155,23 @@ export function validateConfig(raw: unknown, file = 'config'): RelivaroConfig {
         fail(file, `commands.${k} is not a known command`);
       if (typeof v !== 'string' || !v.trim()) fail(file, `commands.${k} must be a non-empty string`);
       c.commands[k as keyof RelivaroConfig['commands']] = v;
+    }
+  }
+  if (raw.limits !== undefined) {
+    if (!isObj(raw.limits)) fail(file, '"limits" must be an object');
+    for (const [k, v] of Object.entries(raw.limits)) {
+      if (!['maxDuration', 'maxFiles', 'maxBytes'].includes(k))
+        fail(file, `limits.${k} is not a known limit`);
+      if (k === 'maxBytes' && typeof v === 'string') {
+        try {
+          c.limits.maxBytes = parseSize(v);
+        } catch {
+          fail(file, 'limits.maxBytes must be a number of bytes or a size such as "500M"');
+        }
+        continue;
+      }
+      if (typeof v !== 'number' || !(v > 0)) fail(file, `limits.${k} must be a positive number`);
+      c.limits[k as 'maxDuration' | 'maxFiles' | 'maxBytes'] = v as number;
     }
   }
   if (raw.timeouts !== undefined) {

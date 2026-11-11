@@ -495,6 +495,14 @@ export function assessRelease(
       : `README (${Math.round(d.readmeBytes / 1024)} KB)${d.license ? ', LICENSE' : ''}${d.changelog ? ', CHANGELOG' : ''}${d.security ? ', SECURITY policy' : ''}.`,
   });
 
+  // A partial run never looks clean: it adds an unverified gate and caps the verdict at needs-verification.
+  if (run.partial)
+    gates.unshift({
+      id: 'complete',
+      title: 'The analysis covered the whole project',
+      status: 'unverified',
+      detail: `The run stopped early (${run.partial.reason}); findings and gates cover only part of the project.`,
+    });
   for (const g of gates) g.basis = gateBasis(run, g, bench);
   const blockers = gates.filter((g) => g.status === 'block');
   const warnings = gates.filter((g) => g.status === 'warn');
@@ -508,9 +516,8 @@ export function assessRelease(
   score = Math.max(0, Math.round(score));
   const scoreCapped = blockers.length > 0 && score > 40;
   if (blockers.length) score = Math.min(score, 40);
-  const critUnverified = gates.some(
-    (g) => (g.id === 'build' || g.id === 'tests') && g.status === 'unverified',
-  );
+  const critUnverified =
+    !!run.partial || gates.some((g) => (g.id === 'build' || g.id === 'tests') && g.status === 'unverified');
   const status: ReleaseAssessment['status'] = blockers.length
     ? 'not-ready'
     : critUnverified

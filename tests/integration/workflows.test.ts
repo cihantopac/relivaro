@@ -837,3 +837,91 @@ describe('health endpoints in web server configs', () => {
     }
   });
 });
+
+describe('run budget', () => {
+  it('maxFiles stops the analysis, analyses root metadata first and marks the run partial', async () => {
+    const { analysisOrder } = await import('../../src/rules/engine.js');
+    const fx = materialize('node-api');
+    try {
+      const first = analysisOrder(new FileSet(fx.dir))
+        .slice(0, 3)
+        .map((f) => f.path);
+      expect(first).toEqual(expect.arrayContaining(['package.json', 'package-lock.json']));
+      const { run } = await runAudit({
+        root: fx.dir,
+        command: 'audit',
+        noWrite: true,
+        limits: { maxFiles: 3 },
+      });
+      expect(run.partial?.reason).toBe('files');
+      expect(run.limitations[0]).toMatch(
+        /^The run stopped early \(files\); results cover 3 of \d+ files and are incomplete\.$/,
+      );
+      expect(run.profile.lockfiles.length).toBeGreaterThan(0);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('maxBytes stops the analysis', async () => {
+    const fx = materialize('node-api');
+    try {
+      const { run } = await runAudit({
+        root: fx.dir,
+        command: 'audit',
+        noWrite: true,
+        limits: { maxBytes: 1 },
+      });
+      expect(run.partial?.reason).toBe('bytes');
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('an aborted signal stops the run as partial (signal)', async () => {
+    const fx = materialize('node-api');
+    try {
+      const ac = new AbortController();
+      ac.abort();
+      const { run } = await runAudit({ root: fx.dir, command: 'audit', noWrite: true, signal: ac.signal });
+      expect(run.partial?.reason).toBe('signal');
+      expect(run.limitations[0]).toMatch(/^The run stopped early \(signal\)/);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('a parse over the parse timeout is recorded and the run continues', async () => {
+    const fx = materialize('node-api');
+    try {
+      const { run } = await runAudit({
+        root: fx.dir,
+        command: 'audit',
+        noWrite: true,
+        limits: { parseTimeoutMs: 0 },
+      });
+      expect(run.partial).toBeUndefined();
+      expect(run.errors.parse.some((e) => /timed out/.test(e.message))).toBe(true);
+      expect(run.findings.length).toBeGreaterThan(0);
+    } finally {
+      fx.cleanup();
+    }
+  });
+
+  it('a partial run is never READY', async () => {
+    const fx = materialize('clean-service');
+    try {
+      const { run } = await runAudit({
+        root: fx.dir,
+        command: 'release',
+        noWrite: true,
+        release: true,
+        limits: { maxFiles: 2 },
+      });
+      expect(run.partial?.reason).toBe('files');
+      expect(run.release?.status).toBe('needs-verification');
+    } finally {
+      fx.cleanup();
+    }
+  });
+});

@@ -58,6 +58,36 @@ describe('relivaro CLI', () => {
     expect(b.stderr).toBe('');
   });
 
+  it.skipIf(process.platform === 'win32')(
+    'SIGTERM writes a partial run record atomically and exits 4',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'rlv-sig-'));
+      const ws = mkdtempSync(join(tmpdir(), 'rlv-sig-ws-'));
+      try {
+        for (let i = 0; i < 20_000; i++) writeFileSync(join(dir, `f${i}.js`), `export const x${i} = ${i};\n`);
+        const child = spawn(process.execPath, [CLI, 'audit', dir, '--no-git', '--workspace', ws, '--quiet'], {
+          env: { ...process.env, NO_COLOR: '1' },
+          stdio: 'ignore',
+        });
+        const code: number | null = await new Promise((resolve) => {
+          setTimeout(() => child.kill('SIGTERM'), 300);
+          child.on('exit', (c) => resolve(c));
+        });
+        expect(code).toBe(4);
+        const runs = readdirSync(join(ws, 'runs'));
+        expect(runs).toHaveLength(1);
+        const files = readdirSync(join(ws, 'runs', runs[0]!));
+        expect(files.some((f) => f.endsWith('.tmp'))).toBe(false);
+        const run = JSON.parse(readFileSync(join(ws, 'runs', runs[0]!, 'run.json'), 'utf8'));
+        expect(run.partial.reason).toBe('signal');
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+        rmSync(ws, { recursive: true, force: true });
+      }
+    },
+    60_000,
+  );
+
   it('prints help and version', () => {
     const h = cli(['--help']);
     expect(h.code).toBe(0);

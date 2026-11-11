@@ -476,3 +476,25 @@ describe('branch review fixes', () => {
     expect(files.read('credentials.json')).toBeUndefined();
   });
 });
+
+describe('run budget limits', () => {
+  it('reports duration, files and bytes in that order of checking', async () => {
+    const { Budget, parseSize } = await import('../../src/core/limits.js');
+    let t = 0;
+    const b = new Budget({ maxDurationMs: 100, maxFiles: 2, maxBytes: 50, parseTimeoutMs: 5000 }, () => t);
+    expect(b.exceeded()).toBeNull();
+    b.noteFile(10);
+    b.noteFile(10);
+    expect(b.exceeded()).toBe('files');
+    t = 200;
+    expect(b.exceeded()).toBe('duration');
+    const c = new Budget({ maxBytes: 50, parseTimeoutMs: 5000 }, () => 0);
+    c.noteFile(60);
+    expect(c.exceeded()).toBe('bytes');
+    expect(parseSize('10K')).toBe(10 * 1024);
+    expect(parseSize('2M')).toBe(2 * 1024 * 1024);
+    expect(parseSize('1G')).toBe(1024 ** 3);
+    expect(parseSize('500')).toBe(500);
+    expect(() => parseSize('ten')).toThrow(/--max-bytes/);
+  });
+});

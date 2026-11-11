@@ -1,5 +1,6 @@
 import { matchesAny } from '../core/glob.js';
 import { findingId, fingerprint } from '../core/hash.js';
+import type { Budget, StopReason } from '../core/limits.js';
 import { FILE_EVENT_EVERY } from '../core/progress.js';
 import { redact } from '../core/secrets.js';
 import { type Category, type Finding, type ProjectFile, SEVERITIES, type Severity } from '../core/types.js';
@@ -13,6 +14,12 @@ export interface AnalysisOptions {
   rules?: string[];
   /** Called every FILE_EVENT_EVERY files and once at the end with `done === total`. */
   onFiles?: (done: number, total: number) => void;
+  /** Stops the file loop when a limit is reached; the result then carries `stopped`. */
+  budget?: Budget;
+  /** Aborted by SIGTERM/SIGINT: the file loop stops at the next file. */
+  signal?: AbortSignal;
+  /** A parse slower than this skips the file's AST rules and is recorded in `parseErrors`. */
+  parseTimeoutMs?: number;
 }
 
 export interface AnalysisResult {
@@ -25,6 +32,20 @@ export interface AnalysisResult {
   /** Per-file maximum cyclomatic complexity (parsed files only). */
   complexity: Map<string, number>;
   functions: number;
+  /** Why the file loop stopped early, if it did. */
+  stopped?: StopReason;
+  /** Files the loop went through (all of them unless it stopped). */
+  filesAnalysed: number;
+  filesTotal: number;
+}
+
+/**
+ * The order the engine analyses files in: root manifests and lockfiles first, so a run cut short by a budget still
+ * covers the dependency inventory; then the rest in path order.
+ */
+export function analysisOrder(files: ProjectContext['files']): ProjectFile[] {
+  const meta = (f: ProjectFile) => !f.path.includes('/') && (f.kind === 'manifest' || f.kind === 'lockfile');
+  return [...files.files.filter(meta), ...files.files.filter((f) => !meta(f))];
 }
 
 const SERVER_PATH =
@@ -350,7 +371,14 @@ export async function analyze(
 
   const total = project.files.files.length;
   let done = 0;
-  for (const file of project.files.files) {
+  let stopped: StopReason | undefined;
+  for (const file of analysisOrder(project.files)) {
+    if (opts.signal?.aborted) stopped = 'signal';
+    else if (opts.budget) stopped = opts.budget.exceeded() ?? undefined;
+    if (stopped) break;
+    opts.budget?.noteFile(file.size);
+    // Let signal handlers run now and then: parsing is synchronous WebAssembly work.
+    if (done % 50 === 0) await new Promise<void>((r) => setImmediate(r));
     if (++done % FILE_EVENT_EVERY === 0 && done < total) opts.onFiles?.(done, total);
     const applicableFileRules = fileRules.filter((r) => r.appliesTo(file));
     const lang = file.language;
@@ -372,6 +400,7 @@ export async function analyze(
     }
     if (lang && applicableAst.length) {
       let tree: Awaited<ReturnType<typeof parse>>;
+      const parseStarted = performance.now();
       try {
         tree = await parse(lang, text);
       } catch (e) {
@@ -380,6 +409,18 @@ export async function analyze(
       }
       if (!tree) {
         parseErrors.push({ file: file.path, message: 'parser returned no tree' });
+        continue;
+      }
+      // tree-sitter parses synchronously, so a slow parse cannot be interrupted; it is detected afterwards and the
+      // file's AST rules are skipped so one pathological file cannot dominate the run.
+      const parseMs = performance.now() - parseStarted;
+      if (opts.parseTimeoutMs !== undefined && parseMs > opts.parseTimeoutMs) {
+        parseErrors.push({
+          file: file.path,
+          message: `Parsing timed out (${Math.round(parseMs)} ms > ${opts.parseTimeoutMs} ms); AST rules were skipped.`,
+        });
+        forgetTree(tree);
+        tree.delete();
         continue;
       }
       filesParsed++;
@@ -413,8 +454,9 @@ export async function analyze(
     }
   }
 
-  opts.onFiles?.(total, total);
-  for (const rule of projectRules) {
+  opts.onFiles?.(done, total);
+  // Project rules read the profile, not file contents; a signal skips them too.
+  for (const rule of stopped === 'signal' ? [] : projectRules) {
     try {
       for (const hit of rule.check(project)) builder.add(rule, hit);
     } catch (e) {
@@ -432,5 +474,8 @@ export async function analyze(
     durationMs: Math.round(performance.now() - started),
     complexity,
     functions,
+    ...(stopped ? { stopped } : {}),
+    filesAnalysed: done,
+    filesTotal: total,
   };
 }

@@ -7,6 +7,8 @@ export const EXIT = {
   USAGE: 2,
   /** Unexpected runtime error. */
   RUNTIME: 3,
+  /** The run stopped early (a limit or SIGTERM/SIGINT); results are partial. */
+  PARTIAL: 4,
 } as const;
 
 export type ErrorCode =

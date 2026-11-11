@@ -1,4 +1,5 @@
 import { EXIT, errorMessage, RelivaroError } from '../core/errors.js';
+import { processAbort } from '../core/limits.js';
 import type { ProgressMode } from '../core/progress.js';
 import { redact } from '../core/secrets.js';
 import { VERSION } from '../core/version.js';
@@ -43,6 +44,7 @@ export function cliMarkdown(): string {
     '| 1 | A gate failed: findings at/above `--fail-on`, release not ready, breaking API change, fix verification failed, rollback conflict |',
     '| 2 | Usage or configuration error, missing permission flag (`--allow-exec`, `--yes`), refused target |',
     '| 3 | Unexpected runtime error |',
+    '| 4 | Partial run: a limit (`--max-duration`, `--max-files`, `--max-bytes`) or SIGTERM/SIGINT stopped it early; the record is written with `partial` |',
     '',
   ];
   for (const c of COMMANDS) {
@@ -167,6 +169,16 @@ export async function main(argv: string[]): Promise<number> {
 // Entry point (the bundle is executed directly).
 const isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
 if (isEntry) {
+  // The first SIGTERM/SIGINT stops the analysis gracefully: the run is written as partial (exit code 4). A second
+  // signal exits immediately with the conventional 128 + signal number.
+  for (const [sig, code] of [
+    ['SIGTERM', 143],
+    ['SIGINT', 130],
+  ] as const)
+    process.on(sig, () => {
+      if (processAbort.signal.aborted) process.exit(code);
+      processAbort.abort();
+    });
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

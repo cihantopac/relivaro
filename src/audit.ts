@@ -2,6 +2,7 @@ import { readCoverage, type TestGap, testGaps } from './checks/coverage.js';
 import { type CheckKind, type CheckResult, planChecks, runChecks } from './checks/exec.js';
 import { loadConfig, type RelivaroConfig } from './core/config.js';
 import { RelivaroError } from './core/errors.js';
+import { Budget, DEFAULT_PARSE_TIMEOUT_MS, type RunBudget, type StopReason } from './core/limits.js';
 import type { ProgressEvent, ProgressStage } from './core/progress.js';
 import { redact } from './core/secrets.js';
 import {
@@ -49,6 +50,10 @@ export interface AuditOptions {
   onProgress?: (msg: string) => void;
   /** Structured stage and file-count events (`--progress ndjson`). */
   onEvent?: (e: ProgressEvent) => void;
+  /** Run limits; they override the config's `limits`. A reached limit makes the run partial. */
+  limits?: Partial<RunBudget>;
+  /** Aborted by SIGTERM/SIGINT: the run returns what it has, marked partial. */
+  signal?: AbortSignal;
   fetchImpl?: typeof fetch;
 }
 
@@ -121,6 +126,8 @@ export interface RunRecord {
     network: string[];
   };
   release?: ReleaseAssessment;
+  /** Set when the run stopped early; its findings and gates cover only part of the project. */
+  partial?: { reason: StopReason; at: string };
 }
 
 export type ProfileSummary = Omit<ProjectProfile, 'manifests' | 'lockfiles'> & {
@@ -242,15 +249,36 @@ export async function runAudit(
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
   const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
+  const limits: RunBudget = {
+    maxDurationMs: config.limits.maxDuration !== undefined ? config.limits.maxDuration * 1000 : undefined,
+    maxFiles: config.limits.maxFiles,
+    maxBytes: config.limits.maxBytes,
+    parseTimeoutMs: DEFAULT_PARSE_TIMEOUT_MS,
+    ...Object.fromEntries(Object.entries(opts.limits ?? {}).filter(([, v]) => v !== undefined)),
+  };
+  // The duration budget counts from the start of the run, not of the analysis.
+  const budget = new Budget(limits, () => performance.now() - started);
   progress('analysing');
   stage('analyse', 'start');
   const analysis = await analyze(
     ctx,
     RULES,
-    { categories, rules: opts.rules, onFiles: (done, total) => emit({ type: 'files', done, total }) },
+    {
+      categories,
+      rules: opts.rules,
+      onFiles: (done, total) => emit({ type: 'files', done, total }),
+      budget,
+      signal: opts.signal,
+      parseTimeoutMs: limits.parseTimeoutMs,
+    },
     builder,
   );
   stage('analyse', 'end');
+  let stopped: StopReason | undefined = analysis.stopped;
+  const stopNow = () => {
+    stopped ??= opts.signal?.aborted ? 'signal' : budget.exceeded() === 'duration' ? 'duration' : undefined;
+    return stopped !== undefined;
+  };
 
   const limitations: string[] = [];
   const networkErrors: string[] = [];
@@ -258,7 +286,7 @@ export async function runAudit(
   const wantsSupplyChain = categories.includes('supply-chain');
   if (wantsSupplyChain) {
     limitations.push(...parseErrorLimitations(profile));
-    if (opts.online) {
+    if (opts.online && !stopNow()) {
       progress('querying OSV.dev for known vulnerabilities');
       stage('osv', 'start');
       const osv = await queryOsv(profile.lockfiles, {
@@ -279,7 +307,7 @@ export async function runAudit(
         limitations.push(
           'No lockfiles found: known vulnerabilities could not be checked against resolved versions.',
         );
-    } else if (profile.lockfiles.length) {
+    } else if (!opts.online && profile.lockfiles.length) {
       limitations.push(
         `Known vulnerabilities in ${uniquePackageCount(profile.lockfiles)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
       );
@@ -288,7 +316,7 @@ export async function runAudit(
 
   let checks: CheckResult[] = [];
   const checkKinds = opts.checks ?? [];
-  if (checkKinds.length) {
+  if (checkKinds.length && !stopNow()) {
     stage('checks', 'start');
     const planned = planChecks(files, profile, config, checkKinds);
     const exec = await runChecks(planned, {
@@ -469,7 +497,15 @@ export async function runAudit(
       osvQueried,
       filesSkipped: { ...files.skipped },
     },
-    limitations: [...new Set(limitations)],
+    limitations: [
+      ...(stopped
+        ? [
+            `The run stopped early (${stopped}); results cover ${analysis.filesAnalysed} of ${analysis.filesTotal} files and are incomplete.`,
+          ]
+        : []),
+      ...new Set(limitations),
+    ],
+    ...(stopped ? { partial: { reason: stopped, at: new Date().toISOString() } } : {}),
     errors: {
       parse: analysis.parseErrors.slice(0, 50),
       rules: analysis.ruleErrors.slice(0, 50),

@@ -159,7 +159,16 @@
         "network": { "type": "array", "items": { "type": "string" } }
       }
     },
-    "release": { "$ref": "#/$defs/release" }
+    "release": { "$ref": "#/$defs/release" },
+    "partial": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reason", "at"],
+      "properties": {
+        "reason": { "enum": ["duration", "files", "bytes", "signal"] },
+        "at": { "type": "string" }
+      }
+    }
   },
   "$defs": {
     "severity": { "enum": ["critical", "high", "medium", "low", "info"] },

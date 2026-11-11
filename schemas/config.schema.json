@@ -41,6 +41,21 @@
         "lint": { "type": "string", "minLength": 1 }
       }
     },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Run limits; a reached limit stops the run early, marks it partial and exits with code 4.",
+      "properties": {
+        "maxDuration": { "type": "number", "exclusiveMinimum": 0, "description": "Seconds." },
+        "maxFiles": { "type": "integer", "exclusiveMinimum": 0 },
+        "maxBytes": {
+          "anyOf": [
+            { "type": "integer", "exclusiveMinimum": 0 },
+            { "type": "string", "pattern": "^\\s*\\d+(\\.\\d+)?\\s*[KMGkmg]?[Bb]?\\s*$" }
+          ]
+        }
+      }
+    },
     "timeouts": {
       "type": "object",
       "additionalProperties": false,

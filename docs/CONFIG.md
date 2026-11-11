@@ -33,6 +33,7 @@ JSON Schema: [`schemas/config.schema.json`](../schemas/config.schema.json). `rel
 | `rules` | Per rule: `"off"`, or `{ "severity": …, "exclude": [globs] }`. Rule ids: `relivaro rules`. |
 | `commands` | Override detected `build`, `test`, `typecheck`, `lint` commands (run without a shell; use a script for pipelines). |
 | `timeouts.commandSeconds` | Per-command timeout for execution checks, benchmarks and fix verification. |
+| `limits.maxDuration`, `limits.maxFiles`, `limits.maxBytes` | Run limits (seconds, files, bytes or a size such as `"500M"`). A reached limit stops the analysis, marks the run `partial` (first limitation, release verdict at best *needs verification*) and exits with code 4. `--max-duration`, `--max-files` and `--max-bytes` override them. |
 | `release.requireTests` | No test files → blocker (default `true`). |
 | `release.requireCi` | No CI → warning (default `true`). |
 | `release.minCoverage` | Line coverage gate, from existing lcov/Clover/Cobertura reports. |
