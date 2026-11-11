@@ -22777,6 +22777,14 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
   let filesParsed = 0;
   let functions = 0;
   const complexity2 = /* @__PURE__ */ new Map();
+  const matched = /* @__PURE__ */ new Map();
+  const touch = (rs, path) => {
+    for (const r of rs) {
+      const set = matched.get(r.category) ?? /* @__PURE__ */ new Set();
+      set.add(path);
+      matched.set(r.category, set);
+    }
+  };
   const total = project.files.files.length;
   let done = 0;
   let stopped;
@@ -22791,6 +22799,8 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     const lang = file.language;
     const applicableAst = lang ? astRules.filter((r) => r.languages.includes(lang)) : [];
     if (!applicableFileRules.length && !applicableAst.length) continue;
+    touch(applicableFileRules, file.path);
+    touch(applicableAst, file.path);
     const text = project.files.read(file.path);
     if (text === void 0) continue;
     if (text.includes("relivaro-accept")) builder.annotations(file.path, text.split(/\r?\n/));
@@ -22877,7 +22887,13 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     functions,
     ...stopped ? { stopped } : {},
     filesAnalysed: done,
-    filesTotal: total
+    filesTotal: total,
+    coverage: Object.fromEntries(
+      [...new Set(rules.map((r) => r.category))].map((c) => [
+        c,
+        { rules: rules.filter((r) => r.category === c).length, files: matched.get(c)?.size ?? 0 }
+      ])
+    )
   };
 }
 
@@ -23223,7 +23239,8 @@ async function runAudit(opts) {
       dependencies: uniquePackageCount(profile.lockfiles),
       dependencyEntries: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
       osvQueried,
-      filesSkipped: { ...files.skipped }
+      filesSkipped: { ...files.skipped },
+      coverage: analysis.coverage
     },
     limitations: [
       ...stopped ? [

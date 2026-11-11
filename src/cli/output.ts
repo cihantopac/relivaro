@@ -103,6 +103,20 @@ export function findingLine(on: boolean, f: Finding): string {
   return `${sevLabel(on, f.severity)} ${paint(on, 'bold', f.title)}${where ? `  ${paint(on, 'cyan', where)}` : ''}\n         ${f.message}  ${paint(on, 'gray', `[${f.ruleId} · ${f.confidence} confidence · ${f.id}]`)}`;
 }
 
+/** `Coverage: security 41 rules/120 files · reliability 12/30 · …`; what a clean or partial result covered. */
+export function coverageLine(run: RunRecord): string | undefined {
+  const c = run.metrics.coverage;
+  if (!c) return undefined;
+  const parts = Object.entries(c).map(([cat, v], i) =>
+    i === 0 ? `${cat} ${v!.rules} rules/${v!.files} files` : `${cat} ${v!.rules}/${v!.files}`,
+  );
+  return parts.length ? `Coverage: ${parts.join(' · ')}` : undefined;
+}
+
+function shellPath(p: string): string {
+  return /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p;
+}
+
 export function printRunSummary(
   out: Out,
   run: RunRecord,
@@ -173,8 +187,10 @@ export function printRunSummary(
       SEVERITIES.filter((x) => s.bySeverity[x])
         .map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`))
         .join(', ') || 'none'
-    }${s.accepted ? paint(on, 'gray', ` · ${s.accepted} accepted`) : ''}${s.suppressed ? paint(on, 'gray', ` · ${s.suppressed} suppressed`) : ''}${s.baseline ? paint(on, 'gray', ` · ${s.baseline} baseline`) : ''}`,
+    }${s.accepted ? paint(on, 'gray', ` · ${s.accepted} accepted`) : ''}${s.suppressed ? paint(on, 'gray', ` · ${s.suppressed} suppressed`) : ''}${s.baseline ? paint(on, 'gray', ` · ${s.baseline} findings in baseline (not shown)`) : ''}`,
   );
+  const cov = coverageLine(run);
+  if (cov) out.print(paint(on, 'gray', cov));
   if (!out.quiet) {
     const open = run.findings.filter((f) => f.status === 'open');
     for (const f of open.slice(0, maxFindings)) out.print(findingLine(on, f));
@@ -201,10 +217,12 @@ export function printRunSummary(
         ),
       );
   }
+  if (!out.quiet && !run.release && s.open > 0 && !run.options.baseline) {
+    out.print('');
+    out.print(`Next: relivaro baseline ${shellPath(typedPath)} to track only new findings from now on.`);
+  }
   if (!run.release && !out.quiet) {
-    const path = /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(typedPath)
-      ? `'${typedPath.replace(/'/g, `'\\''`)}'`
-      : typedPath;
+    const path = shellPath(typedPath);
     out.print('');
     out.print(
       `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`,

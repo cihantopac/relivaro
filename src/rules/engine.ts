@@ -37,6 +37,8 @@ export interface AnalysisResult {
   /** Files the loop went through (all of them unless it stopped). */
   filesAnalysed: number;
   filesTotal: number;
+  /** Per category: rules run and distinct files at least one of its rules looked at. */
+  coverage: Partial<Record<Category, { rules: number; files: number }>>;
 }
 
 /**
@@ -374,6 +376,14 @@ export async function analyze(
   let functions = 0;
   const complexity = new Map<string, number>();
 
+  const matched = new Map<Category, Set<string>>();
+  const touch = (rs: { category: Category }[], path: string) => {
+    for (const r of rs) {
+      const set = matched.get(r.category) ?? new Set<string>();
+      set.add(path);
+      matched.set(r.category, set);
+    }
+  };
   const total = project.files.files.length;
   let done = 0;
   let stopped: StopReason | undefined;
@@ -389,6 +399,8 @@ export async function analyze(
     const lang = file.language;
     const applicableAst = lang ? astRules.filter((r) => r.languages.includes(lang)) : [];
     if (!applicableFileRules.length && !applicableAst.length) continue;
+    touch(applicableFileRules, file.path);
+    touch(applicableAst, file.path);
     const text = project.files.read(file.path);
     if (text === undefined) continue;
     if (text.includes('relivaro-accept')) builder.annotations(file.path, text.split(/\r?\n/));
@@ -482,5 +494,11 @@ export async function analyze(
     ...(stopped ? { stopped } : {}),
     filesAnalysed: done,
     filesTotal: total,
+    coverage: Object.fromEntries(
+      [...new Set(rules.map((r) => r.category))].map((c) => [
+        c,
+        { rules: rules.filter((r) => r.category === c).length, files: matched.get(c)?.size ?? 0 },
+      ]),
+    ),
   };
 }

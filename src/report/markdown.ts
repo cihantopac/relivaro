@@ -56,7 +56,7 @@ export function toMarkdown(
   L.push('## Summary');
   L.push('');
   L.push(
-    `**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(', ')})${s.suppressed ? ` · ${s.suppressed} suppressed` : ''}${s.baseline ? ` · ${s.baseline} in baseline` : ''}.`,
+    `**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(', ')})${s.suppressed ? ` · ${s.suppressed} suppressed` : ''}${s.baseline ? ` · ${s.baseline} findings in baseline (not shown)` : ''}.`,
   );
   L.push('');
   L.push(

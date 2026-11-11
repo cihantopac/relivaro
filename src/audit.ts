@@ -131,6 +131,8 @@ export interface RunRecord {
     dependencyEntries?: number;
     osvQueried?: number;
     filesSkipped: Record<string, number>;
+    /** Per category: rules run and distinct files they looked at (absent in records before 1.5.0). */
+    coverage?: Partial<Record<Category, { rules: number; files: number }>>;
   };
   limitations: string[];
   errors: {
@@ -537,6 +539,7 @@ export async function runAudit(
       dependencyEntries: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
       osvQueried,
       filesSkipped: { ...files.skipped },
+      coverage: analysis.coverage,
     },
     limitations: [
       ...(stopped

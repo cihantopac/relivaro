@@ -1002,3 +1002,22 @@ describe('output privacy', () => {
     expect(compactRun(run, 30, { json: '/w/runs/x/report.json' }).reports).toBe('/w/runs/x');
   });
 });
+
+describe('coverage metrics', () => {
+  it('counts rules run and files matched per category', async () => {
+    const fx = materialize('node-api');
+    try {
+      const { run } = await runAudit({ root: fx.dir, command: 'audit', noWrite: true });
+      const c = run.metrics.coverage!;
+      expect(c.security!.rules).toBeGreaterThan(20);
+      expect(c.security!.files).toBeGreaterThan(3);
+      expect(c.security!.files).toBeLessThanOrEqual(run.metrics.files);
+      const only = (
+        await runAudit({ root: fx.dir, command: 'security', noWrite: true, categories: ['security'] })
+      ).run;
+      expect(Object.keys(only.metrics.coverage!)).toEqual(['security']);
+    } finally {
+      fx.cleanup();
+    }
+  });
+});

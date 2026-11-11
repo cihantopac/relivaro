@@ -125,7 +125,19 @@
         "dependencies": { "type": "integer", "minimum": 0 },
         "dependencyEntries": { "type": "integer", "minimum": 0 },
         "osvQueried": { "type": "integer", "minimum": 0 },
-        "filesSkipped": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+        "filesSkipped": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "coverage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rules", "files"],
+            "properties": {
+              "rules": { "type": "integer", "minimum": 0 },
+              "files": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
       }
     },
     "limitations": { "type": "array", "items": { "type": "string" } },

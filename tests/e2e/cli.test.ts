@@ -165,6 +165,49 @@ describe('relivaro CLI', () => {
     }
   });
 
+  it('prints a coverage line for every run', () => {
+    const a = cli(['audit', fx.dir, '--no-write']);
+    expect(a.stdout).toMatch(/^Coverage: security \d+ rules\/\d+ files · /m);
+  });
+
+  it('rules list --json exports the full rule metadata as a stable shape', () => {
+    const r = cli(['rules', 'list', '--json']);
+    const rules = JSON.parse(r.stdout);
+    expect(rules.length).toBeGreaterThan(80);
+    const shape = [
+      'id',
+      'category',
+      'severity',
+      'confidence',
+      'cwe',
+      'owasp',
+      'fixer',
+      'title',
+      'description',
+      'impact',
+      'recommendation',
+      'verification',
+    ].sort();
+    for (const rule of rules) expect(Object.keys(rule).sort(), rule.id).toEqual(shape);
+    expect(rules.every((x: { description: string }) => x.description.length > 10)).toBe(true);
+  });
+
+  it('suggests a baseline after an audit with findings, and counts baseline findings afterwards (baseline hint)', () => {
+    const own = materialize('python-app');
+    try {
+      const first = cli(['audit', own.dir, '--no-write']);
+      expect(first.stdout).toContain(
+        `Next: relivaro baseline ${own.dir} to track only new findings from now on.`,
+      );
+      expect(cli(['baseline', own.dir, '--reason', 'accepted for now']).code).toBe(0);
+      const second = cli(['audit', own.dir, '--no-write']);
+      expect(second.stdout).toMatch(/\d+ findings in baseline \(not shown\)/);
+      expect(second.stdout).not.toContain('Next: relivaro baseline');
+    } finally {
+      own.cleanup();
+    }
+  });
+
   it('audit ends with the release next step and an explicit offline OSV disclosure', () => {
     const a = cli(['audit', fx.dir, '--no-write']);
     expect(a.code).toBe(0);

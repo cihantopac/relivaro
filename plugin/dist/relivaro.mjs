@@ -23439,6 +23439,14 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
   let filesParsed = 0;
   let functions = 0;
   const complexity2 = /* @__PURE__ */ new Map();
+  const matched = /* @__PURE__ */ new Map();
+  const touch = (rs, path) => {
+    for (const r of rs) {
+      const set = matched.get(r.category) ?? /* @__PURE__ */ new Set();
+      set.add(path);
+      matched.set(r.category, set);
+    }
+  };
   const total = project.files.files.length;
   let done = 0;
   let stopped;
@@ -23453,6 +23461,8 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     const lang = file.language;
     const applicableAst = lang ? astRules.filter((r) => r.languages.includes(lang)) : [];
     if (!applicableFileRules.length && !applicableAst.length) continue;
+    touch(applicableFileRules, file.path);
+    touch(applicableAst, file.path);
     const text = project.files.read(file.path);
     if (text === void 0) continue;
     if (text.includes("relivaro-accept")) builder.annotations(file.path, text.split(/\r?\n/));
@@ -23539,7 +23549,13 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     functions,
     ...stopped ? { stopped } : {},
     filesAnalysed: done,
-    filesTotal: total
+    filesTotal: total,
+    coverage: Object.fromEntries(
+      [...new Set(rules.map((r) => r.category))].map((c) => [
+        c,
+        { rules: rules.filter((r) => r.category === c).length, files: matched.get(c)?.size ?? 0 }
+      ])
+    )
   };
 }
 
@@ -23885,7 +23901,8 @@ async function runAudit(opts) {
       dependencies: uniquePackageCount(profile.lockfiles),
       dependencyEntries: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
       osvQueried,
-      filesSkipped: { ...files.skipped }
+      filesSkipped: { ...files.skipped },
+      coverage: analysis2.coverage
     },
     limitations: [
       ...stopped ? [
@@ -27326,7 +27343,7 @@ function toMarkdown(run2, opts = {}) {
   L.push("## Summary");
   L.push("");
   L.push(
-    `**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(", ")})${s.suppressed ? ` \xB7 ${s.suppressed} suppressed` : ""}${s.baseline ? ` \xB7 ${s.baseline} in baseline` : ""}.`
+    `**${s.open} open findings** (${SEVERITIES.map((x) => `${s.bySeverity[x]} ${x}`).join(", ")})${s.suppressed ? ` \xB7 ${s.suppressed} suppressed` : ""}${s.baseline ? ` \xB7 ${s.baseline} findings in baseline (not shown)` : ""}.`
   );
   L.push("");
   L.push(
@@ -27670,6 +27687,17 @@ function findingLine(on, f) {
   return `${sevLabel(on, f.severity)} ${paint(on, "bold", f.title)}${where ? `  ${paint(on, "cyan", where)}` : ""}
          ${f.message}  ${paint(on, "gray", `[${f.ruleId} \xB7 ${f.confidence} confidence \xB7 ${f.id}]`)}`;
 }
+function coverageLine(run2) {
+  const c = run2.metrics.coverage;
+  if (!c) return void 0;
+  const parts2 = Object.entries(c).map(
+    ([cat, v], i2) => i2 === 0 ? `${cat} ${v.rules} rules/${v.files} files` : `${cat} ${v.rules}/${v.files}`
+  );
+  return parts2.length ? `Coverage: ${parts2.join(" \xB7 ")}` : void 0;
+}
+function shellPath(p) {
+  return /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(p) ? `'${p.replace(/'/g, `'\\''`)}'` : p;
+}
 function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, typedPath = ".") {
   const on = out2.color;
   const s = run2.summary;
@@ -27716,8 +27744,10 @@ function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, type
     out2.print("");
   }
   out2.print(
-    `${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.accepted ? paint(on, "gray", ` \xB7 ${s.accepted} accepted`) : ""}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} baseline`) : ""}`
+    `${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.accepted ? paint(on, "gray", ` \xB7 ${s.accepted} accepted`) : ""}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} findings in baseline (not shown)`) : ""}`
   );
+  const cov = coverageLine(run2);
+  if (cov) out2.print(paint(on, "gray", cov));
   if (!out2.quiet) {
     const open2 = run2.findings.filter((f) => f.status === "open");
     for (const f of open2.slice(0, maxFindings)) out2.print(findingLine(on, f));
@@ -27744,8 +27774,12 @@ function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, type
         )
       );
   }
+  if (!out2.quiet && !run2.release && s.open > 0 && !run2.options.baseline) {
+    out2.print("");
+    out2.print(`Next: relivaro baseline ${shellPath(typedPath)} to track only new findings from now on.`);
+  }
   if (!run2.release && !out2.quiet) {
-    const path = /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
+    const path = shellPath(typedPath);
     out2.print("");
     out2.print(
       `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`
@@ -29133,9 +29167,13 @@ Verify: ${r.verification}`
             category: r.category,
             severity: r.severity,
             confidence: r.confidence,
-            cwe: r.cwe,
-            owasp: r.owasp,
-            fixer: r.fixer
+            cwe: r.cwe ?? [],
+            owasp: r.owasp ?? [],
+            fixer: r.fixer ?? null,
+            description: r.description,
+            impact: r.impact,
+            recommendation: r.recommendation,
+            verification: r.verification
           })),
           null,
           2
