@@ -524,6 +524,10 @@ const noGracefulShutdown: ProjectRule = {
   },
 };
 
+/** A health/readiness route literal (`'/health'`, `"/api/v2/healthz"`, `` `/v1/ready` ``) or container health check. */
+export const HEALTH_ROUTE_RE =
+  /['"`]\/?(?:api\/)?(?:v\d+\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i;
+
 const noHealthCheck: ProjectRule = {
   kind: 'project',
   id: 'rel/no-health-check',
@@ -555,11 +559,7 @@ const noHealthCheck: ProjectRule = {
           (f.kind === 'source' || f.kind === 'config' || f.kind === 'dockerfile' || f.kind === 'webserver') &&
           (u.path === '.' || f.path.startsWith(`${u.path}/`)),
       );
-      const has = files.some((f) =>
-        /['"`]\/?(?:api\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i.test(
-          ctx.files.read(f.path) ?? '',
-        ),
-      );
+      const has = files.some((f) => HEALTH_ROUTE_RE.test(ctx.files.read(f.path) ?? ''));
       if (!has)
         out.push({
           file: u.manifests[0],

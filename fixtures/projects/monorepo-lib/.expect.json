@@ -1,0 +1,3 @@
+{
+  "findings": [{ "rule": "rel/no-error-monitoring", "file": "apps/api/package.json" }]
+}

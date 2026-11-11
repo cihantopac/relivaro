@@ -8,10 +8,13 @@ import { defaultConfig } from '../../src/core/config.js';
 import type { Finding } from '../../src/core/types.js';
 import { cvss3Score, fixedVersions, severityOf } from '../../src/deps/osv.js';
 import { unifiedDiff } from '../../src/fix/diff.js';
+import { FileSet } from '../../src/fs/files.js';
+import { discover } from '../../src/intel/discover.js';
 import { isPrivateAddress } from '../../src/perf/bench.js';
 import { compareStats, stats } from '../../src/perf/stats.js';
 import { assessRelease, releaseTally } from '../../src/release/readiness.js';
 import { compareRuns } from '../../src/report/compare.js';
+import { HEALTH_ROUTE_RE } from '../../src/rules/reliability.js';
 
 function finding(p: Partial<Finding>): Finding {
   return {
@@ -498,5 +501,39 @@ describe('dockerfile build context', () => {
       'on: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          context: .\n          file: svc/Dockerfile\n';
     const root = makeTree({ '.dockerignore': '.git\n', 'svc/Dockerfile': DF, '.github/workflows/b.yml': wf });
     expect(await ruleHits(root, 'sec/docker-context-leak')).toEqual([]);
+  });
+});
+
+describe('unit kind', () => {
+  const kindOf = (files: Record<string, string>) =>
+    discover(new FileSet(makeTree(files), { useGit: false })).units.find((u) => u.path === '.')?.kind;
+  const pkg = JSON.stringify({ name: 'adapter', version: '1.0.0', dependencies: { express: '^4.0.0' } });
+  it('a package with express as a dependency and no server entry is a library', () => {
+    expect(
+      kindOf({
+        'package.json': pkg,
+        'src/index.ts': 'export function adapt(app: unknown) { return app; }\n',
+      }),
+    ).toBe('library');
+  });
+  it('a package with app.listen in src/server.ts is web-backend', () => {
+    expect(
+      kindOf({
+        'package.json': pkg,
+        'src/index.ts': 'export const x = 1;\n',
+        'src/server.ts': "import express from 'express';\nconst app = express();\napp.listen(3000);\n",
+      }),
+    ).toBe('web-backend');
+  });
+  it('a start script that runs a file makes a service', () => {
+    const withStart = JSON.stringify({ ...JSON.parse(pkg), scripts: { start: 'node dist/main.js' } });
+    expect(kindOf({ 'package.json': withStart, 'src/index.ts': 'export const x = 1;\n' })).toBe(
+      'web-backend',
+    );
+  });
+  it('health route regex accepts versioned and prefixed routes', () => {
+    for (const r of ["'/v1/health'", '"/api/v2/healthz"', '`/v1/ready`', "'/health'"])
+      expect(HEALTH_ROUTE_RE.test(r), r).toBe(true);
+    expect(HEALTH_ROUTE_RE.test("'/v1/users'")).toBe(false);
   });
 });

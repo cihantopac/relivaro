@@ -2625,7 +2625,7 @@ function shippedUnits(ctx) {
 function serverUnits(ctx) {
   return shippedUnits(ctx).filter((u) => u.kind === "web-backend" || u.kind === "fullstack");
 }
-var pyRequestsTimeout, swallowed, bareExcept, stripeIdempotency, RMW_FIELD, readModifyWrite, laravelJob, LARAVEL_COLUMN, migrationDestructive, sqlMigration, migrationNoDown, noGracefulShutdown, noHealthCheck, noErrorTracking, unhandledPromise, httpNoRetry, reliabilityAstRules, reliabilityFileRules, reliabilityProjectRules;
+var pyRequestsTimeout, swallowed, bareExcept, stripeIdempotency, RMW_FIELD, readModifyWrite, laravelJob, LARAVEL_COLUMN, migrationDestructive, sqlMigration, migrationNoDown, noGracefulShutdown, HEALTH_ROUTE_RE, noHealthCheck, noErrorTracking, unhandledPromise, httpNoRetry, reliabilityAstRules, reliabilityFileRules, reliabilityProjectRules;
 var init_reliability = __esm({
   "src/rules/reliability.ts"() {
     "use strict";
@@ -3052,6 +3052,7 @@ var init_reliability = __esm({
         return out2;
       }
     };
+    HEALTH_ROUTE_RE = /['"`]\/?(?:api\/)?(?:v\d+\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i;
     noHealthCheck = {
       kind: "project",
       id: "rel/no-health-check",
@@ -3073,11 +3074,7 @@ var init_reliability = __esm({
           const files = ctx.files.files.filter(
             (f) => !f.isTest && (f.kind === "source" || f.kind === "config" || f.kind === "dockerfile" || f.kind === "webserver") && (u.path === "." || f.path.startsWith(`${u.path}/`))
           );
-          const has = files.some(
-            (f) => /['"`]\/?(?:api\/)?(?:health|healthz|healthcheck|health-check|livez|readyz|ready|readiness|liveness|up)['"`]|health:\s*['"]\/up['"]|HEALTHCHECK|healthcheck|actuator\/health/i.test(
-              ctx.files.read(f.path) ?? ""
-            )
-          );
+          const has = files.some((f) => HEALTH_ROUTE_RE.test(ctx.files.read(f.path) ?? ""));
           if (!has)
             out2.push({
               file: u.manifests[0],
@@ -15881,7 +15878,8 @@ var init_catalog = __esm({
 // src/intel/discover.ts
 var discover_exports = {};
 __export(discover_exports, {
-  discover: () => discover
+  discover: () => discover,
+  hasServerEntry: () => hasServerEntry
 });
 function dirOf2(path) {
   const i2 = path.lastIndexOf("/");
@@ -16014,7 +16012,8 @@ function discover(files) {
     ];
     u.kind = unitKind(
       techs.map((t2) => t2.kind),
-      manifests.filter((m) => dirOf2(m.file) === u.path)
+      manifests.filter((m) => dirOf2(m.file) === u.path),
+      () => hasServerEntry(files, u.path, u.scripts, (path) => unitFor(path) === u)
     );
     if (u.frameworks.includes("Next.js") && isNextStaticExport(files, u.path)) {
       u.staticExport = true;
@@ -16229,18 +16228,32 @@ function isNextStaticExport(files, unit) {
   }
   return false;
 }
-function unitKind(kinds, ms) {
+function unitKind(kinds, ms, serverEntry) {
   if (kinds.includes("mobile")) return "mobile";
   if (kinds.includes("desktop")) return "desktop";
   if (kinds.includes("fullstack")) return "fullstack";
   const fe = kinds.includes("frontend");
   const be = kinds.includes("backend");
   if (fe && be) return "fullstack";
-  if (be) return "web-backend";
+  if (be) return serverEntry() ? "web-backend" : ms.length ? "library" : "unknown";
   if (fe) return "web-frontend";
   if (ms.some((m) => m.extra.bin)) return "cli";
   if (ms.length) return "library";
   return "unknown";
+}
+function hasServerEntry(files, unitPath, scripts, owns = () => true) {
+  for (const name2 of ["start", "dev", "serve"])
+    if (scripts[name2] && SERVER_SCRIPT.test(scripts[name2])) return true;
+  const inUnit = (p) => (unitPath === "." || p.startsWith(`${unitPath}/`)) && owns(p);
+  for (const f of files.files) {
+    if (!inUnit(f.path)) continue;
+    const base = f.path.slice(f.path.lastIndexOf("/") + 1);
+    if (SERVER_FILES.test(base) || /^Dockerfile\./.test(base)) return true;
+    if (f.isTest || f.kind !== "source") continue;
+    const text = files.read(f.path);
+    if (text && SERVER_CALL.test(text)) return true;
+  }
+  return false;
 }
 function collectEnvVars(files, documented) {
   const vars = /* @__PURE__ */ new Map();
@@ -16268,7 +16281,7 @@ function collectEnvVars(files, documented) {
   }
   return [...vars.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
-var import_yaml5, LANG_BY_EXT, CATALOG_BY_ECO, ENV_PATTERNS, AMBIENT_ENV;
+var import_yaml5, LANG_BY_EXT, CATALOG_BY_ECO, SERVER_CALL, SERVER_SCRIPT, SERVER_FILES, ENV_PATTERNS, AMBIENT_ENV;
 var init_discover = __esm({
   "src/intel/discover.ts"() {
     "use strict";
@@ -16331,6 +16344,9 @@ var init_discover = __esm({
       "crates.io": CARGO,
       Maven: MAVEN
     };
+    SERVER_CALL = /\.listen\s*\(|\bcreateServer\s*\(|(?:^|[^\w.])serve\s*\(|\buvicorn\.run\s*\(|\bapp\.run\s*\(|\bDeno\.serve\s*\(|\bBun\.serve\s*\(/;
+    SERVER_SCRIPT = /(?:^|[\s;&|])(?:node|tsx|ts-node|ts-node-dev|bun|nodemon)\s+(?:--?[\w-]+(?:=\S+)?\s+)*[\w./@-]+\.[cm]?[jt]s\b|\b(?:next|nest|fastify)\s+start\b|\b(?:uvicorn|gunicorn|hypercorn|daphne)\b|\bflask\s+run\b|\bartisan\s+serve\b/;
+    SERVER_FILES = /^(?:Dockerfile|Procfile|main\.py|manage\.py|wsgi\.py|asgi\.py|artisan|wrangler\.toml|serverless\.ya?ml|fly\.toml)$/;
     ENV_PATTERNS = [
       // JS/TS: process.env.X, process.env['X'], import.meta.env.X; optional when followed by ?? or ||.
       {

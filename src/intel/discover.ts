@@ -332,6 +332,7 @@ export function discover(files: FileSet): ProjectProfile {
     u.kind = unitKind(
       techs.map((t) => t.kind),
       manifests.filter((m) => dirOf(m.file) === u.path),
+      () => hasServerEntry(files, u.path, u.scripts, (path) => unitFor(path) === u),
     );
     if (u.frameworks.includes('Next.js') && isNextStaticExport(files, u.path)) {
       u.staticExport = true;
@@ -597,18 +598,51 @@ function isNextStaticExport(files: FileSet, unit: string): boolean {
   return false;
 }
 
-function unitKind(kinds: TechKind[], ms: ManifestInfo[]): Unit['kind'] {
+function unitKind(kinds: TechKind[], ms: ManifestInfo[], serverEntry: () => boolean): Unit['kind'] {
   if (kinds.includes('mobile')) return 'mobile';
   if (kinds.includes('desktop')) return 'desktop';
   if (kinds.includes('fullstack')) return 'fullstack';
   const fe = kinds.includes('frontend');
   const be = kinds.includes('backend');
   if (fe && be) return 'fullstack';
-  if (be) return 'web-backend';
+  // A backend framework among the dependencies is not a service by itself: adapters and plugins depend on it too.
+  if (be) return serverEntry() ? 'web-backend' : ms.length ? 'library' : 'unknown';
   if (fe) return 'web-frontend';
   if (ms.some((m) => m.extra.bin)) return 'cli';
   if (ms.length) return 'library';
   return 'unknown';
+}
+
+const SERVER_CALL =
+  /\.listen\s*\(|\bcreateServer\s*\(|(?:^|[^\w.])serve\s*\(|\buvicorn\.run\s*\(|\bapp\.run\s*\(|\bDeno\.serve\s*\(|\bBun\.serve\s*\(/;
+const SERVER_SCRIPT =
+  /(?:^|[\s;&|])(?:node|tsx|ts-node|ts-node-dev|bun|nodemon)\s+(?:--?[\w-]+(?:=\S+)?\s+)*[\w./@-]+\.[cm]?[jt]s\b|\b(?:next|nest|fastify)\s+start\b|\b(?:uvicorn|gunicorn|hypercorn|daphne)\b|\bflask\s+run\b|\bartisan\s+serve\b/;
+const SERVER_FILES =
+  /^(?:Dockerfile|Procfile|main\.py|manage\.py|wsgi\.py|asgi\.py|artisan|wrangler\.toml|serverless\.ya?ml|fly\.toml)$/;
+
+/**
+ * Evidence that a unit runs a server: a non-test source file that starts one (`.listen(`, `createServer(`, `serve(`,
+ * `uvicorn.run(`, `app.run(`, `Deno.serve(`), a `start`/`dev` script that runs a file or a framework server, or a
+ * deployment entry (`Dockerfile`, `Procfile`, `main.py`, `manage.py`, `artisan`, …).
+ */
+export function hasServerEntry(
+  files: FileSet,
+  unitPath: string,
+  scripts: Record<string, string>,
+  owns: (path: string) => boolean = () => true,
+): boolean {
+  for (const name of ['start', 'dev', 'serve'])
+    if (scripts[name] && SERVER_SCRIPT.test(scripts[name])) return true;
+  const inUnit = (p: string) => (unitPath === '.' || p.startsWith(`${unitPath}/`)) && owns(p);
+  for (const f of files.files) {
+    if (!inUnit(f.path)) continue;
+    const base = f.path.slice(f.path.lastIndexOf('/') + 1);
+    if (SERVER_FILES.test(base) || /^Dockerfile\./.test(base)) return true;
+    if (f.isTest || f.kind !== 'source') continue;
+    const text = files.read(f.path);
+    if (text && SERVER_CALL.test(text)) return true;
+  }
+  return false;
 }
 
 const ENV_PATTERNS: { re: RegExp; ext: RegExp }[] = [
