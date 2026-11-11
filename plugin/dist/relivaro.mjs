@@ -1980,7 +1980,7 @@ function redosRisk(pattern) {
       const frame = stack.length > 1 ? stack.pop() : top;
       const parent = stack[stack.length - 1];
       const outerUnbounded = isUnboundedAt(i2 + 1);
-      const unambiguous = !frame.alternation && frame.separators.some((sep) => disjoint(sep, frame.repeated));
+      const unambiguous = !frame.alternation && frame.separators.some((sep2) => disjoint(sep2, frame.repeated));
       if (outerUnbounded && frame.unbounded && !unambiguous) return true;
       if (outerUnbounded && frame.alternation) {
         const firsts = frame.altFirst;
@@ -8473,10 +8473,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -8490,7 +8490,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -8514,7 +8514,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -8530,7 +8530,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -8621,7 +8621,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -8635,13 +8635,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep + cb;
-              sep = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -8684,18 +8684,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i2 = 0; i2 < fc.items.length; ++i2) {
         const collItem = fc.items[i2];
-        const { start: start2, key, sep, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i2 === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i2 < fc.items.length - 1)
@@ -8749,8 +8749,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap2 && !sep && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep, null, props, onError);
+        if (!isMap2 && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -8762,7 +8762,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -8773,8 +8773,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap2 && !props.found && ctx.options.strict) {
-              if (sep)
-                for (const st of sep) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -8791,7 +8791,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -8971,7 +8971,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i2 + 1;
       }
       let value = "";
-      let sep = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i2 = 0; i2 < contentStart; ++i2)
         value += lines[i2][0].slice(trimIndent) + "\n";
@@ -8988,24 +8988,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep === " ")
-            sep = "\n";
-          else if (!prevMoreIndented && sep === "\n")
-            sep = "\n\n";
-          value += sep + indent.slice(trimIndent) + content;
-          sep = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          value += sep + content;
-          sep = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -9188,25 +9188,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match[1].replace(trimEnd, "");
-      let sep = " ";
+      let sep2 = " ";
       let pos2 = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep === "\n")
-            res += sep;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep = "\n";
+            sep2 = "\n";
         } else {
-          res += sep + lm;
-          sep = " ";
+          res += sep2 + lm;
+          sep2 = " ";
         }
         pos2 = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos2;
       match = last.exec(source);
-      return res + sep + (match?.[1] ?? "");
+      return res + sep2 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -10016,14 +10016,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep, value }) {
+    function stringifyItem({ start: start2, key, sep: sep2, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep)
-        for (const st of sep)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -11190,18 +11190,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep;
+          let sep2;
           if (scalar.end) {
-            sep = scalar.end;
-            sep.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep }]
+            items: [{ start: start2, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -11354,15 +11354,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep = it.sep;
-                  sep.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep }]
+                    items: [{ start: start3, key, sep: sep2 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -11556,13 +11556,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep = fc.end.splice(1, fc.end.length);
-            sep.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep }]
+              items: [{ start: start2, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -15139,6 +15139,128 @@ var init_manifests = __esm({
   }
 });
 
+// src/fs/ancestors.ts
+import { lstatSync as lstatSync2, readFileSync as readFileSync7, realpathSync as realpathSync2 } from "node:fs";
+import { dirname as dirname3, join as join8, relative as relative2, resolve as resolve3, sep } from "node:path";
+function readMeta(dir, name2) {
+  if (!ANCESTOR_META.includes(name2)) throw new Error(`not an ancestor metadata file: ${name2}`);
+  try {
+    const p = join8(dir, name2);
+    if (!lstatSync2(p).isFile()) return null;
+    return readFileSync7(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+function hasMeta(dir, name2) {
+  if (!ANCESTOR_META.includes(name2)) return false;
+  try {
+    return lstatSync2(join8(dir, name2)).isFile();
+  } catch {
+    return false;
+  }
+}
+function realOrResolved(p) {
+  const abs = resolve3(p);
+  try {
+    return realpathSync2.native(abs);
+  } catch {
+    return abs;
+  }
+}
+function workspaceGlobs2(dir) {
+  const globs = [];
+  const pnpm = readMeta(dir, "pnpm-workspace.yaml");
+  if (pnpm !== null) {
+    try {
+      const doc = (0, import_yaml4.parse)(pnpm);
+      if (Array.isArray(doc?.packages)) {
+        for (const g of doc.packages) if (typeof g === "string") globs.push(g);
+      }
+    } catch {
+    }
+  }
+  const pkg = readMeta(dir, "package.json");
+  if (pkg !== null) {
+    try {
+      const json = JSON.parse(pkg);
+      const ws = json.workspaces;
+      const list = Array.isArray(ws) ? ws : ws?.packages;
+      if (Array.isArray(list)) {
+        for (const g of list) if (typeof g === "string") globs.push(g);
+      }
+    } catch {
+    }
+  }
+  return globs.map((g) => g.trim().replace(/^\.\//, "").replace(/\/+$/, "")).filter((g) => g && !g.startsWith("!"));
+}
+function scriptsOf(dir) {
+  const pkg = readMeta(dir, "package.json");
+  if (pkg === null) return {};
+  try {
+    const s = JSON.parse(pkg).scripts;
+    if (!s || typeof s !== "object") return {};
+    return Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v === "string"));
+  } catch {
+    return {};
+  }
+}
+function findWorkspaceRoot(auditRoot, opts = {}) {
+  const start2 = realOrResolved(auditRoot);
+  const maxDepth = opts.maxDepth ?? 6;
+  let dir = start2;
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const parent = dirname3(dir);
+    if (parent === dir) break;
+    dir = parent;
+    const globs = workspaceGlobs2(dir);
+    if (!globs.length) continue;
+    const rel = relative2(dir, start2).split(sep).join("/");
+    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
+    const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
+    const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
+    const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);
+    if (manager) out2.packageManager = manager;
+    return out2;
+  }
+  return null;
+}
+var import_yaml4, ANCESTOR_META, LOCKFILES2, MANAGER;
+var init_ancestors = __esm({
+  "src/fs/ancestors.ts"() {
+    "use strict";
+    import_yaml4 = __toESM(require_dist(), 1);
+    init_glob();
+    ANCESTOR_META = [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+      ".dockerignore"
+    ];
+    LOCKFILES2 = [
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+      "package-lock.json",
+      "npm-shrinkwrap.json"
+    ];
+    MANAGER = {
+      "pnpm-lock.yaml": "pnpm",
+      "yarn.lock": "yarn",
+      "bun.lock": "bun",
+      "bun.lockb": "bun",
+      "package-lock.json": "npm",
+      "npm-shrinkwrap.json": "npm"
+    };
+  }
+});
+
 // src/intel/catalog.ts
 function lookup(catalog, name2) {
   const direct = catalog[name2] ?? catalog[name2.toLowerCase()];
@@ -15673,7 +15795,7 @@ function discover(files) {
   const services = /* @__PURE__ */ new Set();
   for (const c of compose) {
     try {
-      const y = (0, import_yaml4.parse)(files.read(c) ?? "");
+      const y = (0, import_yaml5.parse)(files.read(c) ?? "");
       for (const s of Object.values(y?.services ?? {})) {
         const img = s?.image?.toLowerCase();
         if (!img) continue;
@@ -15799,11 +15921,19 @@ function discover(files) {
   };
   const rootManifest = manifests.find((m) => !m.file.includes("/") && m.name);
   const name2 = rootManifest?.name ?? files.root.split(/[\\/]/).pop() ?? "project";
+  const ownWorkspace = manifests.some((m) => m.workspaces.length > 0) || files.has("pnpm-workspace.yaml");
+  const ws = ownWorkspace ? null : findWorkspaceRoot(files.realRoot);
+  const workspaceRoot = ws ? {
+    rel: ws.rel,
+    lockfiles: ws.lockfiles,
+    scripts: ws.scripts,
+    ...ws.packageManager ? { packageManager: ws.packageManager } : {}
+  } : void 0;
   return {
     root: files.root,
     name: name2,
     gitRepo: files.gitRepo,
-    monorepo: units.filter((u) => u.manifests.length).length > 1 || manifests.some((m) => m.workspaces.length > 0) || files.has("pnpm-workspace.yaml"),
+    monorepo: units.filter((u) => u.manifests.length).length > 1 || ownWorkspace,
     languages: [...langs.entries()].map(([name3, v]) => ({ name: name3, ...v })).sort((a, b) => b.lines - a.lines),
     units,
     technologies,
@@ -15824,7 +15954,8 @@ function discover(files) {
     manifests,
     lockfiles,
     migrations: files.byKind("migration").map((f) => f.path),
-    stats: { files: files.files.length, bytes }
+    stats: { files: files.files.length, bytes },
+    ...workspaceRoot ? { workspaceRoot } : {}
   };
 }
 function countLines(text) {
@@ -15882,13 +16013,14 @@ function collectEnvVars(files, documented) {
   }
   return [...vars.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
-var import_yaml4, LANG_BY_EXT, CATALOG_BY_ECO, ENV_PATTERNS, AMBIENT_ENV;
+var import_yaml5, LANG_BY_EXT, CATALOG_BY_ECO, ENV_PATTERNS, AMBIENT_ENV;
 var init_discover = __esm({
   "src/intel/discover.ts"() {
     "use strict";
-    import_yaml4 = __toESM(require_dist(), 1);
+    import_yaml5 = __toESM(require_dist(), 1);
     init_lockfiles();
     init_manifests();
+    init_ancestors();
     init_files();
     init_catalog();
     LANG_BY_EXT = {
@@ -17615,13 +17747,13 @@ async function Module2(moduleArg = {}) {
       }
       readAsync = /* @__PURE__ */ __name(async (url) => {
         if (isFileURI(url)) {
-          return new Promise((resolve4, reject) => {
+          return new Promise((resolve5, reject) => {
             var xhr = new XMLHttpRequest();
             xhr.open("GET", url, true);
             xhr.responseType = "arraybuffer";
             xhr.onload = () => {
               if (xhr.status == 200 || xhr.status == 0 && xhr.response) {
-                resolve4(xhr.response);
+                resolve5(xhr.response);
                 return;
               }
               reject(xhr.status);
@@ -17817,9 +17949,9 @@ async function Module2(moduleArg = {}) {
     __name(receiveInstantiationResult, "receiveInstantiationResult");
     var info2 = getWasmImports();
     if (Module["instantiateWasm"]) {
-      return new Promise((resolve4, reject) => {
+      return new Promise((resolve5, reject) => {
         Module["instantiateWasm"](info2, (mod, inst) => {
-          resolve4(receiveInstance(mod, inst));
+          resolve5(receiveInstance(mod, inst));
         });
       });
     }
@@ -19152,8 +19284,8 @@ async function Module2(moduleArg = {}) {
   if (runtimeInitialized) {
     moduleRtn = Module;
   } else {
-    moduleRtn = new Promise((resolve4, reject) => {
-      readyPromiseResolve = resolve4;
+    moduleRtn = new Promise((resolve5, reject) => {
+      readyPromiseResolve = resolve5;
       readyPromiseReject = reject;
     });
   }
@@ -20464,8 +20596,8 @@ ${out2}`;
       const has = (p) => text.split(/\r?\n/).some((l) => l.trim() === p || l.trim() === `/${p}`);
       const add = [".env", ".env.*", "!.env.example"].filter((p) => !has(p));
       if (!add.length || has(".env") && has(".env.*")) return null;
-      const sep = text === "" || text.endsWith("\n") ? "" : "\n";
-      return `${text}${sep}${text ? "\n" : ""}# Local environment files (added by Relivaro)
+      const sep2 = text === "" || text.endsWith("\n") ? "" : "\n";
+      return `${text}${sep2}${text ? "\n" : ""}# Local environment files (added by Relivaro)
 ${add.join("\n")}
 `;
     }
@@ -20601,8 +20733,8 @@ function helpText(spec) {
 
 // src/cli/commands.ts
 import { spawn as spawn2 } from "node:child_process";
-import { existsSync as existsSync11, readFileSync as readFileSync8, realpathSync as realpathSync2 } from "node:fs";
-import { join as join9, resolve as resolve3 } from "node:path";
+import { existsSync as existsSync11, readFileSync as readFileSync9, realpathSync as realpathSync3 } from "node:fs";
+import { join as join10, resolve as resolve4 } from "node:path";
 
 // src/checks/coverage.ts
 import { existsSync as existsSync3, readFileSync as readFileSync2, statSync as statSync2 } from "node:fs";
@@ -22739,13 +22871,13 @@ function gateFailed(run2, failOn) {
 }
 
 // src/contract/openapi.ts
-var import_yaml5 = __toESM(require_dist(), 1);
+var import_yaml6 = __toESM(require_dist(), 1);
 init_errors();
 var METHODS = ["get", "put", "post", "delete", "options", "head", "patch", "trace"];
 function loadSpec(text, name2 = "spec") {
   let doc;
   try {
-    doc = /^\s*\{/.test(text) ? JSON.parse(text) : (0, import_yaml5.parse)(text, { maxAliasCount: 100 });
+    doc = /^\s*\{/.test(text) ? JSON.parse(text) : (0, import_yaml6.parse)(text, { maxAliasCount: 100 });
   } catch (e) {
     throw new RelivaroError("PARSE_FAILED", `${name2} is not valid JSON/YAML: ${e.message}`);
   }
@@ -23071,7 +23203,7 @@ function resolveActionRef(action, ref, timeoutMs = 2e4) {
   if (!REPO.test(repo) || !REF.test(ref) || ref.includes(".."))
     return Promise.reject(new RelivaroError("USAGE", `Not a resolvable action reference: ${action}@${ref}`));
   const url = `https://github.com/${repo}.git`;
-  return new Promise((resolve4, reject) => {
+  return new Promise((resolve5, reject) => {
     execFile(
       "git",
       // Explicit patterns: a bare `<ref>` pattern does not return the peeled `^{}` line of an annotated tag, whose
@@ -23086,7 +23218,7 @@ function resolveActionRef(action, ref, timeoutMs = 2e4) {
         const sha = commitFor(stdout, ref);
         if (!sha)
           return reject(new RelivaroError("NOT_FOUND", `${url} has no tag or branch named "${ref}".`));
-        resolve4({ action, ref, sha, source: `git ls-remote ${url}` });
+        resolve5({ action, ref, sha, source: `git ls-remote ${url}` });
       }
     );
   });
@@ -23109,14 +23241,14 @@ import {
   mkdirSync as mkdirSync2,
   mkdtempSync,
   readdirSync as readdirSync3,
-  readFileSync as readFileSync7,
+  readFileSync as readFileSync8,
   rmSync,
   statSync as statSync5,
   symlinkSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname as dirname3, join as join8 } from "node:path";
+import { dirname as dirname4, join as join9 } from "node:path";
 init_errors();
 init_workspace();
 init_files();
@@ -23322,8 +23454,8 @@ function loadPlan(ws, id) {
 function latestOf(ws, marker) {
   const dir = ws.path("fixes");
   if (!existsSync9(dir)) throw new RelivaroError("NOT_FOUND", "No fix plans or applies exist yet.");
-  const ids2 = readdirSync3(dir).filter((d) => existsSync9(join8(dir, d, marker))).sort(
-    (a, b) => statSync5(join8(dir, a, marker)).mtimeMs - statSync5(join8(dir, b, marker)).mtimeMs || a.localeCompare(b)
+  const ids2 = readdirSync3(dir).filter((d) => existsSync9(join9(dir, d, marker))).sort(
+    (a, b) => statSync5(join9(dir, a, marker)).mtimeMs - statSync5(join9(dir, b, marker)).mtimeMs || a.localeCompare(b)
   );
   if (!ids2.length)
     throw new RelivaroError(
@@ -23334,31 +23466,31 @@ function latestOf(ws, marker) {
 }
 function currentHash(root, path) {
   try {
-    return sha256(readFileSync7(safeResolve(root, path)));
+    return sha256(readFileSync8(safeResolve(root, path)));
   } catch {
     return null;
   }
 }
 function isolatedCopy(files) {
-  const dest = mkdtempSync(join8(tmpdir(), "relivaro-verify-"));
+  const dest = mkdtempSync(join9(tmpdir(), "relivaro-verify-"));
   for (const { path: p } of files.files) {
-    const dst = join8(dest, p);
-    mkdirSync2(dirname3(dst), { recursive: true });
+    const dst = join9(dest, p);
+    mkdirSync2(dirname4(dst), { recursive: true });
     try {
-      cpSync(join8(files.root, p), dst, { dereference: true, preserveTimestamps: true });
+      cpSync(join9(files.root, p), dst, { dereference: true, preserveTimestamps: true });
     } catch {
     }
   }
   for (const extra of ["phpunit.xml", "phpunit.xml.dist", ".npmrc"]) {
-    const src = join8(files.root, extra);
-    if (existsSync9(src) && !existsSync9(join8(dest, extra)))
-      cpSync(src, join8(dest, extra), { dereference: true });
+    const src = join9(files.root, extra);
+    if (existsSync9(src) && !existsSync9(join9(dest, extra)))
+      cpSync(src, join9(dest, extra), { dereference: true });
   }
   for (const dep of ["node_modules", "vendor", ".venv", "venv"]) {
-    const src = join8(files.root, dep);
-    if (existsSync9(src) && !existsSync9(join8(dest, dep))) {
+    const src = join9(files.root, dep);
+    if (existsSync9(src) && !existsSync9(join9(dest, dep))) {
       try {
-        symlinkSync(src, join8(dest, dep), process.platform === "win32" ? "junction" : "dir");
+        symlinkSync(src, join9(dest, dep), process.platform === "win32" ? "junction" : "dir");
       } catch {
       }
     }
@@ -23369,7 +23501,7 @@ function treeSnapshot(files) {
   const snap = /* @__PURE__ */ new Map();
   for (const { path } of files.files) {
     try {
-      const st = statSync5(join8(files.root, path));
+      const st = statSync5(join9(files.root, path));
       snap.set(path, `${st.size}:${st.mtimeMs}`);
     } catch {
       snap.set(path, "missing");
@@ -23414,8 +23546,8 @@ async function applyPlan(ws, plan, opts) {
   const desired = /* @__PURE__ */ new Map();
   if (items.length === plan.items.length) {
     for (const f of plan.files) {
-      const before = f.existed ? readFileSync7(safeResolve(root, f.path), "utf8") : "";
-      const after = readFileSync7(ws.path("fixes", plan.planId, "after", ...f.path.split("/")), "utf8");
+      const before = f.existed ? readFileSync8(safeResolve(root, f.path), "utf8") : "";
+      const after = readFileSync8(ws.path("fixes", plan.planId, "after", ...f.path.split("/")), "utf8");
       if (sha256(after) !== f.afterHash)
         throw new RelivaroError("FIX_FAILED", `Planned content for ${f.path} is corrupt.`);
       desired.set(f.path, { before, after, existed: f.existed });
@@ -23510,7 +23642,7 @@ function restore(ws, rec, files) {
       const abs = safeResolve(rec.root, f.path);
       if (!f.existed) rmSync(abs, { force: true });
       else {
-        atomicWrite(abs, readFileSync7(ws.path("fixes", rec.applyId, "backup", ...f.path.split("/"))));
+        atomicWrite(abs, readFileSync8(ws.path("fixes", rec.applyId, "backup", ...f.path.split("/"))));
         if (f.mode !== void 0) chmodSync(abs, f.mode & 4095);
       }
     } catch {
@@ -23635,8 +23767,8 @@ async function verify(root, items, desired, opts) {
         opts.onProgress?.(`baseline: ${opts.verifyCommand}`);
         const b = await runCommand(argv, { cwd: dir, timeoutMs, allowExec: true });
         for (const [p, c] of desired) {
-          const dst = join8(dir, p);
-          mkdirSync2(dirname3(dst), { recursive: true });
+          const dst = join9(dir, p);
+          mkdirSync2(dirname4(dst), { recursive: true });
           rmSync(dst, { force: true });
           writeFileSync2(dst, c.after);
         }
@@ -23746,7 +23878,7 @@ function rollback(ws, id, force) {
   for (const f of pending) {
     if (!f.existed) continue;
     const file = ws.path("fixes", rec.applyId, "backup", ...f.path.split("/"));
-    if (!existsSync9(file) || sha256(readFileSync7(file)) !== f.beforeHash)
+    if (!existsSync9(file) || sha256(readFileSync8(file)) !== f.beforeHash)
       throw new RelivaroError(
         "ROLLBACK_CONFLICT",
         `Backup for ${f.path} is missing or corrupt; nothing restored.`
@@ -23756,7 +23888,7 @@ function rollback(ws, id, force) {
   for (const f of conflicts) {
     const abs = safeResolve(rec.root, f.path);
     if (!existsSync9(abs)) continue;
-    ws.writeText(["fixes", rec.applyId, "conflicts", ...f.path.split("/")], readFileSync7(abs, "utf8"));
+    ws.writeText(["fixes", rec.applyId, "conflicts", ...f.path.split("/")], readFileSync8(abs, "utf8"));
     preserved.push(f.path);
   }
   const unrestored = restore(ws, rec, pending);
@@ -23957,7 +24089,7 @@ function guardedFetch(allowRemote, concurrency) {
     agents["http:"].destroy();
     agents["https:"].destroy();
   };
-  const run2 = ((input, init3) => new Promise((resolve4, reject) => {
+  const run2 = ((input, init3) => new Promise((resolve5, reject) => {
     const send = input.protocol === "https:" ? httpsRequest : httpRequest;
     const req = send(
       input,
@@ -23971,7 +24103,7 @@ function guardedFetch(allowRemote, concurrency) {
         res.resume();
         res.on(
           "end",
-          () => resolve4({ status: res.statusCode ?? 0, arrayBuffer: async () => new ArrayBuffer(0) })
+          () => resolve5({ status: res.statusCode ?? 0, arrayBuffer: async () => new ArrayBuffer(0) })
         );
         res.on("error", reject);
       }
@@ -26701,7 +26833,7 @@ var ANALYSIS_OPTS = [
   { name: "open", type: "boolean", description: "Open the HTML report with the default application." }
 ];
 function rootArg(p) {
-  const r = resolve3(p.positionals[0] ?? ".");
+  const r = resolve4(p.positionals[0] ?? ".");
   if (!existsSync11(r)) throw new RelivaroError("NOT_FOUND", `Path does not exist: ${r}`);
   return r;
 }
@@ -26826,7 +26958,7 @@ function writeReports(ws, run2, formats, outDir) {
     const [name2, content] = r();
     files[f] = ws.writeText(["runs", run2.runId, name2], content);
     if (outDir) {
-      const dest = join9(resolve3(outDir), name2);
+      const dest = join10(resolve4(outDir), name2);
       atomicWrite(dest, content);
       files[f] = dest;
     }
@@ -27022,7 +27154,7 @@ var reportCmd = {
     ]
   },
   async run(p, out2) {
-    const ws = new Workspace(resolve3(p.opts.path ?? "."), p.opts.workspace);
+    const ws = new Workspace(resolve4(p.opts.path ?? "."), p.opts.workspace);
     const id = ws.resolveRun(p.positionals[0] ?? "latest");
     const run2 = ws.readJson(["runs", id, "run.json"]);
     const formats = p.opts.format;
@@ -27068,7 +27200,7 @@ var compareCmd = {
     ]
   },
   async run(p, out2) {
-    const ws = new Workspace(resolve3(p.opts.path ?? "."), p.opts.workspace);
+    const ws = new Workspace(resolve4(p.opts.path ?? "."), p.opts.workspace);
     const base = ws.readJson(["runs", ws.resolveRun(p.positionals[0] ?? "previous"), "run.json"]);
     const head = ws.readJson(["runs", ws.resolveRun(p.positionals[1] ?? "latest"), "run.json"]);
     const c = compareRuns(base, head);
@@ -27111,9 +27243,9 @@ function storedRun(ws, projectDir, idOrAlias) {
   return run2;
 }
 function samePath(a, b) {
-  if (resolve3(a) === resolve3(b)) return true;
+  if (resolve4(a) === resolve4(b)) return true;
   try {
-    return realpathSync2(a) === realpathSync2(b);
+    return realpathSync3(a) === realpathSync3(b);
   } catch {
     return false;
   }
@@ -27181,7 +27313,7 @@ var reviewCmd = {
   },
   async run(p, out2) {
     const sub = p.positionals[0];
-    const projectDir = resolve3(p.opts.path ?? ".");
+    const projectDir = resolve4(p.opts.path ?? ".");
     const ws = new Workspace(projectDir, p.opts.workspace);
     const run2 = storedRun(ws, projectDir, p.opts.run ?? "latest");
     if (sub === "add") {
@@ -27351,7 +27483,7 @@ var baselineCmd = {
         reason: p.opts.reason
       }))
     };
-    const file = resolve3(p.opts.output ?? join9(root, BASELINE_FILE));
+    const file = resolve4(p.opts.output ?? join10(root, BASELINE_FILE));
     atomicWrite(file, `${JSON.stringify(b, null, 2)}
 `);
     if (out2.json) out2.print(JSON.stringify({ file, entries: b.fingerprints.length }));
@@ -27432,7 +27564,7 @@ var fixCmd = {
     const sub = p.positionals[0];
     const arg = p.positionals[1];
     const on = out2.color;
-    const projectDir = resolve3(
+    const projectDir = resolve4(
       p.opts.path ?? (sub === "list" || sub === "plan" ? arg ?? "." : ".")
     );
     const ws = new Workspace(projectDir, p.opts.workspace);
@@ -27751,7 +27883,7 @@ var loadCmd = {
       onProgress: out2.progress
     });
     clearProgress();
-    const projectDir = resolve3(p.opts.path ?? ".");
+    const projectDir = resolve4(p.opts.path ?? ".");
     const ws = new Workspace(projectDir, p.opts.workspace);
     const base = loadBaseline(ws, name2);
     if (base) res.comparison = compareStats(base.stats, res.stats);
@@ -27808,7 +27940,7 @@ var contractCmd = {
     if (!a) throw new RelivaroError("USAGE", "A spec file is required.");
     const readSpec = (f) => {
       if (!existsSync11(f)) throw new RelivaroError("NOT_FOUND", `Spec not found: ${f}`);
-      return loadSpec(readFileSync8(f, "utf8"), f);
+      return loadSpec(readFileSync9(f, "utf8"), f);
     };
     if (sub === "validate") {
       const issues = validateSpec(readSpec(a));
@@ -27826,7 +27958,7 @@ var contractCmd = {
       let oldDoc;
       let newDoc;
       if (p.opts.base) {
-        const absA = resolve3(a);
+        const absA = resolve4(a);
         const dir = absA.slice(0, Math.max(absA.lastIndexOf("/"), absA.lastIndexOf("\\")));
         const top = runGit(dir, ["rev-parse", "--show-toplevel"])?.trim();
         if (!top) throw new RelivaroError("USAGE", "--base requires the spec to be inside a git repository.");
@@ -27944,7 +28076,7 @@ var initCmd = {
   async run(p, out2) {
     const root = rootArg(p);
     const written = [];
-    const cfgFile = join9(root, "relivaro.config.json");
+    const cfgFile = join10(root, "relivaro.config.json");
     if (existsSync11(cfgFile) && !p.opts.force)
       throw new RelivaroError("USAGE", `${cfgFile} already exists (use --force to overwrite).`);
     const d = defaultConfig();
@@ -27961,7 +28093,7 @@ var initCmd = {
 `);
     written.push(cfgFile);
     if (p.opts["github-action"]) {
-      const wf = join9(root, ".github", "workflows", "relivaro.yml");
+      const wf = join10(root, ".github", "workflows", "relivaro.yml");
       if (existsSync11(wf) && !p.opts.force)
         throw new RelivaroError("USAGE", `${wf} already exists (use --force to overwrite).`);
       atomicWrite(wf, GITHUB_WORKFLOW);

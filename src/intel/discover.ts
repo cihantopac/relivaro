@@ -1,6 +1,7 @@
 import { parse as parseYaml } from 'yaml';
 import { type LockfileInfo, parseLockfile, pinnedRequirements } from '../deps/lockfiles.js';
 import { type Ecosystem, type ManifestInfo, parseManifest } from '../deps/manifests.js';
+import { findWorkspaceRoot } from '../fs/ancestors.js';
 import { type FileSet, isEnvTemplate } from '../fs/files.js';
 import {
   CARGO,
@@ -84,6 +85,16 @@ export interface ProjectProfile {
   lockfiles: LockfileInfo[];
   migrations: string[];
   stats: { files: number; bytes: number };
+  /**
+   * The workspace this directory belongs to, when it is a package audited on its own (read from the allowlisted
+   * metadata files above the audit root). Its absolute path is never stored.
+   */
+  workspaceRoot?: {
+    rel: string;
+    lockfiles: string[];
+    scripts: Record<string, string>;
+    packageManager?: string;
+  };
 }
 
 const LANG_BY_EXT: Record<string, string> = {
@@ -525,14 +536,22 @@ export function discover(files: FileSet): ProjectProfile {
   const rootManifest = manifests.find((m) => !m.file.includes('/') && m.name);
   const name = rootManifest?.name ?? files.root.split(/[\\/]/).pop() ?? 'project';
 
+  const ownWorkspace = manifests.some((m) => m.workspaces.length > 0) || files.has('pnpm-workspace.yaml');
+  const ws = ownWorkspace ? null : findWorkspaceRoot(files.realRoot);
+  const workspaceRoot: ProjectProfile['workspaceRoot'] = ws
+    ? {
+        rel: ws.rel,
+        lockfiles: ws.lockfiles,
+        scripts: ws.scripts,
+        ...(ws.packageManager ? { packageManager: ws.packageManager } : {}),
+      }
+    : undefined;
+
   return {
     root: files.root,
     name,
     gitRepo: files.gitRepo,
-    monorepo:
-      units.filter((u) => u.manifests.length).length > 1 ||
-      manifests.some((m) => m.workspaces.length > 0) ||
-      files.has('pnpm-workspace.yaml'),
+    monorepo: units.filter((u) => u.manifests.length).length > 1 || ownWorkspace,
     languages: [...langs.entries()].map(([name, v]) => ({ name, ...v })).sort((a, b) => b.lines - a.lines),
     units,
     technologies,
@@ -554,6 +573,7 @@ export function discover(files: FileSet): ProjectProfile {
     lockfiles,
     migrations: files.byKind('migration').map((f) => f.path),
     stats: { files: files.files.length, bytes },
+    ...(workspaceRoot ? { workspaceRoot } : {}),
   };
 }
 
