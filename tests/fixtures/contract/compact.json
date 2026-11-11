@@ -1,0 +1,32 @@
+{
+  "description": "Stable contract of `relivaro <analysis command> --json --compact`. Adding an optional key is compatible; removing or renaming a key is a breaking change and needs a CHANGELOG entry. Pinned by tests/e2e/api.test.ts.",
+  "keys": {
+    "required": [
+      "runId",
+      "command",
+      "project",
+      "summary",
+      "findings",
+      "omittedFindings",
+      "groups",
+      "checks",
+      "testGaps",
+      "remediation",
+      "review",
+      "limitations",
+      "reports"
+    ],
+    "optional": ["release", "report"]
+  },
+  "nested": {
+    "project": ["name", "units", "languages", "technologies"],
+    "summary": ["total", "open", "suppressed", "baseline", "accepted", "bySeverity", "byCategory"],
+    "remediation": ["deterministic", "agent", "manual"],
+    "review": ["confirmed", "falsePositive", "needsRuntime", "accepted", "unreviewed"]
+  },
+  "finding": {
+    "required": ["id", "rule", "severity", "confidence", "message", "remediation"],
+    "optional": ["where", "fixer", "review", "snippet", "output"]
+  },
+  "group": ["rule", "title", "count", "severity", "remediation", "reviewed", "where", "ids"]
+}

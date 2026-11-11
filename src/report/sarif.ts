@@ -58,7 +58,14 @@ function baseUri(root: string): string {
   return `file:///${encodeURI(root.replace(/^\/+|\/+$/g, ''))}/`;
 }
 
-export function toSarif(run: RunRecord, opts: { exitCode?: number } = {}): object {
+/** A SARIF 2.1.0 log; only the top level is typed. */
+export interface SarifLog {
+  $schema: string;
+  version: '2.1.0';
+  runs: Record<string, unknown>[];
+}
+
+export function toSarif(run: RunRecord, opts: { exitCode?: number } = {}): SarifLog {
   const exitCode = opts.exitCode ?? (run.partial ? 4 : 0);
   const vcs = run.profile.vcs;
   const used = new Set(run.findings.map((f) => f.ruleId));

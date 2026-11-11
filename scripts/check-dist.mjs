@@ -11,13 +11,13 @@ const tmp = mkdtempSync(join(tmpdir(), 'relivaro-dist-'));
 execFileSync(process.execPath, [join(root, 'scripts', 'build.mjs'), tmp], { stdio: 'inherit' });
 const norm = (s) => s.replace(/\r\n/g, '\n');
 let ok = true;
-if (
-  norm(readFileSync(join(tmp, 'relivaro.mjs'), 'utf8')) !==
-  norm(readFileSync(join(root, 'plugin', 'dist', 'relivaro.mjs'), 'utf8'))
-) {
-  console.error('plugin/dist/relivaro.mjs is out of date. Run `npm run build` and commit the result.');
-  ok = false;
-}
+for (const f of ['relivaro.mjs', 'api.mjs', 'api.d.ts'])
+  if (
+    norm(readFileSync(join(tmp, f), 'utf8')) !== norm(readFileSync(join(root, 'plugin', 'dist', f), 'utf8'))
+  ) {
+    console.error(`plugin/dist/${f} is out of date. Run \`npm run build\` and commit the result.`);
+    ok = false;
+  }
 for (const [arg, files] of [
   ['__cli-markdown', ['docs/CLI.md', 'plugin/skills/relivaro/references/cli.md']],
   ['__rules-markdown', ['docs/RULES.md', 'plugin/skills/relivaro/references/rules.md']],

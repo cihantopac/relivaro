@@ -153,6 +153,11 @@ also ignores the repository's `relivaro.config.json` and inline `relivaro-ignore
 `.gitignore` to nothing and never starts git, so no child process is spawned and no socket is opened.
 `--ignore-repo-config` alone uses only defaults or an explicit `--config`.
 
+**Programmatic use.** `npm install relivaro`, then
+`import { runAudit, toSarif, compareRuns, assessRelease } from 'relivaro'` (ESM, typed). The run record follows
+[schemas/run.schema.json](schemas/run.schema.json), and `--json --compact` is pinned by
+[tests/fixtures/contract/compact.json](tests/fixtures/contract/compact.json). Everything else is internal.
+
 ## Evidence
 
 - **251 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.

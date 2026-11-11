@@ -40,6 +40,15 @@
   "bin": {
     "relivaro": "plugin/dist/relivaro.mjs"
   },
+  "exports": {
+    ".": {
+      "types": "./plugin/dist/api.d.ts",
+      "import": "./plugin/dist/api.mjs"
+    },
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "types": "./plugin/dist/api.d.ts",
   "files": [
     "plugin/dist",
     "schemas",
