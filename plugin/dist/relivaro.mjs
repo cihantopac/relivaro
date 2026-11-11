@@ -11840,7 +11840,144 @@ var require_dist = __commonJS({
   }
 });
 
+// src/fs/ancestors.ts
+import { lstatSync as lstatSync2, readFileSync as readFileSync2, realpathSync as realpathSync2 } from "node:fs";
+import { dirname as dirname2, join as join3, relative as relative2, resolve as resolve2, sep } from "node:path";
+function readMeta(dir, name2) {
+  if (!ANCESTOR_META.includes(name2)) throw new Error(`not an ancestor metadata file: ${name2}`);
+  try {
+    const p = join3(dir, name2);
+    if (!lstatSync2(p).isFile()) return null;
+    return readFileSync2(p, "utf8");
+  } catch {
+    return null;
+  }
+}
+function hasMeta(dir, name2) {
+  if (!ANCESTOR_META.includes(name2)) return false;
+  try {
+    return lstatSync2(join3(dir, name2)).isFile();
+  } catch {
+    return false;
+  }
+}
+function realOrResolved(p) {
+  const abs = resolve2(p);
+  try {
+    return realpathSync2.native(abs);
+  } catch {
+    return abs;
+  }
+}
+function workspaceGlobs(dir) {
+  const globs = [];
+  const pnpm = readMeta(dir, "pnpm-workspace.yaml");
+  if (pnpm !== null) {
+    try {
+      const doc = (0, import_yaml.parse)(pnpm);
+      if (Array.isArray(doc?.packages)) {
+        for (const g of doc.packages) if (typeof g === "string") globs.push(g);
+      }
+    } catch {
+    }
+  }
+  const pkg = readMeta(dir, "package.json");
+  if (pkg !== null) {
+    try {
+      const json = JSON.parse(pkg);
+      const ws = json.workspaces;
+      const list = Array.isArray(ws) ? ws : ws?.packages;
+      if (Array.isArray(list)) {
+        for (const g of list) if (typeof g === "string") globs.push(g);
+      }
+    } catch {
+    }
+  }
+  return globs.map((g) => g.trim().replace(/^\.\//, "").replace(/\/+$/, "")).filter((g) => g && !g.startsWith("!"));
+}
+function scriptsOf(dir) {
+  const pkg = readMeta(dir, "package.json");
+  if (pkg === null) return {};
+  try {
+    const s = JSON.parse(pkg).scripts;
+    if (!s || typeof s !== "object") return {};
+    return Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v === "string"));
+  } catch {
+    return {};
+  }
+}
+function findWorkspaceRoot(auditRoot, opts = {}) {
+  const start2 = realOrResolved(auditRoot);
+  const maxDepth = opts.maxDepth ?? 6;
+  let dir = start2;
+  for (let depth = 1; depth <= maxDepth; depth++) {
+    const parent = dirname2(dir);
+    if (parent === dir) break;
+    dir = parent;
+    const globs = workspaceGlobs(dir);
+    if (!globs.length) continue;
+    const rel = relative2(dir, start2).split(sep).join("/");
+    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
+    const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
+    const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
+    const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);
+    if (manager) out2.packageManager = manager;
+    return out2;
+  }
+  return null;
+}
+function ancestorDockerignore(auditRoot, stopAt) {
+  const start2 = realOrResolved(auditRoot);
+  const stop2 = realOrResolved(stopAt);
+  const r = relative2(stop2, start2);
+  if (!r || r.startsWith("..") || resolve2(stop2, r) !== start2) return null;
+  let dir = start2;
+  while (dir !== stop2) {
+    const parent = dirname2(dir);
+    if (parent === dir) return null;
+    dir = parent;
+    if (hasMeta(dir, ".dockerignore")) return join3(dir, ".dockerignore");
+  }
+  return null;
+}
+var import_yaml, ANCESTOR_META, LOCKFILES2, MANAGER;
+var init_ancestors = __esm({
+  "src/fs/ancestors.ts"() {
+    "use strict";
+    import_yaml = __toESM(require_dist(), 1);
+    init_glob();
+    ANCESTOR_META = [
+      "package.json",
+      "pnpm-workspace.yaml",
+      "pnpm-lock.yaml",
+      "package-lock.json",
+      "npm-shrinkwrap.json",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+      ".dockerignore"
+    ];
+    LOCKFILES2 = [
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+      "package-lock.json",
+      "npm-shrinkwrap.json"
+    ];
+    MANAGER = {
+      "pnpm-lock.yaml": "pnpm",
+      "yarn.lock": "yarn",
+      "bun.lock": "bun",
+      "bun.lockb": "bun",
+      "package-lock.json": "npm",
+      "npm-shrinkwrap.json": "npm"
+    };
+  }
+});
+
 // src/rules/security/files.ts
+import { posix } from "node:path";
 function lineOf(node, lc) {
   const r = node?.range;
   return r ? lc.linePos(r[0]).line : 1;
@@ -11849,22 +11986,22 @@ function loadWorkflow(ctx) {
   if (wfCache.has(ctx)) return wfCache.get(ctx) ?? null;
   let wf = null;
   try {
-    const lc = new import_yaml.LineCounter();
-    const doc = (0, import_yaml.parseDocument)(ctx.text, { lineCounter: lc, uniqueKeys: false });
+    const lc = new import_yaml2.LineCounter();
+    const doc = (0, import_yaml2.parseDocument)(ctx.text, { lineCounter: lc, uniqueKeys: false });
     const data = doc.toJS({ maxAliasCount: 100 }) ?? {};
     const on = data.on ?? data.true;
     const triggers = typeof on === "string" ? [on] : Array.isArray(on) ? on.map(String) : on && typeof on === "object" ? Object.keys(on) : [];
     const steps = [];
     const jobs = [];
     const jobsNode = doc.get("jobs", true);
-    if ((0, import_yaml.isMap)(jobsNode)) {
+    if ((0, import_yaml2.isMap)(jobsNode)) {
       for (const pair of jobsNode.items) {
         const id = String(pair.key?.value ?? pair.key);
         const jobNode = pair.value;
         const jobData = jobNode?.toJSON?.() ?? {};
         jobs.push({ id, data: jobData, line: lineOf(pair.key, lc) });
-        const stepsNode = (0, import_yaml.isMap)(jobNode) ? jobNode.get("steps", true) : null;
-        if ((0, import_yaml.isSeq)(stepsNode))
+        const stepsNode = (0, import_yaml2.isMap)(jobNode) ? jobNode.get("steps", true) : null;
+        if ((0, import_yaml2.isSeq)(stepsNode))
           for (const s of stepsNode.items) {
             const js = s.toJSON?.() ?? {};
             steps.push({
@@ -11927,12 +12064,125 @@ function dockerInstructions(text) {
   }
   return out2;
 }
-var import_yaml, SECRET_SCAN_SKIP, SECRET_HINT, GENERIC_HINT, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, ghaUnpinnedFirstParty, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
+function dockerStages(ins) {
+  const out2 = [];
+  ins.forEach((x, i2) => {
+    if (x.op === "FROM") {
+      const prev = out2[out2.length - 1];
+      if (prev) prev.end = i2;
+      const image = x.args.replace(/--platform=\S+\s+/, "").split(/\s+/)[0] ?? "";
+      const alias = /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase();
+      out2.push({
+        from: x.args,
+        image,
+        ...alias ? { alias } : {},
+        line: x.line,
+        start: i2,
+        end: ins.length,
+        users: []
+      });
+    } else if (x.op === "USER") out2[out2.length - 1]?.users.push(x);
+  });
+  return out2;
+}
+function effectiveUser(stages, idx) {
+  const seen = /* @__PURE__ */ new Set();
+  let i2 = idx;
+  for (; ; ) {
+    const st = stages[i2];
+    seen.add(i2);
+    const last = st.users[st.users.length - 1];
+    if (last) return { user: last, stage: st };
+    const name2 = st.image.toLowerCase();
+    let parent = -1;
+    for (let j = i2 - 1; j >= 0; j--)
+      if (stages[j].alias === name2) {
+        parent = j;
+        break;
+      }
+    if (parent < 0 || seen.has(parent)) return { stage: st, ...parent < 0 ? { base: st.image } : {} };
+    i2 = parent;
+  }
+}
+function underRoot(base, p) {
+  const n = posix.normalize(posix.join(base || ".", p.trim()));
+  if (n === ".." || n.startsWith("../") || posix.isAbsolute(n)) return null;
+  return n === "." ? "" : n.replace(/\/+$/, "");
+}
+function dockerBuildContexts(files) {
+  const out2 = /* @__PURE__ */ new Map();
+  const add = (dockerfile, context) => {
+    if (dockerfile === null || context === null) return;
+    const list = out2.get(dockerfile) ?? [];
+    if (!list.includes(context)) list.push(context);
+    out2.set(dockerfile, list);
+  };
+  for (const c of files.byKind("compose")) {
+    let y;
+    try {
+      y = (0, import_yaml2.parse)(files.read(c.path) ?? "");
+    } catch {
+      continue;
+    }
+    const base = posix.dirname(c.path);
+    for (const svc of Object.values(y?.services ?? {})) {
+      const b = svc?.build;
+      if (typeof b === "string") {
+        const ctxDir = underRoot(base, b);
+        add(ctxDir === null ? null : underRoot(ctxDir, "Dockerfile"), ctxDir);
+      } else if (b && typeof b === "object") {
+        const o = b;
+        const ctxDir = underRoot(base, typeof o.context === "string" ? o.context : ".");
+        if (ctxDir === null) continue;
+        add(underRoot(ctxDir, typeof o.dockerfile === "string" ? o.dockerfile : "Dockerfile"), ctxDir);
+      }
+    }
+  }
+  for (const w of files.byKind("workflow")) {
+    const text = files.read(w.path) ?? "";
+    for (const m of text.matchAll(/\bdocker\s+(?:buildx\s+)?build\b([^\n&;|]*)/g)) {
+      const toks = m[1].trim().split(/\s+/).filter(Boolean);
+      let file;
+      let context;
+      for (let i2 = 0; i2 < toks.length; i2++) {
+        const t2 = toks[i2];
+        if (t2 === "-f" || t2 === "--file") file = toks[++i2];
+        else if (t2.startsWith("--file=")) file = t2.slice(7);
+        else if (BUILD_VALUE_FLAGS.has(t2)) i2++;
+        else if (t2.startsWith("-") || t2 === "\\") continue;
+        else if (!t2.includes("$") && !/^https?:|^git@/.test(t2)) context = t2;
+      }
+      if (context === void 0) continue;
+      const ctxDir = underRoot("", context);
+      if (ctxDir === null) continue;
+      add(file ? underRoot("", file) : underRoot(ctxDir, "Dockerfile"), ctxDir);
+    }
+    let doc;
+    try {
+      doc = (0, import_yaml2.parse)(text);
+    } catch {
+      continue;
+    }
+    for (const job of Object.values(doc?.jobs ?? {}))
+      for (const step of job?.steps ?? []) {
+        if (typeof step?.uses !== "string" || !/^docker\/build-push-action@/.test(step.uses)) continue;
+        const ctxRaw = step.with?.context;
+        const fileRaw = step.with?.file;
+        if (typeof ctxRaw === "string" && ctxRaw.includes("$")) continue;
+        const ctxDir = underRoot("", typeof ctxRaw === "string" ? ctxRaw : ".");
+        if (ctxDir === null) continue;
+        add(typeof fileRaw === "string" ? underRoot("", fileRaw) : underRoot(ctxDir, "Dockerfile"), ctxDir);
+      }
+  }
+  return out2;
+}
+var import_yaml2, SECRET_SCAN_SKIP, SECRET_HINT, GENERIC_HINT, hardcodedSecret, wfCache, UNTRUSTED_CONTEXT, ghaScriptInjection, ghaPwnRequest, FIRST_PARTY_ACTION, ghaUnpinned, ghaUnpinnedFirstParty, WRITES_NEEDED, ghaPermissions, ghaTimeout, dockerRoot, dockerLatest, dockerCurlPipe, dockerSecretEnv, dockerCopyAll, BUILD_VALUE_FLAGS, DB_PORTS, composeRisks, envCommitted, envNotIgnored, NEXT_PUBLIC, publicEnvSecret, templateXss, laravelEnvDebug, nextConfigRisks, securityFileRules, securityProjectRules;
 var init_files2 = __esm({
   "src/rules/security/files.ts"() {
     "use strict";
-    import_yaml = __toESM(require_dist(), 1);
+    import_yaml2 = __toESM(require_dist(), 1);
     init_secrets();
+    init_ancestors();
     init_files();
     init_helpers();
     SECRET_SCAN_SKIP = /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|Gemfile\.lock|pubspec\.lock|go\.sum|Podfile\.lock|Package\.resolved)$|\.(?:svg|snap|lock)$/;
@@ -12222,17 +12472,28 @@ var init_files2 = __esm({
       verification: "`docker run --rm <image> id -u` prints a non-zero UID.",
       appliesTo: (f) => f.kind === "dockerfile",
       check(ctx) {
-        const ins = dockerInstructions(ctx.text);
-        const lastFrom = ins.map((x) => x.op).lastIndexOf("FROM");
-        if (lastFrom < 0) return [];
-        const from = ins[lastFrom];
-        if (/^scratch\b|distroless|chainguard|nonroot|rootless/i.test(from.args)) return [];
-        const users = ins.slice(lastFrom).filter((x) => x.op === "USER");
-        const last = users[users.length - 1];
-        if (!last)
-          return [{ line: from.line, message: `Final stage \`FROM ${from.args}\` has no \`USER\` instruction.` }];
-        if (/^(?:root|0)(?::|$)/.test(last.args))
-          return [{ line: last.line, message: "The final `USER` is root." }];
+        const stages = dockerStages(dockerInstructions(ctx.text));
+        const final = stages[stages.length - 1];
+        if (!final) return [];
+        if (/^scratch\b|distroless|chainguard|nonroot|rootless/i.test(final.image)) return [];
+        const eff = effectiveUser(stages, stages.length - 1);
+        if (eff.base && /^scratch\b|distroless|chainguard|nonroot|rootless/i.test(eff.base)) return [];
+        if (!eff.user) {
+          const inherited = eff.stage !== final ? ` (inherited from stage \`${eff.stage.alias ?? eff.stage.image}\`)` : "";
+          return [
+            {
+              line: final.line,
+              message: `Final stage \`FROM ${final.from}\` has no \`USER\` instruction${inherited}.`
+            }
+          ];
+        }
+        if (/^(?:root|0)(?::|$)/.test(eff.user.args))
+          return [
+            eff.stage === final ? { line: eff.user.line, message: "The final `USER` is root." } : {
+              line: final.line,
+              message: `Final stage \`FROM ${final.from}\` inherits \`USER ${eff.user.args}\` from stage \`${eff.stage.alias ?? eff.stage.image}\`.`
+            }
+          ];
         return [];
       }
     };
@@ -12252,9 +12513,7 @@ var init_files2 = __esm({
       appliesTo: (f) => f.kind === "dockerfile",
       check(ctx) {
         const ins = dockerInstructions(ctx.text);
-        const stages = new Set(
-          ins.filter((x) => x.op === "FROM").map((x) => /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase()).filter(Boolean)
-        );
+        const stages = new Set(dockerStages(ins).map((st) => st.alias));
         const out2 = [];
         for (const x of ins) {
           if (x.op !== "FROM") continue;
@@ -12345,25 +12604,71 @@ var init_files2 = __esm({
       verification: "Build the image and list its files (`docker run --rm <image> ls -la`); no `.env` or `.git` must be present.",
       check(ctx) {
         const out2 = [];
+        const contexts = dockerBuildContexts(ctx.files);
+        const exists = (p) => ctx.files.has(p) || ctx.files.readAny(p) !== void 0;
+        let ancestorIgnore;
         for (const f of ctx.files.byKind("dockerfile")) {
-          const dir = f.path.includes("/") ? f.path.slice(0, f.path.lastIndexOf("/")) : "";
-          const ignore = dir ? `${dir}/.dockerignore` : ".dockerignore";
-          if (ctx.files.has(ignore) || ctx.files.readAny(ignore) !== void 0 || ctx.files.readAny(".dockerignore") !== void 0)
-            continue;
-          if (ctx.files.has(`${f.path}.dockerignore`)) continue;
-          for (const x of dockerInstructions(ctx.files.read(f.path) ?? ""))
-            if ((x.op === "COPY" || x.op === "ADD") && /(?:^|\s)\.\/?\s+\S+$/.test(x.args.replace(/--\S+\s+/g, "")) && !/--from=/.test(x.args)) {
+          const copy = dockerInstructions(ctx.files.read(f.path) ?? "").find(
+            (x) => (x.op === "COPY" || x.op === "ADD") && /(?:^|\s)\.\/?\s+\S+$/.test(x.args.replace(/--\S+\s+/g, "")) && !/--from=/.test(x.args)
+          );
+          if (!copy || exists(`${f.path}.dockerignore`)) continue;
+          const known = contexts.get(f.path);
+          if (known?.length) {
+            const missing = known.find((c) => !exists(c ? `${c}/.dockerignore` : ".dockerignore"));
+            if (missing !== void 0)
               out2.push({
                 file: f.path,
-                line: x.line,
-                message: `\`${x.op} ${x.args}\` copies the entire build context and no \`.dockerignore\` exists.`
+                line: copy.line,
+                message: `\`${copy.op} ${copy.args}\` copies the entire build context (\`${missing || "."}\`) and it has no \`.dockerignore\`.`
               });
+            continue;
+          }
+          let dir = posix.dirname(f.path);
+          let found = false;
+          while (dir !== null) {
+            const d = dir === "." ? "" : dir;
+            if (exists(d ? `${d}/.dockerignore` : ".dockerignore")) {
+              found = true;
               break;
             }
+            dir = d ? posix.dirname(d) : null;
+          }
+          if (found) continue;
+          if (ancestorIgnore === void 0) {
+            const ws = findWorkspaceRoot(ctx.files.realRoot);
+            ancestorIgnore = ws ? ancestorDockerignore(ctx.files.realRoot, ws.dir) : null;
+          }
+          if (ancestorIgnore) continue;
+          out2.push({
+            file: f.path,
+            line: copy.line,
+            confidence: "low",
+            message: `The build context of \`${f.path}\` is not determined (no compose or CI build step names it) and no \`.dockerignore\` was found in its directory or any parent; \`${copy.op} ${copy.args}\` may copy secrets and \`.git\`.`
+          });
         }
         return out2;
       }
     };
+    BUILD_VALUE_FLAGS = /* @__PURE__ */ new Set([
+      "-t",
+      "--tag",
+      "--build-arg",
+      "--target",
+      "--platform",
+      "--label",
+      "--secret",
+      "--ssh",
+      "--cache-from",
+      "--cache-to",
+      "-o",
+      "--output",
+      "--progress",
+      "--network",
+      "--build-context",
+      "--iidfile",
+      "--metadata-file",
+      "--builder"
+    ]);
     DB_PORTS = /^(?:5432|3306|27017|6379|9200|5672|11211|1433|1521|9042|8086)$/;
     composeRisks = {
       kind: "file",
@@ -12382,7 +12687,7 @@ var init_files2 = __esm({
       check(ctx) {
         let y;
         try {
-          y = (0, import_yaml.parse)(ctx.text);
+          y = (0, import_yaml2.parse)(ctx.text);
         } catch {
           return [];
         }
@@ -12918,7 +13223,7 @@ function dirOf(p) {
   const i2 = p.lastIndexOf("/");
   return i2 < 0 ? "." : p.slice(0, i2);
 }
-function workspaceGlobs(ctx, dir, manifestName) {
+function workspaceGlobs2(ctx, dir, manifestName) {
   const root = ctx.profile.manifests.find((x) => dirOf(x.file) === dir && x.file.endsWith(manifestName));
   const globs = [...root?.workspaces ?? []];
   if (manifestName === "package.json") {
@@ -12938,7 +13243,7 @@ function isWorkspaceMember(ctx, m) {
     );
     if (lock) {
       const rel = dir === "." ? memberDir : memberDir.slice(dir.length + 1);
-      const globs = workspaceGlobs(ctx, dir, b);
+      const globs = workspaceGlobs2(ctx, dir, b);
       if (b === "go.mod" || globs.some((g) => matchesAny(rel, [g.replace(/\/$/, "")]))) return lock.file;
       return void 0;
     }
@@ -13449,14 +13754,14 @@ import {
   existsSync as existsSync7,
   mkdirSync,
   readdirSync as readdirSync2,
-  readFileSync as readFileSync5,
+  readFileSync as readFileSync6,
   renameSync,
   statSync as statSync3,
   writeFileSync
 } from "node:fs";
-import { dirname as dirname2, join as join7, resolve as resolve2 } from "node:path";
+import { dirname as dirname3, join as join8, resolve as resolve3 } from "node:path";
 function atomicWrite(file, content) {
-  mkdirSync(dirname2(file), { recursive: true });
+  mkdirSync(dirname3(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${randomBytes(3).toString("hex")}.tmp`;
   writeFileSync(tmp, content);
   renameSync(tmp, file);
@@ -13469,18 +13774,18 @@ var init_workspace = __esm({
     Workspace = class {
       dir;
       constructor(projectRoot, override) {
-        this.dir = override ? resolve2(override) : join7(resolve2(projectRoot), ".relivaro");
+        this.dir = override ? resolve3(override) : join8(resolve3(projectRoot), ".relivaro");
       }
       ensure() {
         mkdirSync(this.dir, { recursive: true });
-        const gi = join7(this.dir, ".gitignore");
+        const gi = join8(this.dir, ".gitignore");
         if (!existsSync7(gi)) writeFileSync(gi, "# Relivaro run data \u2014 never commit.\n*\n");
       }
       path(...parts2) {
         for (const p of parts2)
           if (p.includes("..") || /^[\\/]/.test(p))
             throw new RelivaroError("PATH_OUTSIDE_ROOT", `Invalid workspace path segment: ${p}`);
-        return join7(this.dir, ...parts2);
+        return join8(this.dir, ...parts2);
       }
       newRunId(prefix = "") {
         const ts = (/* @__PURE__ */ new Date()).toISOString().replace(/[-:]/g, "").replace(/\..+/, "").replace("T", "-");
@@ -13503,7 +13808,7 @@ var init_workspace = __esm({
         const file = this.path(...rel);
         if (!existsSync7(file)) return void 0;
         try {
-          return JSON.parse(readFileSync5(file, "utf8"));
+          return JSON.parse(readFileSync6(file, "utf8"));
         } catch {
           throw new RelivaroError("CONFIG_INVALID", `Corrupt workspace file: ${file}`);
         }
@@ -13512,8 +13817,8 @@ var init_workspace = __esm({
       listRuns() {
         const dir = this.path("runs");
         if (!existsSync7(dir)) return [];
-        return readdirSync2(dir).filter((d) => existsSync7(join7(dir, d, "run.json"))).sort(
-          (a, b) => statSync3(join7(dir, a, "run.json")).mtimeMs - statSync3(join7(dir, b, "run.json")).mtimeMs || a.localeCompare(b)
+        return readdirSync2(dir).filter((d) => existsSync7(join8(dir, d, "run.json"))).sort(
+          (a, b) => statSync3(join8(dir, a, "run.json")).mtimeMs - statSync3(join8(dir, b, "run.json")).mtimeMs || a.localeCompare(b)
         );
       }
       resolveRun(idOrAlias) {
@@ -13544,7 +13849,7 @@ __export(osv_exports, {
   queryOsv: () => queryOsv,
   severityOf: () => severityOf
 });
-import { existsSync as existsSync8, readFileSync as readFileSync6, statSync as statSync4 } from "node:fs";
+import { existsSync as existsSync8, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
 async function postJson(fetchImpl, url, body2) {
   const res = await fetchImpl(url, {
     method: "POST",
@@ -13624,7 +13929,7 @@ async function queryOsv(lockfiles, opts = {}) {
   if (opts.cacheFile && existsSync8(opts.cacheFile)) {
     try {
       if (Date.now() - statSync4(opts.cacheFile).mtimeMs < 24 * 36e5)
-        cache3 = JSON.parse(readFileSync6(opts.cacheFile, "utf8"));
+        cache3 = JSON.parse(readFileSync7(opts.cacheFile, "utf8"));
     } catch {
       cache3 = {};
     }
@@ -14600,7 +14905,7 @@ function isEnvLock(importers) {
 function pnpmLock(file, text) {
   const info2 = { file, ecosystem: "npm", packages: [] };
   try {
-    const docs = (0, import_yaml2.parseAllDocuments)(text);
+    const docs = (0, import_yaml3.parseAllDocuments)(text);
     const list = Array.isArray(docs) ? docs : [docs];
     for (const d of list) if (d.errors.length) throw new Error(d.errors[0].message);
     const root = /* @__PURE__ */ new Set();
@@ -14758,7 +15063,7 @@ function gemfileLock(file, text) {
 function pubspecLock(file, text) {
   const info2 = { file, ecosystem: "Pub", packages: [] };
   try {
-    const y = (0, import_yaml2.parse)(text) ?? {};
+    const y = (0, import_yaml3.parse)(text) ?? {};
     for (const [name2, p] of Object.entries(y.packages ?? {}))
       if (p.version && p.source !== "sdk")
         info2.packages.push({
@@ -14803,12 +15108,12 @@ function parseLockfile(file, text) {
       return null;
   }
 }
-var import_yaml2, ENV_LOCK_KEYS;
+var import_yaml3, ENV_LOCK_KEYS;
 var init_lockfiles = __esm({
   "src/deps/lockfiles.ts"() {
     "use strict";
     init_dist();
-    import_yaml2 = __toESM(require_dist(), 1);
+    import_yaml3 = __toESM(require_dist(), 1);
     ENV_LOCK_KEYS = /* @__PURE__ */ new Set(["configDependencies", "packageManagerDependencies"]);
   }
 });
@@ -15032,7 +15337,7 @@ function parseGemfile(file, text) {
 function parsePubspec(file, text) {
   const m = empty(file, "Pub");
   try {
-    const y = (0, import_yaml3.parse)(text) ?? {};
+    const y = (0, import_yaml4.parse)(text) ?? {};
     m.name = y.name;
     m.version = typeof y.version === "string" ? y.version : void 0;
     if (y.environment?.sdk) m.runtime.dart = String(y.environment.sdk);
@@ -15121,12 +15426,12 @@ function parseManifest(file, text) {
   }
   return null;
 }
-var import_yaml3, empty;
+var import_yaml4, empty;
 var init_manifests = __esm({
   "src/deps/manifests.ts"() {
     "use strict";
     init_dist();
-    import_yaml3 = __toESM(require_dist(), 1);
+    import_yaml4 = __toESM(require_dist(), 1);
     empty = (file, ecosystem) => ({
       file,
       ecosystem,
@@ -15136,128 +15441,6 @@ var init_manifests = __esm({
       workspaces: [],
       extra: {}
     });
-  }
-});
-
-// src/fs/ancestors.ts
-import { lstatSync as lstatSync2, readFileSync as readFileSync7, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname3, join as join8, relative as relative2, resolve as resolve3, sep } from "node:path";
-function readMeta(dir, name2) {
-  if (!ANCESTOR_META.includes(name2)) throw new Error(`not an ancestor metadata file: ${name2}`);
-  try {
-    const p = join8(dir, name2);
-    if (!lstatSync2(p).isFile()) return null;
-    return readFileSync7(p, "utf8");
-  } catch {
-    return null;
-  }
-}
-function hasMeta(dir, name2) {
-  if (!ANCESTOR_META.includes(name2)) return false;
-  try {
-    return lstatSync2(join8(dir, name2)).isFile();
-  } catch {
-    return false;
-  }
-}
-function realOrResolved(p) {
-  const abs = resolve3(p);
-  try {
-    return realpathSync2.native(abs);
-  } catch {
-    return abs;
-  }
-}
-function workspaceGlobs2(dir) {
-  const globs = [];
-  const pnpm = readMeta(dir, "pnpm-workspace.yaml");
-  if (pnpm !== null) {
-    try {
-      const doc = (0, import_yaml4.parse)(pnpm);
-      if (Array.isArray(doc?.packages)) {
-        for (const g of doc.packages) if (typeof g === "string") globs.push(g);
-      }
-    } catch {
-    }
-  }
-  const pkg = readMeta(dir, "package.json");
-  if (pkg !== null) {
-    try {
-      const json = JSON.parse(pkg);
-      const ws = json.workspaces;
-      const list = Array.isArray(ws) ? ws : ws?.packages;
-      if (Array.isArray(list)) {
-        for (const g of list) if (typeof g === "string") globs.push(g);
-      }
-    } catch {
-    }
-  }
-  return globs.map((g) => g.trim().replace(/^\.\//, "").replace(/\/+$/, "")).filter((g) => g && !g.startsWith("!"));
-}
-function scriptsOf(dir) {
-  const pkg = readMeta(dir, "package.json");
-  if (pkg === null) return {};
-  try {
-    const s = JSON.parse(pkg).scripts;
-    if (!s || typeof s !== "object") return {};
-    return Object.fromEntries(Object.entries(s).filter(([, v]) => typeof v === "string"));
-  } catch {
-    return {};
-  }
-}
-function findWorkspaceRoot(auditRoot, opts = {}) {
-  const start2 = realOrResolved(auditRoot);
-  const maxDepth = opts.maxDepth ?? 6;
-  let dir = start2;
-  for (let depth = 1; depth <= maxDepth; depth++) {
-    const parent = dirname3(dir);
-    if (parent === dir) break;
-    dir = parent;
-    const globs = workspaceGlobs2(dir);
-    if (!globs.length) continue;
-    const rel = relative2(dir, start2).split(sep).join("/");
-    if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
-    const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
-    const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
-    const manager = lockfiles.map((n) => MANAGER[n]).find(Boolean);
-    if (manager) out2.packageManager = manager;
-    return out2;
-  }
-  return null;
-}
-var import_yaml4, ANCESTOR_META, LOCKFILES2, MANAGER;
-var init_ancestors = __esm({
-  "src/fs/ancestors.ts"() {
-    "use strict";
-    import_yaml4 = __toESM(require_dist(), 1);
-    init_glob();
-    ANCESTOR_META = [
-      "package.json",
-      "pnpm-workspace.yaml",
-      "pnpm-lock.yaml",
-      "package-lock.json",
-      "npm-shrinkwrap.json",
-      "yarn.lock",
-      "bun.lock",
-      "bun.lockb",
-      ".dockerignore"
-    ];
-    LOCKFILES2 = [
-      "pnpm-lock.yaml",
-      "yarn.lock",
-      "bun.lock",
-      "bun.lockb",
-      "package-lock.json",
-      "npm-shrinkwrap.json"
-    ];
-    MANAGER = {
-      "pnpm-lock.yaml": "pnpm",
-      "yarn.lock": "yarn",
-      "bun.lock": "bun",
-      "bun.lockb": "bun",
-      "package-lock.json": "npm",
-      "npm-shrinkwrap.json": "npm"
-    };
   }
 });
 
@@ -20737,8 +20920,8 @@ import { existsSync as existsSync11, readFileSync as readFileSync9, realpathSync
 import { join as join10, resolve as resolve4 } from "node:path";
 
 // src/checks/coverage.ts
-import { existsSync as existsSync3, readFileSync as readFileSync2, statSync as statSync2 } from "node:fs";
-import { join as join3 } from "node:path";
+import { existsSync as existsSync3, readFileSync as readFileSync3, statSync as statSync2 } from "node:fs";
+import { join as join4 } from "node:path";
 
 // src/core/types.ts
 var SEVERITIES = ["critical", "high", "medium", "low", "info"];
@@ -20839,7 +21022,7 @@ function readCoverage(files, profile) {
     0,
     ...files.files.filter((f) => f.kind === "source" && !f.isTest).slice(0, 5e3).map((f) => {
       try {
-        return statSync2(join3(files.root, f.path)).mtimeMs;
+        return statSync2(join4(files.root, f.path)).mtimeMs;
       } catch {
         return 0;
       }
@@ -20848,7 +21031,7 @@ function readCoverage(files, profile) {
   for (const u of profile.units) {
     for (const c of CANDIDATES) {
       const rel = u.path === "." ? c : `${u.path}/${c}`;
-      const abs = join3(files.root, rel);
+      const abs = join4(files.root, rel);
       if (!existsSync3(abs)) continue;
       let st;
       try {
@@ -20857,7 +21040,7 @@ function readCoverage(files, profile) {
       } catch {
         continue;
       }
-      const text = readFileSync2(abs, "utf8");
+      const text = readFileSync3(abs, "utf8");
       let format;
       let map;
       try {
@@ -20944,15 +21127,15 @@ function testGaps(files, findings, complexity2, coverage) {
 }
 
 // src/checks/exec.ts
-import { existsSync as existsSync5, readFileSync as readFileSync3 } from "node:fs";
-import { join as join5 } from "node:path";
+import { existsSync as existsSync5, readFileSync as readFileSync4 } from "node:fs";
+import { join as join6 } from "node:path";
 
 // src/exec/runner.ts
 init_errors();
 init_secrets();
 import { spawn } from "node:child_process";
 import { existsSync as existsSync4 } from "node:fs";
-import { delimiter, join as join4 } from "node:path";
+import { delimiter, join as join5 } from "node:path";
 var ENV_ALLOW = [
   "PATH",
   "Path",
@@ -21066,9 +21249,9 @@ function whichSync(cmd, pathEnv = process.env.PATH ?? process.env.Path ?? "") {
   for (const dir of pathEnv.split(delimiter)) {
     if (!dir) continue;
     for (const ext of exts) {
-      const p = join4(dir, cmd + ext.toLowerCase());
+      const p = join5(dir, cmd + ext.toLowerCase());
       if (existsSync4(p)) return p;
-      const p2 = join4(dir, cmd + ext);
+      const p2 = join5(dir, cmd + ext);
       if (existsSync4(p2)) return p2;
     }
   }
@@ -21175,17 +21358,17 @@ init_files();
 init_rules();
 var NPM_DEFAULT_TEST = /no test specified/;
 function hasDir(root, unit, d) {
-  return existsSync5(join5(root, unit === "." ? "" : unit, d)) || existsSync5(join5(root, d));
+  return existsSync5(join6(root, unit === "." ? "" : unit, d)) || existsSync5(join6(root, d));
 }
 function localBin(root, unit, bin) {
-  for (const base of [join5(root, unit === "." ? "" : unit), root]) {
+  for (const base of [join6(root, unit === "." ? "" : unit), root]) {
     for (const p of [
-      join5(base, "node_modules", ".bin", bin),
-      join5(base, "node_modules", ".bin", `${bin}.cmd`),
-      join5(base, "vendor", "bin", bin),
-      join5(base, ".venv", "bin", bin),
-      join5(base, "venv", "bin", bin),
-      join5(base, ".venv", "Scripts", `${bin}.exe`)
+      join6(base, "node_modules", ".bin", bin),
+      join6(base, "node_modules", ".bin", `${bin}.cmd`),
+      join6(base, "vendor", "bin", bin),
+      join6(base, ".venv", "bin", bin),
+      join6(base, "venv", "bin", bin),
+      join6(base, ".venv", "Scripts", `${bin}.exe`)
     ])
       if (existsSync5(p)) return p;
   }
@@ -21213,7 +21396,7 @@ function planChecks(files, profile, config, kinds) {
     });
   for (const u of profile.units) {
     if (u.path !== "." && isTestPath(`${u.path}/`)) continue;
-    const cwd = join5(root, u.path === "." ? "" : u.path);
+    const cwd = join6(root, u.path === "." ? "" : u.path);
     const eco = new Set(u.ecosystems);
     if (eco.has("npm")) planNode(u, root, cwd, add, files);
     if (eco.has("Packagist")) planPhp(u, root, cwd, add);
@@ -21354,7 +21537,7 @@ function planPhp(u, root, cwd, add) {
   const skip = !php ? "php not found on PATH" : !vendor ? "dependencies are not installed (run `composer install` first; Relivaro never installs dependencies)" : void 0;
   const pest = localBin(root, u.path, "pest");
   const phpunit = localBin(root, u.path, "phpunit");
-  if (existsSync5(join5(cwd, "artisan")) && (pest || phpunit))
+  if (existsSync5(join6(cwd, "artisan")) && (pest || phpunit))
     add({
       kind: "test",
       unit: u.path,
@@ -21367,7 +21550,7 @@ function planPhp(u, root, cwd, add) {
     add({ kind: "test", unit: u.path, argv: ["php", pest], cwd, parser: "tests", skipReason: skip });
   else if (phpunit)
     add({ kind: "test", unit: u.path, argv: ["php", phpunit], cwd, parser: "tests", skipReason: skip });
-  else if (existsSync5(join5(cwd, "phpunit.xml")) || existsSync5(join5(cwd, "phpunit.xml.dist")))
+  else if (existsSync5(join6(cwd, "phpunit.xml")) || existsSync5(join6(cwd, "phpunit.xml.dist")))
     add({
       kind: "test",
       unit: u.path,
@@ -21377,7 +21560,7 @@ function planPhp(u, root, cwd, add) {
       skipReason: skip ?? "vendor/bin/phpunit not found"
     });
   const phpstan = localBin(root, u.path, "phpstan");
-  if (phpstan && ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"].some((f) => existsSync5(join5(cwd, f))))
+  if (phpstan && ["phpstan.neon", "phpstan.neon.dist", "phpstan.dist.neon"].some((f) => existsSync5(join6(cwd, f))))
     add({
       kind: "typecheck",
       unit: u.path,
@@ -21399,7 +21582,7 @@ function planPhp(u, root, cwd, add) {
 }
 function planPython(u, root, cwd, add) {
   const pytest = localBin(root, u.path, "pytest") ?? whichSync("pytest");
-  const hasTests = existsSync5(join5(cwd, "tests")) || existsSync5(join5(cwd, "test")) || existsSync5(join5(cwd, "pytest.ini")) || existsSync5(join5(cwd, "conftest.py"));
+  const hasTests = existsSync5(join6(cwd, "tests")) || existsSync5(join6(cwd, "test")) || existsSync5(join6(cwd, "pytest.ini")) || existsSync5(join6(cwd, "conftest.py"));
   if (hasTests)
     add({
       kind: "test",
@@ -21410,14 +21593,14 @@ function planPython(u, root, cwd, add) {
       skipReason: pytest ? void 0 : "pytest not found (activate the virtualenv or install dev dependencies)"
     });
   const mypy = localBin(root, u.path, "mypy");
-  if (mypy && (existsSync5(join5(cwd, "mypy.ini")) || /\[tool\.mypy\]/.test(safeRead(join5(cwd, "pyproject.toml")))))
+  if (mypy && (existsSync5(join6(cwd, "mypy.ini")) || /\[tool\.mypy\]/.test(safeRead(join6(cwd, "pyproject.toml")))))
     add({ kind: "typecheck", unit: u.path, argv: [mypy, "."], cwd, parser: "generic" });
   const ruff = localBin(root, u.path, "ruff");
   if (ruff) add({ kind: "lint", unit: u.path, argv: [ruff, "check", "."], cwd, parser: "generic" });
 }
 function safeRead(p) {
   try {
-    return existsSync5(p) ? readFileSync3(p, "utf8") : "";
+    return existsSync5(p) ? readFileSync4(p, "utf8") : "";
   } catch {
     return "";
   }
@@ -21738,8 +21921,8 @@ ${r.stderr}`;
 
 // src/core/config.ts
 init_errors();
-import { existsSync as existsSync6, readFileSync as readFileSync4 } from "node:fs";
-import { join as join6 } from "node:path";
+import { existsSync as existsSync6, readFileSync as readFileSync5 } from "node:fs";
+import { join as join7 } from "node:path";
 var CONFIG_FILES = ["relivaro.config.json", ".relivaro.json"];
 function defaultConfig() {
   return {
@@ -21756,7 +21939,7 @@ function defaultConfig() {
   };
 }
 function loadConfig(root, explicitPath) {
-  const candidates = explicitPath ? [explicitPath] : CONFIG_FILES.map((f) => join6(root, f));
+  const candidates = explicitPath ? [explicitPath] : CONFIG_FILES.map((f) => join7(root, f));
   for (const file of candidates) {
     if (!existsSync6(file)) {
       if (explicitPath) throw new RelivaroError("NOT_FOUND", `Config file not found: ${explicitPath}`);
@@ -21764,7 +21947,7 @@ function loadConfig(root, explicitPath) {
     }
     let raw;
     try {
-      raw = JSON.parse(readFileSync4(file, "utf8"));
+      raw = JSON.parse(readFileSync5(file, "utf8"));
     } catch (e) {
       throw new RelivaroError("CONFIG_INVALID", `${file} is not valid JSON: ${e.message}`);
     }

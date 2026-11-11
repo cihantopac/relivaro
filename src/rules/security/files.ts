@@ -1,3 +1,4 @@
+import { posix } from 'node:path';
 import {
   type Document,
   isMap,
@@ -16,9 +17,10 @@ import {
   SECRET_PATTERNS,
   shannonEntropy,
 } from '../../core/secrets.js';
+import { ancestorDockerignore, findWorkspaceRoot } from '../../fs/ancestors.js';
 import { isEnvTemplate } from '../../fs/files.js';
 import { OWASP } from '../helpers.js';
-import type { FileContext, FileRule, Hit, ProjectRule } from '../types.js';
+import type { FileContext, FileRule, Hit, ProjectContext, ProjectRule } from '../types.js';
 
 const SECRET_SCAN_SKIP =
   /(?:^|\/)(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|composer\.lock|poetry\.lock|Pipfile\.lock|uv\.lock|Cargo\.lock|Gemfile\.lock|pubspec\.lock|go\.sum|Podfile\.lock|Package\.resolved)$|\.(?:svg|snap|lock)$/;
@@ -479,6 +481,71 @@ function dockerInstructions(text: string): DockerInstr[] {
   return out;
 }
 
+interface DockerStage {
+  /** The full `FROM` arguments. */
+  from: string;
+  /** The image (or parent stage) name, without `--platform`. */
+  image: string;
+  /** Lower-cased `AS` alias. */
+  alias?: string;
+  /** Line of the `FROM`. */
+  line: number;
+  /** Index range of the stage's instructions in the instruction list, `FROM` included. */
+  start: number;
+  end: number;
+  users: DockerInstr[];
+}
+
+function dockerStages(ins: DockerInstr[]): DockerStage[] {
+  const out: DockerStage[] = [];
+  ins.forEach((x, i) => {
+    if (x.op === 'FROM') {
+      const prev = out[out.length - 1];
+      if (prev) prev.end = i;
+      const image = x.args.replace(/--platform=\S+\s+/, '').split(/\s+/)[0] ?? '';
+      const alias = /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase();
+      out.push({
+        from: x.args,
+        image,
+        ...(alias ? { alias } : {}),
+        line: x.line,
+        start: i,
+        end: ins.length,
+        users: [],
+      });
+    } else if (x.op === 'USER') out[out.length - 1]?.users.push(x);
+  });
+  return out;
+}
+
+/**
+ * The effective user of stage `idx`: its last `USER`, or else the effective user of the earlier stage its `FROM`
+ * names (case-insensitive alias). `stage` is the stage that set it (or the last one visited); `base` is the
+ * external image at the root of the chain.
+ */
+function effectiveUser(
+  stages: DockerStage[],
+  idx: number,
+): { user?: DockerInstr; stage: DockerStage; base?: string } {
+  const seen = new Set<number>();
+  let i = idx;
+  for (;;) {
+    const st = stages[i]!;
+    seen.add(i);
+    const last = st.users[st.users.length - 1];
+    if (last) return { user: last, stage: st };
+    const name = st.image.toLowerCase();
+    let parent = -1;
+    for (let j = i - 1; j >= 0; j--)
+      if (stages[j]!.alias === name) {
+        parent = j;
+        break;
+      }
+    if (parent < 0 || seen.has(parent)) return { stage: st, ...(parent < 0 ? { base: st.image } : {}) };
+    i = parent;
+  }
+}
+
 const dockerRoot: FileRule = {
   kind: 'file',
   id: 'sec/docker-runs-as-root',
@@ -497,17 +564,31 @@ const dockerRoot: FileRule = {
   verification: '`docker run --rm <image> id -u` prints a non-zero UID.',
   appliesTo: (f) => f.kind === 'dockerfile',
   check(ctx) {
-    const ins = dockerInstructions(ctx.text);
-    const lastFrom = ins.map((x) => x.op).lastIndexOf('FROM');
-    if (lastFrom < 0) return [];
-    const from = ins[lastFrom]!;
-    if (/^scratch\b|distroless|chainguard|nonroot|rootless/i.test(from.args)) return [];
-    const users = ins.slice(lastFrom).filter((x) => x.op === 'USER');
-    const last = users[users.length - 1];
-    if (!last)
-      return [{ line: from.line, message: `Final stage \`FROM ${from.args}\` has no \`USER\` instruction.` }];
-    if (/^(?:root|0)(?::|$)/.test(last.args))
-      return [{ line: last.line, message: 'The final `USER` is root.' }];
+    const stages = dockerStages(dockerInstructions(ctx.text));
+    const final = stages[stages.length - 1];
+    if (!final) return [];
+    if (/^scratch\b|distroless|chainguard|nonroot|rootless/i.test(final.image)) return [];
+    const eff = effectiveUser(stages, stages.length - 1);
+    if (eff.base && /^scratch\b|distroless|chainguard|nonroot|rootless/i.test(eff.base)) return [];
+    if (!eff.user) {
+      const inherited =
+        eff.stage !== final ? ` (inherited from stage \`${eff.stage.alias ?? eff.stage.image}\`)` : '';
+      return [
+        {
+          line: final.line,
+          message: `Final stage \`FROM ${final.from}\` has no \`USER\` instruction${inherited}.`,
+        },
+      ];
+    }
+    if (/^(?:root|0)(?::|$)/.test(eff.user.args))
+      return [
+        eff.stage === final
+          ? { line: eff.user.line, message: 'The final `USER` is root.' }
+          : {
+              line: final.line,
+              message: `Final stage \`FROM ${final.from}\` inherits \`USER ${eff.user.args}\` from stage \`${eff.stage.alias ?? eff.stage.image}\`.`,
+            },
+      ];
     return [];
   },
 };
@@ -530,12 +611,7 @@ const dockerLatest: FileRule = {
   appliesTo: (f) => f.kind === 'dockerfile',
   check(ctx) {
     const ins = dockerInstructions(ctx.text);
-    const stages = new Set(
-      ins
-        .filter((x) => x.op === 'FROM')
-        .map((x) => /\bAS\s+(\S+)/i.exec(x.args)?.[1]?.toLowerCase())
-        .filter(Boolean),
-    );
+    const stages = new Set(dockerStages(ins).map((st) => st.alias));
     const out: Hit[] = [];
     for (const x of ins) {
       if (x.op !== 'FROM') continue;
@@ -642,33 +718,159 @@ const dockerCopyAll: ProjectRule = {
     'Build the image and list its files (`docker run --rm <image> ls -la`); no `.env` or `.git` must be present.',
   check(ctx) {
     const out: Hit[] = [];
+    const contexts = dockerBuildContexts(ctx.files);
+    const exists = (p: string) => ctx.files.has(p) || ctx.files.readAny(p) !== undefined;
+    let ancestorIgnore: string | null | undefined;
     for (const f of ctx.files.byKind('dockerfile')) {
-      const dir = f.path.includes('/') ? f.path.slice(0, f.path.lastIndexOf('/')) : '';
-      const ignore = dir ? `${dir}/.dockerignore` : '.dockerignore';
-      if (
-        ctx.files.has(ignore) ||
-        ctx.files.readAny(ignore) !== undefined ||
-        ctx.files.readAny('.dockerignore') !== undefined
-      )
-        continue;
-      if (ctx.files.has(`${f.path}.dockerignore`)) continue;
-      for (const x of dockerInstructions(ctx.files.read(f.path) ?? ''))
-        if (
+      const copy = dockerInstructions(ctx.files.read(f.path) ?? '').find(
+        (x) =>
           (x.op === 'COPY' || x.op === 'ADD') &&
           /(?:^|\s)\.\/?\s+\S+$/.test(x.args.replace(/--\S+\s+/g, '')) &&
-          !/--from=/.test(x.args)
-        ) {
+          !/--from=/.test(x.args),
+      );
+      if (!copy || exists(`${f.path}.dockerignore`)) continue;
+      const known = contexts.get(f.path);
+      if (known?.length) {
+        const missing = known.find((c) => !exists(c ? `${c}/.dockerignore` : '.dockerignore'));
+        if (missing !== undefined)
           out.push({
             file: f.path,
-            line: x.line,
-            message: `\`${x.op} ${x.args}\` copies the entire build context and no \`.dockerignore\` exists.`,
+            line: copy.line,
+            message: `\`${copy.op} ${copy.args}\` copies the entire build context (\`${missing || '.'}\`) and it has no \`.dockerignore\`.`,
           });
+        continue;
+      }
+      // Unknown context: the Dockerfile's directory, each parent inside the audit root, then the workspace root.
+      let dir: string | null = posix.dirname(f.path);
+      let found = false;
+      while (dir !== null) {
+        const d: string = dir === '.' ? '' : dir;
+        if (exists(d ? `${d}/.dockerignore` : '.dockerignore')) {
+          found = true;
           break;
         }
+        dir = d ? posix.dirname(d) : null;
+      }
+      if (found) continue;
+      if (ancestorIgnore === undefined) {
+        const ws = findWorkspaceRoot(ctx.files.realRoot);
+        ancestorIgnore = ws ? ancestorDockerignore(ctx.files.realRoot, ws.dir) : null;
+      }
+      if (ancestorIgnore) continue;
+      out.push({
+        file: f.path,
+        line: copy.line,
+        confidence: 'low',
+        message: `The build context of \`${f.path}\` is not determined (no compose or CI build step names it) and no \`.dockerignore\` was found in its directory or any parent; \`${copy.op} ${copy.args}\` may copy secrets and \`.git\`.`,
+      });
     }
     return out;
   },
 };
+
+/** Normalised root-relative POSIX path (`''` for the root), or null when it leaves the audit root. */
+function underRoot(base: string, p: string): string | null {
+  const n = posix.normalize(posix.join(base || '.', p.trim()));
+  if (n === '..' || n.startsWith('../') || posix.isAbsolute(n)) return null;
+  return n === '.' ? '' : n.replace(/\/+$/, '');
+}
+
+const BUILD_VALUE_FLAGS = new Set([
+  '-t',
+  '--tag',
+  '--build-arg',
+  '--target',
+  '--platform',
+  '--label',
+  '--secret',
+  '--ssh',
+  '--cache-from',
+  '--cache-to',
+  '-o',
+  '--output',
+  '--progress',
+  '--network',
+  '--build-context',
+  '--iidfile',
+  '--metadata-file',
+  '--builder',
+]);
+
+/**
+ * Build contexts named for each Dockerfile (root-relative path → context directories) by compose `build:` entries,
+ * `docker build`/`docker buildx build` commands in CI workflows and `docker/build-push-action` steps.
+ */
+function dockerBuildContexts(files: ProjectContext['files']): Map<string, string[]> {
+  const out = new Map<string, string[]>();
+  const add = (dockerfile: string | null, context: string | null) => {
+    if (dockerfile === null || context === null) return;
+    const list = out.get(dockerfile) ?? [];
+    if (!list.includes(context)) list.push(context);
+    out.set(dockerfile, list);
+  };
+  for (const c of files.byKind('compose')) {
+    type Compose = { services?: Record<string, { build?: unknown } | null> } | null;
+    let y: Compose;
+    try {
+      y = parseYaml(files.read(c.path) ?? '') as Compose;
+    } catch {
+      continue;
+    }
+    const base = posix.dirname(c.path);
+    for (const svc of Object.values(y?.services ?? {})) {
+      const b = svc?.build;
+      if (typeof b === 'string') {
+        const ctxDir = underRoot(base, b);
+        add(ctxDir === null ? null : underRoot(ctxDir, 'Dockerfile'), ctxDir);
+      } else if (b && typeof b === 'object') {
+        const o = b as { context?: unknown; dockerfile?: unknown };
+        const ctxDir = underRoot(base, typeof o.context === 'string' ? o.context : '.');
+        if (ctxDir === null) continue;
+        add(underRoot(ctxDir, typeof o.dockerfile === 'string' ? o.dockerfile : 'Dockerfile'), ctxDir);
+      }
+    }
+  }
+  for (const w of files.byKind('workflow')) {
+    const text = files.read(w.path) ?? '';
+    for (const m of text.matchAll(/\bdocker\s+(?:buildx\s+)?build\b([^\n&;|]*)/g)) {
+      const toks = m[1]!.trim().split(/\s+/).filter(Boolean);
+      let file: string | undefined;
+      let context: string | undefined;
+      for (let i = 0; i < toks.length; i++) {
+        const t = toks[i]!;
+        if (t === '-f' || t === '--file') file = toks[++i];
+        else if (t.startsWith('--file=')) file = t.slice(7);
+        else if (BUILD_VALUE_FLAGS.has(t)) i++;
+        else if (t.startsWith('-') || t === '\\') continue;
+        else if (!t.includes('$') && !/^https?:|^git@/.test(t)) context = t;
+      }
+      if (context === undefined) continue;
+      const ctxDir = underRoot('', context);
+      if (ctxDir === null) continue;
+      add(file ? underRoot('', file) : underRoot(ctxDir, 'Dockerfile'), ctxDir);
+    }
+    type Workflow = {
+      jobs?: Record<string, { steps?: ({ uses?: unknown; with?: Record<string, unknown> } | null)[] } | null>;
+    } | null;
+    let doc: Workflow;
+    try {
+      doc = parseYaml(text) as Workflow;
+    } catch {
+      continue;
+    }
+    for (const job of Object.values(doc?.jobs ?? {}))
+      for (const step of job?.steps ?? []) {
+        if (typeof step?.uses !== 'string' || !/^docker\/build-push-action@/.test(step.uses)) continue;
+        const ctxRaw = step.with?.context;
+        const fileRaw = step.with?.file;
+        if (typeof ctxRaw === 'string' && ctxRaw.includes('$')) continue;
+        const ctxDir = underRoot('', typeof ctxRaw === 'string' ? ctxRaw : '.');
+        if (ctxDir === null) continue;
+        add(typeof fileRaw === 'string' ? underRoot('', fileRaw) : underRoot(ctxDir, 'Dockerfile'), ctxDir);
+      }
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------------------------------------------------
 // docker-compose

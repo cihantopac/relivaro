@@ -1,0 +1,3 @@
+{
+  "findings": [{ "rule": "sec/docker-context-leak", "file": "apps/api/Dockerfile", "line": 3 }]
+}

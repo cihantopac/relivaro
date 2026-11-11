@@ -1,0 +1,5 @@
+{
+  "name": "monorepo-docker",
+  "private": true,
+  "scripts": { "test": "echo ok" }
+}

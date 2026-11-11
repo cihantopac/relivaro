@@ -1,5 +1,8 @@
-import { describe, expect, it } from 'vitest';
-import type { RunRecord } from '../../src/audit.js';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+import { type RunRecord, runAudit } from '../../src/audit.js';
 import { diffSpecs, validateSpec } from '../../src/contract/openapi.js';
 import { defaultConfig } from '../../src/core/config.js';
 import type { Finding } from '../../src/core/types.js';
@@ -407,5 +410,93 @@ describe('sarif', () => {
       'package.json',
       'a.ts',
     ]);
+  });
+});
+
+const tmpTrees: string[] = [];
+afterAll(() => {
+  for (const d of tmpTrees.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+function makeTree(files: Record<string, string>): string {
+  const root = mkdtempSync(join(tmpdir(), 'rlv-eng-'));
+  tmpTrees.push(root);
+  for (const [p, c] of Object.entries(files)) {
+    mkdirSync(dirname(join(root, p)), { recursive: true });
+    writeFileSync(join(root, p), c);
+  }
+  return root;
+}
+async function ruleHits(root: string, rule: string): Promise<Finding[]> {
+  const { run: r } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false, rules: [rule] });
+  return r.findings.filter((f) => f.ruleId === rule);
+}
+
+describe('dockerfile stages', () => {
+  const asRoot = (dockerfile: string) =>
+    ruleHits(makeTree({ Dockerfile: dockerfile }), 'sec/docker-runs-as-root');
+  it('inherits USER from a named parent stage', async () => {
+    expect(
+      await asRoot('FROM node:22 AS base\nUSER 10001:10001\nFROM base AS runtime\nCMD ["node","x"]\n'),
+    ).toEqual([]);
+  });
+  it('follows a chain of stages', async () => {
+    expect(
+      await asRoot(
+        'FROM node:22 AS base\nUSER app\nFROM base AS mid\nRUN true\nFROM mid AS runtime\nCMD ["x"]\n',
+      ),
+    ).toEqual([]);
+  });
+  it('a parent stage that ends as root is still reported', async () => {
+    const hits = await asRoot('FROM node:22 AS base\nUSER app\nUSER root\nFROM base AS runtime\nCMD ["x"]\n');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.message).toContain('base');
+  });
+  it("a final stage on an external image keeps today's behaviour", async () => {
+    expect(await asRoot('FROM node:22\nCMD ["x"]\n')).toHaveLength(1);
+  });
+  it('the stage alias match is case-insensitive', async () => {
+    expect(await asRoot('FROM node:22 AS Base\nUSER app\nFROM base\nCMD ["x"]\n')).toEqual([]);
+  });
+  it('a stage cycle does not hang and is reported', async () => {
+    expect(await asRoot('FROM b AS a\nFROM a AS b\nCMD ["x"]\n')).toHaveLength(1);
+  });
+});
+
+describe('dockerfile build context', () => {
+  const DF = 'FROM node:22.11-alpine\nWORKDIR /app\nCOPY . .\nUSER node\nCMD ["node","x"]\n';
+  it('build context: a package audited alone uses the workspace root .dockerignore', async () => {
+    const root = makeTree({
+      'pnpm-workspace.yaml': "packages:\n  - 'apps/*'\n",
+      '.dockerignore': '.git\n.env*\n',
+      'apps/web/package.json': '{"name":"web"}',
+      'apps/web/Dockerfile': DF,
+    });
+    expect(await ruleHits(join(root, 'apps/web'), 'sec/docker-context-leak')).toEqual([]);
+  });
+  it('build context: an ancestor .dockerignore outside the workspace root is not used', async () => {
+    const root = makeTree({ '.dockerignore': '.git\n', 'repo/package.json': '{}', 'repo/Dockerfile': DF });
+    expect(await ruleHits(join(root, 'repo'), 'sec/docker-context-leak')).toHaveLength(1);
+  });
+  it('build context: an unknown context without any .dockerignore is reported at low confidence', async () => {
+    const hits = await ruleHits(makeTree({ 'svc/Dockerfile': DF }), 'sec/docker-context-leak');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.confidence).toBe('low');
+    expect(hits[0]!.message).toContain('is not determined');
+  });
+  it('build context: a CI build step names the context', async () => {
+    const wf =
+      'on: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - run: docker build -f svc/Dockerfile svc\n';
+    const root = makeTree({ '.dockerignore': '.git\n', 'svc/Dockerfile': DF, '.github/workflows/b.yml': wf });
+    const hits = await ruleHits(root, 'sec/docker-context-leak');
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.confidence).toBe('medium');
+    writeFileSync(join(root, 'svc/.dockerignore'), '.git\n');
+    expect(await ruleHits(root, 'sec/docker-context-leak')).toEqual([]);
+  });
+  it('build context: docker/build-push-action with file and context', async () => {
+    const wf =
+      'on: push\njobs:\n  b:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: docker/build-push-action@v6\n        with:\n          context: .\n          file: svc/Dockerfile\n';
+    const root = makeTree({ '.dockerignore': '.git\n', 'svc/Dockerfile': DF, '.github/workflows/b.yml': wf });
+    expect(await ruleHits(root, 'sec/docker-context-leak')).toEqual([]);
   });
 });
