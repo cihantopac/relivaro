@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -87,10 +87,11 @@ describe('ancestorDockerignore', () => {
     });
     const mono = join(root, 'mono');
     const web = join(mono, 'apps/web');
-    expect(ancestorDockerignore(web, mono)).toMatch(/mono\/\.dockerignore$/);
+    // Real paths with the platform separator (macOS tmp is a symlink; Windows uses backslashes).
+    expect(ancestorDockerignore(web, mono)).toBe(join(realpathSync.native(mono), '.dockerignore'));
     rmSync(join(mono, '.dockerignore'));
     expect(ancestorDockerignore(web, mono)).toBeNull();
-    expect(ancestorDockerignore(web, root)).toMatch(/\/\.dockerignore$/);
+    expect(ancestorDockerignore(web, root)).toBe(join(realpathSync.native(root), '.dockerignore'));
   });
 });
 

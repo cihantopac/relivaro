@@ -91,7 +91,8 @@ describe('relivaro CLI', () => {
   });
 
   it('the Next: hint quotes a path with shell metacharacters', () => {
-    for (const ch of ['&', ';', '|']) {
+    // `|` is not a valid file name character on Windows.
+    for (const ch of process.platform === 'win32' ? ['&', ';'] : ['&', ';', '|']) {
       const dir = mkdtempSync(join(tmpdir(), `rlv a${ch}b-`.replace(' ', '')));
       try {
         writeFileSync(join(dir, 'index.js'), 'console.log(1);\n');
@@ -106,8 +107,10 @@ describe('relivaro CLI', () => {
   it('audit ends with the release next step and an explicit offline OSV disclosure', () => {
     const a = cli(['audit', fx.dir, '--no-write']);
     expect(a.code).toBe(0);
+    // Windows temp paths contain `\` (and often `~`), which the hint quotes for the shell.
+    const shown = /[\\~]/.test(fx.dir) ? `'${fx.dir}'` : fx.dir;
     expect(a.stdout).toContain(
-      `Next: relivaro release ${fx.dir} for a release verdict (add --allow-exec --online to verify more)`,
+      `Next: relivaro release ${shown} for a release verdict (add --allow-exec --online to verify more)`,
     );
     const run = JSON.parse(cli(['audit', fx.dir, '--no-write', '--json']).stdout);
     expect(JSON.stringify(run)).not.toContain('Next:');
