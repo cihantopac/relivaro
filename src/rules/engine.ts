@@ -98,6 +98,19 @@ const ACCEPT_RE = /(?:\/\/|#|\/\*|<!--|\{\{--|^\s*\*)\s*relivaro-accept(-next-li
 const ACCEPT_BODY_RE = /^\s+([\w/.-]+(?:\s*,\s*[\w/.-]+)*)\s*:\s*(.*)$/;
 const COMMENT_END = /\s*(?:\*\/|-->|--\}\}|#}}|\?>)\s*$/;
 
+/** True when position `at` of a source line lies inside a '…', "…" or template string opened on that line. */
+function insideQuotes(line: string, at: number): boolean {
+  let q = '';
+  for (let i = 0; i < at; i++) {
+    const c = line[i]!;
+    if (q) {
+      if (c === '\\') i++;
+      else if (c === q) q = '';
+    } else if (c === "'" || c === '"' || c === '`') q = c;
+  }
+  return q !== '';
+}
+
 export function parseSuppressions(lines: string[]): Suppressions {
   const s: Suppressions = {
     file: { all: false, rules: new Set() },
@@ -109,7 +122,7 @@ export function parseSuppressions(lines: string[]): Suppressions {
     const l = lines[i]!;
     if (l.includes('relivaro-accept')) {
       const a = ACCEPT_RE.exec(l);
-      if (a) {
+      if (a && !insideQuotes(l, a.index)) {
         const body = ACCEPT_BODY_RE.exec(a[2] ?? '');
         const rules = new Set(
           (body?.[1] ?? '')

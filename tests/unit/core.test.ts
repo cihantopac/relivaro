@@ -276,6 +276,14 @@ describe('inline annotations', () => {
     ]);
   });
 
+  it('a relivaro-accept inside a string literal is not an annotation', async () => {
+    const run = await auditSource(
+      fn(`const doc = '// relivaro-accept-next-line perf/query-in-loop'; void doc;`),
+    );
+    expect(run.errors.rules).toEqual([]);
+    expect(run.findings.find((x) => x.ruleId === 'perf/query-in-loop')?.accepted).toBeUndefined();
+  });
+
   it('relivaro-accept without a rule id accepts nothing and is reported', async () => {
     const run = await auditSource(fn('// relivaro-accept-next-line: it is fine'));
     expect(run.findings.find((x) => x.ruleId === 'perf/query-in-loop')?.accepted).toBeUndefined();
