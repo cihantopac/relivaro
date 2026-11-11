@@ -375,3 +375,27 @@ export function containsCall(root: Node, lang: Language, pred: (c: CallInfo) => 
 export function isJsLang(lang: Language): boolean {
   return isJs(lang);
 }
+
+/**
+ * The initializer of `const <id> = <value>` when it is the identifier's only binding in the file (no other
+ * declaration or assignment of that name). Used to see through `const opts = {…}; cors(opts)`.
+ */
+export function constInitializer(id: Node | null | undefined): Node | undefined {
+  if (id?.type !== 'identifier') return undefined;
+  let root: Node = id;
+  while (root.parent) root = root.parent;
+  let found: Node | undefined;
+  let bindings = 0;
+  walk(root, (n) => {
+    if (n.type === 'variable_declarator' && n.childForFieldName('name')?.text === id.text) {
+      bindings++;
+      if (n.parent?.type === 'lexical_declaration' && /^const\b/.test(n.parent.text))
+        found = n.childForFieldName('value') ?? undefined;
+    } else if (
+      (n.type === 'assignment_expression' || n.type === 'augmented_assignment_expression') &&
+      n.childForFieldName('left')?.text === id.text
+    )
+      bindings++;
+  });
+  return bindings === 1 ? found : undefined;
+}

@@ -12,6 +12,7 @@ import {
 } from '../../parse/ast.js';
 import type { Node } from '../../parse/treesitter.js';
 import {
+  constInitializer,
   importsModule,
   isFalse,
   isSafePart,
@@ -131,6 +132,17 @@ function isChildProcessCall(c: CallInfo, source: string): boolean {
   );
 }
 
+/** `spawn('sh', ['-c', script])`: the shell program with `-c` runs the element after it as a shell command. */
+function shellDashC(c: CallInfo, lang: Language): Node | undefined {
+  const prog = c.args[0];
+  const argv = c.args[1];
+  if (!prog || !isStaticString(prog, lang) || argv?.type !== 'array') return undefined;
+  if (!/^(?:\/(?:usr\/)?bin\/)?(?:ba|z|da|k)?sh$/.test(stringValue(prog, lang) ?? '')) return undefined;
+  const els = argv.namedChildren.filter((e): e is Node => !!e && e.type !== 'comment');
+  const i = els.findIndex((e) => isStaticString(e, lang) && /^-\w*c$/.test(stringValue(e, lang) ?? ''));
+  return i >= 0 ? els[i + 1] : undefined;
+}
+
 const commandInjection: AstRule = {
   kind: 'ast',
   id: 'sec/command-injection',
@@ -161,6 +173,7 @@ const commandInjection: AstRule = {
         ) {
           const opts = c.args.find((a) => a.type === 'object');
           if (opts && isTrue(pairValue(opts, 'shell'))) arg = c.args[0];
+          else arg = shellDashC(c, lang);
         }
       } else if (lang === 'php') {
         if (/^(?:exec|shell_exec|system|passthru|popen|proc_open|pcntl_exec)$/.test(c.callee))
@@ -194,7 +207,11 @@ const commandInjection: AstRule = {
         (arg.type === 'identifier' ||
           arg.type === 'variable_name' ||
           arg.type === 'member_expression' ||
-          arg.type === 'attribute');
+          arg.type === 'attribute' ||
+          arg.type === 'subscript' ||
+          arg.type === 'subscript_expression' ||
+          arg.type === 'as_expression' ||
+          arg.type === 'non_null_expression');
       if (!parts.length && !plainVar) continue;
       const tainted = ctx.tainted(arg);
       if (!tainted && plainVar) continue;
@@ -383,6 +400,23 @@ const xss: AstRule = {
         });
       });
       for (const c of ctx.calls) {
+        // `res.send('<p>' + req.query.q + '</p>')`: request data concatenated into an HTML response.
+        if (!/^(?:res|response|reply)\.(?:send|write|end)$/.test(c.callee)) continue;
+        const body = c.args[0];
+        if (!body || isStaticString(body, lang) || SANITIZE_CALL.test(body.text)) continue;
+        let html = false;
+        walk(body, (n) => {
+          if (!html && isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? '')) html = true;
+        });
+        if (!html || !ctx.tainted(body)) continue;
+        out.push({
+          node: c.node,
+          message: `User input is concatenated into an HTML response sent by \`${c.callee}()\` without escaping.`,
+          severity: 'high',
+          confidence: 'high',
+        });
+      }
+      for (const c of ctx.calls) {
         const arg =
           c.name === 'insertAdjacentHTML'
             ? c.args[1]
@@ -540,16 +574,29 @@ const pathTraversal: AstRule = {
         continue;
       const arg = c.args[0];
       if (!arg || isStaticString(arg, lang)) continue;
-      if (!ctx.tainted(arg)) continue;
+      const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang);
+      if (!ctx.tainted(arg) && !fromArchive) continue;
       // Joining with a base directory and normalising does not prevent traversal; basename or a containment check does.
       if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
       if (pathGuarded(arg, c.node, lang)) continue;
       out.push({
         node: c.node,
-        message: `Path passed to \`${c.callee}()\` contains user input.`,
-        facts: { sink: c.callee },
+        message: fromArchive
+          ? `Path passed to \`${c.callee}()\` contains an archive entry name, which can hold \`../\` or an absolute path (zip slip).`
+          : `Path passed to \`${c.callee}()\` contains user input.`,
+        facts: { sink: c.callee, ...(fromArchive ? { archiveEntry: true } : {}) },
       });
     }
+    // `tarfile` extracts `../` and absolute member names unless a `filter=` (e.g. `'data'`) is given.
+    if (lang === 'python' && /^\s*(?:import\s+tarfile|from\s+tarfile\s+import)/m.test(ctx.source))
+      for (const c of ctx.calls)
+        if (c.name === 'extractall' && !c.kwargs.has('filter') && !/zip/i.test(c.receiver ?? ''))
+          out.push({
+            node: c.node,
+            message: `\`${c.callee}()\` without \`filter=\` extracts tar members with \`../\` or absolute names outside the destination.`,
+            confidence: 'medium',
+            facts: { sink: c.callee, archiveEntry: true },
+          });
     if (lang === 'php')
       for (const n of collect(
         ctx.tree.rootNode,
@@ -570,6 +617,34 @@ const pathTraversal: AstRule = {
     return out;
   },
 };
+
+const ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
+const ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
+
+/** The path contains an archive entry name (`entry.path`, `header.name`, `member.name`, a `namelist()` element). */
+function archiveEntryName(arg: Node, lang: Language): boolean {
+  if (lang === 'php') return false;
+  const re = isJs(lang) ? ARCHIVE_ENTRY_JS : ARCHIVE_ENTRY_PY;
+  let hit = false;
+  const loopVars = new Set<string>();
+  if (lang === 'python') {
+    let fn: Node | null = arg;
+    while (fn?.parent) fn = fn.parent;
+    walk(fn!, (n) => {
+      if (n.type !== 'for_statement') return;
+      const right = n.childForFieldName('right');
+      if (right && /\.(?:namelist|infolist|getmembers|getnames)\(\s*\)$/.test(right.text))
+        loopVars.add(n.childForFieldName('left')?.text ?? '');
+    });
+  }
+  walk(arg, (n) => {
+    if (hit) return false;
+    const t = compact(n.text);
+    if ((n.type === 'member_expression' || n.type === 'attribute') && re.test(t)) hit = true;
+    else if (n.type === 'identifier' && loopVars.has(n.text)) hit = true;
+  });
+  return hit;
+}
 
 const PATH_GUARD =
   /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
@@ -1099,12 +1174,15 @@ const corsMisconfig: AstRule = {
     if (isJs(lang)) {
       for (const c of ctx.calls) {
         if (
-          !/^(?:cors|enableCors|app\.enableCors|fastifyCors|register)$/.test(c.callee) &&
+          !/^(?:cors|require\(\s*['"]cors['"]\s*\)|enableCors|app\.enableCors|fastifyCors|register)$/.test(
+            c.callee,
+          ) &&
           c.name !== 'enableCors'
         )
           continue;
-        for (const a of c.args) {
-          if (a.type !== 'object') continue;
+        for (const arg of c.args) {
+          const a = arg.type === 'identifier' ? constInitializer(arg) : arg;
+          if (a?.type !== 'object') continue;
           const origin = pairValue(a, 'origin');
           const creds = pairValue(a, 'credentials');
           if (!origin || !isTrue(creds)) continue;
@@ -1116,8 +1194,8 @@ const corsMisconfig: AstRule = {
             )
           )
             out.push({
-              node: a,
-              message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`.`,
+              node: a === arg ? a : c.node,
+              message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`${a === arg ? '' : ` (options \`${arg.text}\`)`}.`,
             });
         }
       }
@@ -1253,8 +1331,11 @@ const hardcodedSigningSecret: AstRule = {
   check(ctx) {
     const out: Hit[] = [];
     const lang = ctx.lang;
-    const literal = (n: Node | undefined) =>
-      !!n && isStaticString(n, lang) && (stringValue(n, lang)?.length ?? 0) >= 6;
+    const literal = (n: Node | undefined): boolean => {
+      // `const JWT_SECRET = 'secret'; jwt.sign(p, JWT_SECRET)`: see through a constant to its literal.
+      const v = n?.type === 'identifier' ? constInitializer(n) : n;
+      return !!v && isStaticString(v, lang) && (stringValue(v, lang)?.length ?? 0) >= 6;
+    };
     for (const c of ctx.calls) {
       if (isJs(lang)) {
         if (/^(?:jwt|jsonwebtoken|JWT)\.(?:sign|verify)$/.test(c.callee) && literal(c.args[1]))

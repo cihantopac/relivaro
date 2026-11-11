@@ -1867,6 +1867,22 @@ function importsModule(source, modules) {
     ).test(source);
   });
 }
+function constInitializer(id) {
+  if (id?.type !== "identifier") return void 0;
+  let root = id;
+  while (root.parent) root = root.parent;
+  let found;
+  let bindings = 0;
+  walk2(root, (n) => {
+    if (n.type === "variable_declarator" && n.childForFieldName("name")?.text === id.text) {
+      bindings++;
+      if (n.parent?.type === "lexical_declaration" && /^const\b/.test(n.parent.text))
+        found = n.childForFieldName("value") ?? void 0;
+    } else if ((n.type === "assignment_expression" || n.type === "augmented_assignment_expression") && n.childForFieldName("left")?.text === id.text)
+      bindings++;
+  });
+  return bindings === 1 ? found : void 0;
+}
 var OWASP, API, SAFE_PART_CALL, FUNCTION_SCOPE, SECRET_PURPOSE;
 var init_helpers = __esm({
   "src/rules/helpers.ts"() {
@@ -3268,9 +3284,41 @@ function isChildProcessCall(c, source) {
   if (c.receiver) return /require\(\s*['"](?:node:)?child_process['"]\s*\)\.\w+$/.test(c.callee);
   return importsModule(source, ["child_process", "node:child_process"]) && new RegExp(`\\b${c.name}\\b`).test(source.slice(0, 5e3));
 }
+function shellDashC(c, lang) {
+  const prog = c.args[0];
+  const argv = c.args[1];
+  if (!prog || !isStaticString(prog, lang) || argv?.type !== "array") return void 0;
+  if (!/^(?:\/(?:usr\/)?bin\/)?(?:ba|z|da|k)?sh$/.test(stringValue(prog, lang) ?? "")) return void 0;
+  const els = argv.namedChildren.filter((e) => !!e && e.type !== "comment");
+  const i2 = els.findIndex((e) => isStaticString(e, lang) && /^-\w*c$/.test(stringValue(e, lang) ?? ""));
+  return i2 >= 0 ? els[i2 + 1] : void 0;
+}
 function hostIsFixed(arg, lang) {
   const t2 = arg.text.replace(/^[fFbBrR]+(?=['"])/, "");
   return /^[`'"]https?:\/\/[^/$`'"{}]+\//.test(t2) || lang === "php" && /^['"]https?:\/\/[^/$'"{}]+\//.test(t2);
+}
+function archiveEntryName(arg, lang) {
+  if (lang === "php") return false;
+  const re = isJs(lang) ? ARCHIVE_ENTRY_JS : ARCHIVE_ENTRY_PY;
+  let hit = false;
+  const loopVars = /* @__PURE__ */ new Set();
+  if (lang === "python") {
+    let fn = arg;
+    while (fn?.parent) fn = fn.parent;
+    walk2(fn, (n) => {
+      if (n.type !== "for_statement") return;
+      const right = n.childForFieldName("right");
+      if (right && /\.(?:namelist|infolist|getmembers|getnames)\(\s*\)$/.test(right.text))
+        loopVars.add(n.childForFieldName("left")?.text ?? "");
+    });
+  }
+  walk2(arg, (n) => {
+    if (hit) return false;
+    const t2 = compact(n.text);
+    if ((n.type === "member_expression" || n.type === "attribute") && re.test(t2)) hit = true;
+    else if (n.type === "identifier" && loopVars.has(n.text)) hit = true;
+  });
+  return hit;
 }
 function pathGuarded(arg, call, lang) {
   const fn = enclosingFunction(call, lang);
@@ -3312,7 +3360,7 @@ function redirectValidated(arg, call) {
   }
   return false;
 }
-var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
+var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
 var init_code = __esm({
   "src/rules/security/code.ts"() {
     "use strict";
@@ -3396,6 +3444,7 @@ var init_code = __esm({
             else if (/^(?:spawn|spawnSync|execFile|execFileSync)$/.test(c.name) && isChildProcessCall(c, ctx.source)) {
               const opts = c.args.find((a) => a.type === "object");
               if (opts && isTrue(pairValue(opts, "shell"))) arg = c.args[0];
+              else arg = shellDashC(c, lang);
             }
           } else if (lang === "php") {
             if (/^(?:exec|shell_exec|system|passthru|popen|proc_open|pcntl_exec)$/.test(c.callee))
@@ -3413,7 +3462,7 @@ var init_code = __esm({
           }
           if (!arg || isStaticString(arg, lang) || arg.type === "array" || arg.type === "list") continue;
           const parts2 = unsafeDynamicParts(arg, lang);
-          const plainVar = !parts2.length && !isLiteral(arg, lang) && (arg.type === "identifier" || arg.type === "variable_name" || arg.type === "member_expression" || arg.type === "attribute");
+          const plainVar = !parts2.length && !isLiteral(arg, lang) && (arg.type === "identifier" || arg.type === "variable_name" || arg.type === "member_expression" || arg.type === "attribute" || arg.type === "subscript" || arg.type === "subscript_expression" || arg.type === "as_expression" || arg.type === "non_null_expression");
           if (!parts2.length && !plainVar) continue;
           const tainted = ctx.tainted(arg);
           if (!tainted && plainVar) continue;
@@ -3553,6 +3602,22 @@ var init_code = __esm({
             });
           });
           for (const c of ctx.calls) {
+            if (!/^(?:res|response|reply)\.(?:send|write|end)$/.test(c.callee)) continue;
+            const body2 = c.args[0];
+            if (!body2 || isStaticString(body2, lang) || SANITIZE_CALL.test(body2.text)) continue;
+            let html = false;
+            walk2(body2, (n) => {
+              if (!html && isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? "")) html = true;
+            });
+            if (!html || !ctx.tainted(body2)) continue;
+            out2.push({
+              node: c.node,
+              message: `User input is concatenated into an HTML response sent by \`${c.callee}()\` without escaping.`,
+              severity: "high",
+              confidence: "high"
+            });
+          }
+          for (const c of ctx.calls) {
             const arg = c.name === "insertAdjacentHTML" ? c.args[1] : /^document\.(?:write|writeln)$/.test(c.callee) ? c.args[0] : void 0;
             if (!arg || isStaticString(arg, lang) || SANITIZE_CALL.test(arg.text)) continue;
             const tainted = ctx.tainted(arg);
@@ -3670,14 +3735,25 @@ var init_code = __esm({
             continue;
           const arg = c.args[0];
           if (!arg || isStaticString(arg, lang)) continue;
-          if (!ctx.tainted(arg)) continue;
+          const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang);
+          if (!ctx.tainted(arg) && !fromArchive) continue;
           if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
           if (pathGuarded(arg, c.node, lang)) continue;
           out2.push({
             node: c.node,
-            message: `Path passed to \`${c.callee}()\` contains user input.`,
-            facts: { sink: c.callee }
+            message: fromArchive ? `Path passed to \`${c.callee}()\` contains an archive entry name, which can hold \`../\` or an absolute path (zip slip).` : `Path passed to \`${c.callee}()\` contains user input.`,
+            facts: { sink: c.callee, ...fromArchive ? { archiveEntry: true } : {} }
           });
+        }
+        if (lang === "python" && /^\s*(?:import\s+tarfile|from\s+tarfile\s+import)/m.test(ctx.source)) {
+          for (const c of ctx.calls)
+            if (c.name === "extractall" && !c.kwargs.has("filter") && !/zip/i.test(c.receiver ?? ""))
+              out2.push({
+                node: c.node,
+                message: `\`${c.callee}()\` without \`filter=\` extracts tar members with \`../\` or absolute names outside the destination.`,
+                confidence: "medium",
+                facts: { sink: c.callee, archiveEntry: true }
+              });
         }
         if (lang === "php") {
           for (const n of collect(
@@ -3700,6 +3776,8 @@ var init_code = __esm({
         return out2;
       }
     };
+    ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
+    ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
     PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
     openRedirect = {
       kind: "ast",
@@ -4063,10 +4141,13 @@ var init_code = __esm({
         const lang = ctx.lang;
         if (isJs(lang)) {
           for (const c of ctx.calls) {
-            if (!/^(?:cors|enableCors|app\.enableCors|fastifyCors|register)$/.test(c.callee) && c.name !== "enableCors")
+            if (!/^(?:cors|require\(\s*['"]cors['"]\s*\)|enableCors|app\.enableCors|fastifyCors|register)$/.test(
+              c.callee
+            ) && c.name !== "enableCors")
               continue;
-            for (const a of c.args) {
-              if (a.type !== "object") continue;
+            for (const arg of c.args) {
+              const a = arg.type === "identifier" ? constInitializer(arg) : arg;
+              if (a?.type !== "object") continue;
               const origin = pairValue(a, "origin");
               const creds = pairValue(a, "credentials");
               if (!origin || !isTrue(creds)) continue;
@@ -4074,8 +4155,8 @@ var init_code = __esm({
                 origin.text
               ))
                 out2.push({
-                  node: a,
-                  message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`.`
+                  node: a === arg ? a : c.node,
+                  message: `CORS \`origin: ${origin.text.slice(0, 40)}\` combined with \`credentials: true\`${a === arg ? "" : ` (options \`${arg.text}\`)`}.`
                 });
             }
           }
@@ -4182,7 +4263,10 @@ var init_code = __esm({
       check(ctx) {
         const out2 = [];
         const lang = ctx.lang;
-        const literal = (n) => !!n && isStaticString(n, lang) && (stringValue(n, lang)?.length ?? 0) >= 6;
+        const literal = (n) => {
+          const v = n?.type === "identifier" ? constInitializer(n) : n;
+          return !!v && isStaticString(v, lang) && (stringValue(v, lang)?.length ?? 0) >= 6;
+        };
         for (const c of ctx.calls) {
           if (isJs(lang)) {
             if (/^(?:jwt|jsonwebtoken|JWT)\.(?:sign|verify)$/.test(c.callee) && literal(c.args[1]))
