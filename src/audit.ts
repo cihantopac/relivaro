@@ -60,7 +60,13 @@ export interface Summary {
   byCategory: Record<Category, number>;
 }
 
+/** JSON Schema of the run record; the version policy is in docs/REPORT.md. */
+export const RUN_SCHEMA_URL =
+  'https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/run.schema.json';
+
 export interface RunRecord {
+  /** Absent in records written before 1.5.0. */
+  $schema?: string;
   schemaVersion: number;
   tool: { name: 'relivaro'; version: string };
   runId: string;
@@ -399,6 +405,7 @@ export async function runAudit(
     );
 
   const run: RunRecord = {
+    $schema: RUN_SCHEMA_URL,
     schemaVersion: SCHEMA_VERSION,
     tool: { name: 'relivaro', version: VERSION },
     runId: workspace.newRunId(),

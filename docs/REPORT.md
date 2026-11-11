@@ -4,6 +4,11 @@ Every analysis command writes `report.html` next to `report.json`, `report.md` (
 `.relivaro/runs/<run-id>/`. It is a single self-contained file: open it from disk, attach it to a ticket or publish it
 as a CI artifact. It makes no network requests.
 
+**The run record.** `run.json` (and `report.json`) follow [schemas/run.schema.json](../schemas/run.schema.json), which
+ships in the npm package; every record names it in `$schema`. Version policy: adding an optional field keeps
+`schemaVersion`; removing or renaming a field, or changing a field's type, bumps `schemaVersion`. A test validates real
+records from every fixture against the schema, so the two cannot drift apart.
+
 ![Relivaro HTML report: release gates with their basis](../assets/screenshots/report-gates-light.png)
 
 ## What it shows

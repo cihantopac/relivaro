@@ -1,0 +1,561 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/run.schema.json",
+  "title": "Relivaro run record (run.json / report.json)",
+  "description": "One audit run. Version policy: adding an optional field keeps schemaVersion; removing or renaming a field, or changing a type, bumps schemaVersion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schemaVersion",
+    "tool",
+    "runId",
+    "command",
+    "startedAt",
+    "durationMs",
+    "root",
+    "options",
+    "profile",
+    "findings",
+    "summary",
+    "checks",
+    "coverage",
+    "testGaps",
+    "metrics",
+    "limitations",
+    "errors"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "tool": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "version"],
+      "properties": { "name": { "const": "relivaro" }, "version": { "type": "string" } }
+    },
+    "runId": { "type": "string" },
+    "command": { "type": "string" },
+    "startedAt": { "type": "string" },
+    "durationMs": { "type": "number", "minimum": 0 },
+    "root": { "type": "string" },
+    "options": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["categories", "online", "allowExec", "checks"],
+      "properties": {
+        "categories": { "type": "array", "items": { "$ref": "#/$defs/category" } },
+        "online": { "type": "boolean" },
+        "allowExec": { "type": "boolean" },
+        "checks": { "type": "array", "items": { "$ref": "#/$defs/checkKind" } },
+        "configFile": { "type": "string" },
+        "baseline": { "type": "string" }
+      }
+    },
+    "profile": { "$ref": "#/$defs/profile" },
+    "findings": { "type": "array", "items": { "$ref": "#/$defs/finding" } },
+    "summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["total", "open", "suppressed", "baseline", "bySeverity", "byCategory"],
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "open": { "type": "integer", "minimum": 0 },
+        "suppressed": { "type": "integer", "minimum": 0 },
+        "baseline": { "type": "integer", "minimum": 0 },
+        "accepted": { "type": "integer", "minimum": 0 },
+        "bySeverity": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "byCategory": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "checks": { "type": "array", "items": { "$ref": "#/$defs/check" } },
+    "coverage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "format", "generatedAt", "stale", "pct", "covered", "total"],
+        "properties": {
+          "file": { "type": "string" },
+          "format": { "type": "string" },
+          "generatedAt": { "type": "string" },
+          "stale": { "type": "boolean" },
+          "pct": { "type": "number" },
+          "covered": { "type": "integer" },
+          "total": { "type": "integer" }
+        }
+      }
+    },
+    "testGaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "risk", "reasons"],
+        "properties": {
+          "file": { "type": "string" },
+          "risk": { "type": "number" },
+          "reasons": { "type": "array", "items": { "type": "string" } },
+          "coveragePct": { "type": "number" }
+        }
+      }
+    },
+    "metrics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files",
+        "bytes",
+        "linesOfCode",
+        "parsedFiles",
+        "functions",
+        "rulesRun",
+        "analysisMs",
+        "dependencies",
+        "filesSkipped"
+      ],
+      "properties": {
+        "files": { "type": "integer", "minimum": 0 },
+        "bytes": { "type": "integer", "minimum": 0 },
+        "linesOfCode": { "type": "integer", "minimum": 0 },
+        "parsedFiles": { "type": "integer", "minimum": 0 },
+        "functions": { "type": "integer", "minimum": 0 },
+        "rulesRun": { "type": "integer", "minimum": 0 },
+        "analysisMs": { "type": "number", "minimum": 0 },
+        "dependencies": { "type": "integer", "minimum": 0 },
+        "dependencyEntries": { "type": "integer", "minimum": 0 },
+        "osvQueried": { "type": "integer", "minimum": 0 },
+        "filesSkipped": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "errors": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["parse", "rules", "network"],
+      "properties": {
+        "parse": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "message"],
+            "properties": { "file": { "type": "string" }, "message": { "type": "string" } }
+          }
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rule", "message"],
+            "properties": {
+              "rule": { "type": "string" },
+              "file": { "type": "string" },
+              "message": { "type": "string" }
+            }
+          }
+        },
+        "network": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "release": { "$ref": "#/$defs/release" }
+  },
+  "$defs": {
+    "severity": { "enum": ["critical", "high", "medium", "low", "info"] },
+    "confidence": { "enum": ["high", "medium", "low"] },
+    "category": {
+      "enum": ["security", "supply-chain", "reliability", "performance", "quality", "testing", "release"]
+    },
+    "checkKind": { "enum": ["build", "test", "typecheck", "lint"] },
+    "stringList": { "type": "array", "items": { "type": "string" } },
+    "stringMap": { "type": "object", "additionalProperties": { "type": "string" } },
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "ruleId",
+        "title",
+        "message",
+        "severity",
+        "confidence",
+        "category",
+        "provenance",
+        "evidence",
+        "impact",
+        "recommendation",
+        "verification",
+        "fingerprint",
+        "status"
+      ],
+      "properties": {
+        "id": { "type": "string" },
+        "ruleId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "severity": { "$ref": "#/$defs/severity" },
+        "confidence": { "$ref": "#/$defs/confidence" },
+        "category": { "$ref": "#/$defs/category" },
+        "provenance": { "enum": ["static", "executed", "measured", "agent"] },
+        "location": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["file"],
+          "properties": {
+            "file": { "type": "string" },
+            "line": { "type": "integer", "minimum": 1 },
+            "column": { "type": "integer", "minimum": 1 },
+            "endLine": { "type": "integer", "minimum": 1 },
+            "endColumn": { "type": "integer", "minimum": 1 }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "snippet": { "type": "string" },
+            "command": { "type": "string" },
+            "output": { "type": "string" },
+            "facts": {
+              "type": "object",
+              "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+            }
+          }
+        },
+        "impact": { "type": "string" },
+        "recommendation": { "type": "string" },
+        "verification": { "type": "string" },
+        "cwe": { "$ref": "#/$defs/stringList" },
+        "owasp": { "$ref": "#/$defs/stringList" },
+        "tags": { "$ref": "#/$defs/stringList" },
+        "fixer": { "type": "string" },
+        "fingerprint": { "type": "string" },
+        "status": { "enum": ["open", "suppressed", "baseline"] },
+        "suppression": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": {
+            "kind": { "enum": ["inline", "baseline", "config"] },
+            "reason": { "type": "string" }
+          }
+        },
+        "accepted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["reason", "source"],
+          "properties": { "reason": { "type": "string" }, "source": { "enum": ["inline", "review"] } }
+        }
+      }
+    },
+    "check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "unit", "command", "status", "durationMs"],
+      "properties": {
+        "kind": { "$ref": "#/$defs/checkKind" },
+        "unit": { "type": "string" },
+        "command": { "type": "string" },
+        "status": { "enum": ["passed", "failed", "error", "timeout", "skipped"] },
+        "durationMs": { "type": "number", "minimum": 0 },
+        "reason": { "type": "string" },
+        "tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "failed", "skipped", "total", "failing"],
+          "properties": {
+            "passed": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "skipped": { "type": "integer" },
+            "total": { "type": "integer" },
+            "failing": { "$ref": "#/$defs/stringList" }
+          }
+        },
+        "diagnostics": { "type": "integer" },
+        "outputTail": { "type": "string" }
+      }
+    },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "score",
+        "scoreCapped",
+        "gates",
+        "blockers",
+        "warnings",
+        "unverified",
+        "passed",
+        "tally",
+        "disclaimer"
+      ],
+      "properties": {
+        "status": { "enum": ["ready", "ready-with-warnings", "needs-verification", "not-ready"] },
+        "score": { "type": "number", "minimum": 0 },
+        "scoreCapped": { "type": "boolean" },
+        "gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "title", "status", "detail"],
+            "properties": {
+              "id": { "type": "string" },
+              "title": { "type": "string" },
+              "status": { "enum": ["pass", "warn", "block", "unverified", "n/a"] },
+              "detail": { "type": "string" },
+              "findings": { "$ref": "#/$defs/stringList" },
+              "basis": { "enum": ["executed", "measured", "advisory-db", "static", "not-run"] }
+            }
+          }
+        },
+        "blockers": { "$ref": "#/$defs/stringList" },
+        "warnings": { "$ref": "#/$defs/stringList" },
+        "unverified": { "$ref": "#/$defs/stringList" },
+        "passed": { "$ref": "#/$defs/stringList" },
+        "tally": { "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } },
+        "disclaimer": { "type": "string" }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "root",
+        "name",
+        "gitRepo",
+        "monorepo",
+        "languages",
+        "units",
+        "technologies",
+        "ci",
+        "containers",
+        "deploy",
+        "tests",
+        "api",
+        "envVars",
+        "envTemplates",
+        "docs",
+        "manifests",
+        "lockfiles",
+        "migrations",
+        "stats"
+      ],
+      "properties": {
+        "root": { "type": "string" },
+        "name": { "type": "string" },
+        "gitRepo": { "type": "boolean" },
+        "monorepo": { "type": "boolean" },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "files", "lines"],
+            "properties": {
+              "name": { "type": "string" },
+              "files": { "type": "integer" },
+              "lines": { "type": "integer" }
+            }
+          }
+        },
+        "units": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "ecosystems",
+              "manifests",
+              "lockfiles",
+              "frameworks",
+              "kind",
+              "scripts",
+              "runtime",
+              "testFiles",
+              "sourceFiles"
+            ],
+            "properties": {
+              "path": { "type": "string" },
+              "name": { "type": "string" },
+              "ecosystems": { "$ref": "#/$defs/stringList" },
+              "manifests": { "$ref": "#/$defs/stringList" },
+              "lockfiles": { "$ref": "#/$defs/stringList" },
+              "packageManager": { "type": "string" },
+              "frameworks": { "$ref": "#/$defs/stringList" },
+              "kind": {
+                "enum": [
+                  "web-frontend",
+                  "web-backend",
+                  "fullstack",
+                  "mobile",
+                  "desktop",
+                  "library",
+                  "cli",
+                  "unknown"
+                ]
+              },
+              "staticExport": { "type": "boolean" },
+              "scripts": { "$ref": "#/$defs/stringMap" },
+              "runtime": { "$ref": "#/$defs/stringMap" },
+              "testFiles": { "type": "integer" },
+              "sourceFiles": { "type": "integer" }
+            }
+          }
+        },
+        "technologies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "kind", "unit", "evidence"],
+            "properties": {
+              "name": { "type": "string" },
+              "kind": { "type": "string" },
+              "unit": { "type": "string" },
+              "version": { "type": "string" },
+              "evidence": { "type": "string" }
+            }
+          }
+        },
+        "ci": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["system", "file", "runsTests", "runsLint", "runsBuild"],
+            "properties": {
+              "system": { "type": "string" },
+              "file": { "type": "string" },
+              "runsTests": { "type": "boolean" },
+              "runsLint": { "type": "boolean" },
+              "runsBuild": { "type": "boolean" }
+            }
+          }
+        },
+        "containers": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dockerfiles", "compose", "services"],
+          "properties": {
+            "dockerfiles": { "$ref": "#/$defs/stringList" },
+            "compose": { "$ref": "#/$defs/stringList" },
+            "services": { "$ref": "#/$defs/stringList" }
+          }
+        },
+        "deploy": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "file"],
+            "properties": { "kind": { "type": "string" }, "file": { "type": "string" } }
+          }
+        },
+        "tests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frameworks", "testFiles", "sourceFiles", "e2e", "coverageReports"],
+          "properties": {
+            "frameworks": { "$ref": "#/$defs/stringList" },
+            "testFiles": { "type": "integer" },
+            "sourceFiles": { "type": "integer" },
+            "e2e": { "$ref": "#/$defs/stringList" },
+            "coverageReports": { "$ref": "#/$defs/stringList" }
+          }
+        },
+        "api": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["routeFiles", "routes", "specs", "graphql"],
+          "properties": {
+            "routeFiles": { "$ref": "#/$defs/stringList" },
+            "routes": { "type": "integer" },
+            "specs": { "$ref": "#/$defs/stringList" },
+            "graphql": { "$ref": "#/$defs/stringList" }
+          }
+        },
+        "envVars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "usedIn", "required", "documented"],
+            "properties": {
+              "name": { "type": "string" },
+              "usedIn": { "$ref": "#/$defs/stringList" },
+              "required": { "type": "boolean" },
+              "documented": { "type": "boolean" }
+            }
+          }
+        },
+        "envTemplates": { "$ref": "#/$defs/stringList" },
+        "docs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["readmeBytes", "docsDir"],
+          "properties": {
+            "readme": { "type": "string" },
+            "readmeBytes": { "type": "integer" },
+            "license": { "type": "string" },
+            "changelog": { "type": "string" },
+            "contributing": { "type": "string" },
+            "security": { "type": "string" },
+            "docsDir": { "type": "boolean" }
+          }
+        },
+        "manifests": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "ecosystem", "dependencies", "devDependencies"],
+            "properties": {
+              "file": { "type": "string" },
+              "ecosystem": { "type": "string" },
+              "name": { "type": "string" },
+              "dependencies": { "type": "integer" },
+              "devDependencies": { "type": "integer" },
+              "error": { "type": "string" }
+            }
+          }
+        },
+        "lockfiles": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "ecosystem", "packages"],
+            "properties": {
+              "file": { "type": "string" },
+              "ecosystem": { "type": "string" },
+              "packages": { "type": "integer" },
+              "error": { "type": "string" }
+            }
+          }
+        },
+        "migrations": { "$ref": "#/$defs/stringList" },
+        "stats": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["files", "bytes"],
+          "properties": { "files": { "type": "integer" }, "bytes": { "type": "integer" } }
+        },
+        "workspaceRoot": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rel", "lockfiles", "scripts"],
+          "properties": {
+            "rel": { "type": "string" },
+            "lockfiles": { "$ref": "#/$defs/stringList" },
+            "scripts": { "$ref": "#/$defs/stringList" },
+            "packageManager": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

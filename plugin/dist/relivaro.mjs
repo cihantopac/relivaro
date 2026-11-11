@@ -23181,6 +23181,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
 // src/audit.ts
 init_rules();
 var SCHEMA_VERSION = 1;
+var RUN_SCHEMA_URL = "https://raw.githubusercontent.com/cihantopac/relivaro/main/schemas/run.schema.json";
 function summarize(findings) {
   const s = {
     total: findings.length,
@@ -23414,6 +23415,7 @@ async function runAudit(opts) {
       "Not a git repository (or git unavailable): .gitignore was approximated and tracked-file checks were skipped."
     );
   const run2 = {
+    $schema: RUN_SCHEMA_URL,
     schemaVersion: SCHEMA_VERSION,
     tool: { name: "relivaro", version: VERSION },
     runId: workspace.newRunId(),
