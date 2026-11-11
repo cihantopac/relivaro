@@ -305,6 +305,31 @@ describe('tool output parsers', () => {
 describe('web server headers', () => {
   const names = (file: string, text: string) => headerDirectives(file, text).map((d) => d.name);
 
+  it('Caddy: an unterminated backtick value stops at the end of its site block', () => {
+    const text = [
+      'a.example {',
+      '  header Content-Security-Policy `default-src',
+      '}',
+      'b.example {',
+      '  header X-Frame-Options DENY',
+      '}',
+    ].join('\n');
+    expect(names('Caddyfile', text)).toEqual(['Content-Security-Policy', 'X-Frame-Options']);
+  });
+
+  it('Caddy: a request matcher on headers is not a response header', () => {
+    const text = [
+      'a.example {',
+      '  @api header X-Api *',
+      '  @json {',
+      '    header Content-Type application/json',
+      '  }',
+      '  header X-Frame-Options DENY',
+      '}',
+    ].join('\n');
+    expect(names('Caddyfile', text)).toEqual(['X-Frame-Options']);
+  });
+
   it('Caddy: header blocks, inline headers and +/>/- prefixes', () => {
     const block = [
       'example.com {',

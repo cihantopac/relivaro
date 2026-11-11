@@ -749,6 +749,21 @@ describe('static export', () => {
     }
   });
 
+  it('a commented-out output: export is not a static export', async () => {
+    for (const cfg of [
+      "export default {\n  // output: 'export',\n};\n",
+      "export default {\n  /* output: 'export' */\n};\n",
+      "export default {\n  /*\n   * output: 'export',\n   */\n};\n",
+    ]) {
+      const root = await nextProject({ 'next.config.mjs': cfg });
+      try {
+        expect(discover(new FileSet(root, { useGit: false })).units[0]!.staticExport, cfg).toBeUndefined();
+      } finally {
+        removeTree(root, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('an env-driven output is not treated as a static export', async () => {
     const { rmSync } = await import('node:fs');
     const root = await nextProject({ 'next.config.mjs': 'export default { output: process.env.OUT };\n' });

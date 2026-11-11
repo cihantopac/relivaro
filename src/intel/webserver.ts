@@ -66,15 +66,27 @@ function caddy(file: string, lines: string[]): HeaderDirective[] {
     let value = rest;
     let end = i;
     if (value.startsWith('`') && !/^`[^`]*`/.test(value)) {
-      while (end + 1 < lines.length && !value.slice(1).includes('`')) value += `\n${lines[++end]}`;
+      // An unterminated backtick ends at the closing `}` of its block instead of swallowing the rest of the file.
+      while (end + 1 < lines.length && !value.slice(1).includes('`') && lines[end + 1]!.trim() !== '}')
+        value += `\n${lines[++end]}`;
     }
     out.push({ file, line: i + 1, name: m[1]!, value: unquote(value.trim()), server: 'caddy' });
     return end;
   };
   let depth = 0; // brace depth inside a `header { … }` block; 0 = outside
+  let matcherDepth = 0; // brace depth inside a named matcher block `@name { … }`, whose `header` lines are conditions
   for (let i = 0; i < lines.length; i++) {
     const t = stripComment(lines[i]!).trim();
     if (!t) continue;
+    if (matcherDepth > 0) {
+      if (t === '}') matcherDepth--;
+      else if (t.endsWith('{')) matcherDepth++;
+      continue;
+    }
+    if (depth === 0 && /^@[\w-]+\s*\{$/.test(t)) {
+      matcherDepth = 1;
+      continue;
+    }
     if (depth > 0) {
       if (t === '}') {
         depth--;

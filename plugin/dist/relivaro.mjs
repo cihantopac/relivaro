@@ -429,7 +429,7 @@ function classify(path) {
   if (lower === "dockerfile" || lower.startsWith("dockerfile.") || lower.endsWith(".dockerfile") || lower === "containerfile")
     return { kind: "dockerfile" };
   if (/^(?:docker-)?compose(?:\.[\w-]+)?\.ya?ml$/.test(lower)) return { kind: "compose" };
-  if (/^Caddyfile(?:\.[\w-]+)?$/.test(b) || lower.endsWith(".caddy") || b === "_headers" || /^(?:nginx|default|site)\.conf$/.test(lower) || /(?:^|\/)nginx\/.+\.conf$/.test(path))
+  if (/^Caddyfile(?:\.[\w-]+)?$/.test(b) || lower.endsWith(".caddy") || b === "_headers" || /^(?:nginx|default|site)\.conf(?:\.template)?$/.test(lower) || /(?:^|\/)nginx\/.+\.conf(?:\.template)?$/.test(path))
     return { kind: "webserver" };
   if (SENSITIVE_ENV.test(b) || isEnvTemplate(path)) return { kind: "env" };
   if (LOCKFILES.has(b)) return { kind: "lockfile" };
@@ -455,7 +455,8 @@ function isTestPath(path) {
 function isToolReport(path, head) {
   const ext = extname(path).toLowerCase();
   if (!REPORT_EXT.has(ext)) return false;
-  if (ext === ".sarif") return true;
+  if (ext === ".sarif")
+    return /"driver"\s*:\s*\{\s*"name"\s*:\s*"(?:Relivaro|Jourilo|Searvex)"/.test(head.slice(0, 4096));
   const h = head.slice(0, 4096);
   return REPORT_MARKERS.some((re) => re.test(h));
 }
@@ -880,7 +881,7 @@ var init_files = __esm({
     REPORT_MARKERS = [
       /<meta name="generator" content="(?:Relivaro|Jourilo|Searvex) \d/,
       /^\{\s*"schemaVersion"\s*:\s*\d+\s*,(?:\s*"id"\s*:\s*"[^"]*"\s*,)?\s*"tool"\s*:\s*\{\s*"name"\s*:\s*"(?:relivaro|jourilo|searvex)"/,
-      /^Generated \S+ · (?:Relivaro|Jourilo|Searvex) \d/m,
+      /^(?:.*\n){0,4}Generated \S+ · (?:Relivaro|Jourilo|Searvex) \d/,
       /^# (?:Relivaro|Jourilo) report — .*\n\nRun `[^`]+` · /
     ];
     FileSet = class {
@@ -13216,16 +13217,27 @@ function caddy(file, lines) {
     let value = rest;
     let end = i2;
     if (value.startsWith("`") && !/^`[^`]*`/.test(value)) {
-      while (end + 1 < lines.length && !value.slice(1).includes("`")) value += `
+      while (end + 1 < lines.length && !value.slice(1).includes("`") && lines[end + 1].trim() !== "}")
+        value += `
 ${lines[++end]}`;
     }
     out2.push({ file, line: i2 + 1, name: m[1], value: unquote(value.trim()), server: "caddy" });
     return end;
   };
   let depth = 0;
+  let matcherDepth = 0;
   for (let i2 = 0; i2 < lines.length; i2++) {
     const t2 = stripComment(lines[i2]).trim();
     if (!t2) continue;
+    if (matcherDepth > 0) {
+      if (t2 === "}") matcherDepth--;
+      else if (t2.endsWith("{")) matcherDepth++;
+      continue;
+    }
+    if (depth === 0 && /^@[\w-]+\s*\{$/.test(t2)) {
+      matcherDepth = 1;
+      continue;
+    }
     if (depth > 0) {
       if (t2 === "}") {
         depth--;
@@ -16382,7 +16394,8 @@ function cleanVersion(spec) {
 function isNextStaticExport(files, unit) {
   for (const ext of ["js", "mjs", "cjs", "ts"]) {
     const text = files.read(unit === "." ? `next.config.${ext}` : `${unit}/next.config.${ext}`);
-    if (text && /\boutput\s*:\s*['"]export['"]/.test(text)) return true;
+    const code = text?.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:'"`\\])\/\/.*$/gm, "$1");
+    if (code && /\boutput\s*:\s*['"]export['"]/.test(code)) return true;
   }
   return false;
 }
@@ -25025,7 +25038,13 @@ function kpis() {
     return el('div', { cls: 'kpi' }, [el('div', { cls: 'k', text: label }), el('div', { cls: 'v' + (tone ? ' c-' + tone : ''), text: value }), sub ? el('div', { cls: 's', text: sub }) : null]);
   }
   return el('div', { cls: 'kpis' }, [
-    k(t('kpi.open'), num(open.length), D.summary.suppressed ? D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase() : null),
+    k(t('kpi.open'), num(open.length), (function () {
+      var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
+      var parts = [];
+      if (accepted) parts.push(t('kpi.accepted', { n: num(accepted) }));
+      if (D.summary.suppressed) parts.push(D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase());
+      return parts.length ? parts.join(' · ') : null;
+    })()),
     k(t('kpi.urgent'), num(urgent), null, urgent ? 'block' : 'pass'),
     k(t('kpi.fixable'), num(fixable)),
     k(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) })),
@@ -25688,6 +25707,7 @@ var en = {
   "pr.copyBlocked": "The browser blocked the clipboard. The text is selected: press Ctrl+C (\u2318C on a Mac).",
   "pr.downloaded": "Saved as {f}.",
   "kpi.reviewed": "Reviewed in code",
+  "kpi.accepted": "{n} accepted",
   "kpi.reviewedSub": "{c} confirmed \xB7 {f} false positive",
   "findings.hint": "Raw scanner detections, with reviewed verdicts where someone checked the code.",
   "finding.remediation": "Remediation",
@@ -25961,6 +25981,7 @@ var tr = {
   "pr.copyBlocked": "Taray\u0131c\u0131 panoyu engelledi. Metin se\xE7ili: Ctrl+C (Mac\u2019te \u2318C) tu\u015Flar\u0131na bas\u0131n.",
   "pr.downloaded": "{f} olarak kaydedildi.",
   "kpi.reviewed": "Kodda incelenen",
+  "kpi.accepted": "{n} kabul edildi",
   "kpi.reviewedSub": "{c} do\u011Fruland\u0131 \xB7 {f} yanl\u0131\u015F pozitif",
   "findings.hint": "Taraman\u0131n ham tespitleri; kodu incelenen bulgularda inceleme karar\u0131yla birlikte.",
   "finding.remediation": "\xC7\xF6z\xFCm yolu",
@@ -27289,7 +27310,7 @@ function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, type
       );
   }
   if (!run2.release && !out2.quiet) {
-    const path = /[\s'"$`\\]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
+    const path = /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
     out2.print("");
     out2.print(
       `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`

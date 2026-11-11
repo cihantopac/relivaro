@@ -218,7 +218,13 @@ function kpis() {
     return el('div', { cls: 'kpi' }, [el('div', { cls: 'k', text: label }), el('div', { cls: 'v' + (tone ? ' c-' + tone : ''), text: value }), sub ? el('div', { cls: 's', text: sub }) : null]);
   }
   return el('div', { cls: 'kpis' }, [
-    k(t('kpi.open'), num(open.length), D.summary.suppressed ? D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase() : null),
+    k(t('kpi.open'), num(open.length), (function () {
+      var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
+      var parts = [];
+      if (accepted) parts.push(t('kpi.accepted', { n: num(accepted) }));
+      if (D.summary.suppressed) parts.push(D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase());
+      return parts.length ? parts.join(' · ') : null;
+    })()),
     k(t('kpi.urgent'), num(urgent), null, urgent ? 'block' : 'pass'),
     k(t('kpi.fixable'), num(fixable)),
     k(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) })),

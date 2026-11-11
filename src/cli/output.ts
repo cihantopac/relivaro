@@ -173,7 +173,9 @@ export function printRunSummary(
       );
   }
   if (!run.release && !out.quiet) {
-    const path = /[\s'"$`\\]/.test(typedPath) ? `'${typedPath.replace(/'/g, `'\\''`)}'` : typedPath;
+    const path = /[\s'"$`\\&;|<>()*?!#~{}[\]]/.test(typedPath)
+      ? `'${typedPath.replace(/'/g, `'\\''`)}'`
+      : typedPath;
     out.print('');
     out.print(
       `Next: relivaro release ${path} for a release verdict (add --allow-exec --online to verify more)`,

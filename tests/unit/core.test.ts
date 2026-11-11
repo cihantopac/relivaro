@@ -11,7 +11,7 @@ import { globToRegExp, matchesAny } from '../../src/core/glob.js';
 import { findingId, fingerprint } from '../../src/core/hash.js';
 import { isPlaceholder, maskSecret, redact, shannonEntropy } from '../../src/core/secrets.js';
 import { splitCommand } from '../../src/exec/runner.js';
-import { FileSet, isToolReport } from '../../src/fs/files.js';
+import { classify, FileSet, isToolReport } from '../../src/fs/files.js';
 
 describe('config', () => {
   it('accepts a valid config and fills defaults', () => {
@@ -174,7 +174,7 @@ describe('tool reports', () => {
     expect(
       isToolReport('run.json', '{"schemaVersion":3,"id":"x","tool":{"name":"jourilo","version":"1.0.0"}'),
     ).toBe(true);
-    expect(isToolReport('out/report.sarif', '{')).toBe(true);
+    expect(isToolReport('out/report.sarif', '{')).toBe(false);
   });
 
   it('keeps project files that only mention a tool', () => {
@@ -364,5 +364,32 @@ describe('FileSet walk mode', () => {
     const files = new FileSet(root, { useGit: false });
     expect(files.files.map((f) => f.path)).toEqual(['a.ts']);
     expect(files.skipped.symlinkDir).toBe(1);
+  });
+});
+
+describe('1.3.0 review minors', () => {
+  it('nginx/default.conf.template is a web server config', () => {
+    expect(classify('nginx/default.conf.template').kind).toBe('webserver');
+    expect(classify('deploy/nginx.conf.template').kind).toBe('webserver');
+    expect(classify('templates/email.conf.template').kind).not.toBe('webserver');
+  });
+  it('only a .sarif written by Relivaro, Jourilo or Searvex is a tool report', () => {
+    const sarif = (name: string) =>
+      JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name } }, results: [] }] });
+    expect(isToolReport('out/report.sarif', sarif('Relivaro'))).toBe(true);
+    expect(isToolReport('out/report.sarif', sarif('Searvex'))).toBe(true);
+    expect(isToolReport('codeql/results.sarif', sarif('CodeQL'))).toBe(false);
+  });
+  it('the "Generated" marker counts only within the first 5 lines', () => {
+    const marker = 'Generated 2026-11-01T00:00:00Z · Relivaro 1.3.0 · rules 89';
+    expect(isToolReport('r.md', `# Notes\n\n${marker}\n`)).toBe(true);
+    expect(isToolReport('r.md', `# Notes\n\n1\n2\n3\n4\n${marker}\n`)).toBe(false);
+  });
+  it('the HTML report KPI shows the accepted count', async () => {
+    const { REPORT_JS } = await import('../../src/report/html-client.js');
+    const { I18N } = await import('../../src/report/html-i18n.js');
+    expect(REPORT_JS).toContain("t('kpi.accepted'");
+    expect(Object.keys(I18N.en)).toContain('kpi.accepted');
+    expect(Object.keys(I18N.tr)).toContain('kpi.accepted');
   });
 });

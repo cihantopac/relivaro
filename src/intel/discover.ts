@@ -593,7 +593,8 @@ function cleanVersion(spec: string): string | undefined {
 function isNextStaticExport(files: FileSet, unit: string): boolean {
   for (const ext of ['js', 'mjs', 'cjs', 'ts']) {
     const text = files.read(unit === '.' ? `next.config.${ext}` : `${unit}/next.config.${ext}`);
-    if (text && /\boutput\s*:\s*['"]export['"]/.test(text)) return true;
+    const code = text?.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:'"`\\])\/\/.*$/gm, '$1');
+    if (code && /\boutput\s*:\s*['"]export['"]/.test(code)) return true;
   }
   return false;
 }

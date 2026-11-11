@@ -90,6 +90,19 @@ describe('relivaro CLI', () => {
     expect(cli(['performance', fx.dir, '--fail-on', 'critical', '--no-write', '--quiet']).code).toBe(0);
   });
 
+  it('the Next: hint quotes a path with shell metacharacters', () => {
+    for (const ch of ['&', ';', '|']) {
+      const dir = mkdtempSync(join(tmpdir(), `rlv a${ch}b-`.replace(' ', '')));
+      try {
+        writeFileSync(join(dir, 'index.js'), 'console.log(1);\n');
+        const a = cli(['audit', dir, '--no-write', '--no-git']);
+        expect(a.stdout).toContain(`Next: relivaro release '${dir}' for a release verdict`);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('audit ends with the release next step and an explicit offline OSV disclosure', () => {
     const a = cli(['audit', fx.dir, '--no-write']);
     expect(a.code).toBe(0);

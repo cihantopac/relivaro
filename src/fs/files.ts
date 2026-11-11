@@ -286,8 +286,8 @@ export function classify(path: string): { kind: FileKind; language?: Language } 
     /^Caddyfile(?:\.[\w-]+)?$/.test(b) ||
     lower.endsWith('.caddy') ||
     b === '_headers' ||
-    /^(?:nginx|default|site)\.conf$/.test(lower) ||
-    /(?:^|\/)nginx\/.+\.conf$/.test(path)
+    /^(?:nginx|default|site)\.conf(?:\.template)?$/.test(lower) ||
+    /(?:^|\/)nginx\/.+\.conf(?:\.template)?$/.test(path)
   )
     return { kind: 'webserver' };
   if (SENSITIVE_ENV.test(b) || isEnvTemplate(path)) return { kind: 'env' };
@@ -331,7 +331,7 @@ const REPORT_EXT = new Set(['.html', '.md', '.json', '.sarif']);
 const REPORT_MARKERS = [
   /<meta name="generator" content="(?:Relivaro|Jourilo|Searvex) \d/,
   /^\{\s*"schemaVersion"\s*:\s*\d+\s*,(?:\s*"id"\s*:\s*"[^"]*"\s*,)?\s*"tool"\s*:\s*\{\s*"name"\s*:\s*"(?:relivaro|jourilo|searvex)"/,
-  /^Generated \S+ · (?:Relivaro|Jourilo|Searvex) \d/m,
+  /^(?:.*\n){0,4}Generated \S+ · (?:Relivaro|Jourilo|Searvex) \d/,
   /^# (?:Relivaro|Jourilo) report — .*\n\nRun `[^`]+` · /,
 ];
 
@@ -339,7 +339,9 @@ const REPORT_MARKERS = [
 export function isToolReport(path: string, head: string): boolean {
   const ext = extname(path).toLowerCase();
   if (!REPORT_EXT.has(ext)) return false;
-  if (ext === '.sarif') return true;
+  // SARIF from other scanners (CodeQL, Semgrep) is project data; only the driver name identifies our own output.
+  if (ext === '.sarif')
+    return /"driver"\s*:\s*\{\s*"name"\s*:\s*"(?:Relivaro|Jourilo|Searvex)"/.test(head.slice(0, 4096));
   const h = head.slice(0, 4096);
   return REPORT_MARKERS.some((re) => re.test(h));
 }
