@@ -651,7 +651,8 @@ export function hasServerEntry(
     const base = f.path.slice(f.path.lastIndexOf('/') + 1);
     if (SERVER_FILES.test(base) || /^Dockerfile\./.test(base)) return true;
     if (f.isTest || f.kind !== 'source') continue;
-    const text = files.read(f.path);
+    // Declarations (`export function serve(…)`, `def run(…)`) define a server helper; only a call starts one.
+    const text = files.read(f.path)?.replace(/\b(?:function|def|fn)\s+[\w$]+\s*\(/g, '');
     if (text && SERVER_CALL.test(text)) return true;
   }
   return false;

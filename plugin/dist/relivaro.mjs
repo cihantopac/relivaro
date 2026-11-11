@@ -3298,8 +3298,9 @@ function hostIsFixed(arg, lang) {
   const t2 = arg.text.replace(/^[fFbBrR]+(?=['"])/, "");
   return /^[`'"]https?:\/\/[^/$`'"{}]+\//.test(t2) || lang === "php" && /^['"]https?:\/\/[^/$'"{}]+\//.test(t2);
 }
-function archiveEntryName(arg, lang) {
+function archiveEntryName(arg, lang, source) {
   if (lang === "php") return false;
+  if (!(isJs(lang) ? ARCHIVE_MODULE_JS : ARCHIVE_MODULE_PY).test(source)) return false;
   const re = isJs(lang) ? ARCHIVE_ENTRY_JS : ARCHIVE_ENTRY_PY;
   let hit = false;
   const loopVars = /* @__PURE__ */ new Set();
@@ -3361,7 +3362,7 @@ function redirectValidated(arg, call) {
   }
   return false;
 }
-var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
+var SQL_KEYWORDS, JS_SQL_SINKS, PHP_SQL_SINKS, PY_SQL_SINKS, sqlInjection, commandInjection, codeInjection, SANITIZE_CALL, xss, HTTP_CLIENT_JS, HTTP_CLIENT_PHP, HTTP_CLIENT_PY, ssrf, FS_SINK_JS, FS_SINK_PHP, FS_SINK_PY, pathTraversal, ARCHIVE_ENTRY_JS, ARCHIVE_ENTRY_PY, ARCHIVE_MODULE_JS, ARCHIVE_MODULE_PY, PATH_GUARD, openRedirect, REDIRECT_GUARD, unsafeDeserialization, PASSWORDISH, weakHash, weakCrypto, insecureRandom, tlsDisabled, jwtInsecure, corsMisconfig, massAssignment, hardcodedSigningSecret, debugMode, csrfDisabled, xxe, regexInjection, nosqlInjection, ssti, sensitiveLogging, insecureCookie, permissiveChmod, timingUnsafe, buffer, securityCodeRules;
 var init_code = __esm({
   "src/rules/security/code.ts"() {
     "use strict";
@@ -3736,7 +3737,7 @@ var init_code = __esm({
             continue;
           const arg = c.args[0];
           if (!arg || isStaticString(arg, lang)) continue;
-          const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang);
+          const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang, ctx.source);
           if (!ctx.tainted(arg) && !fromArchive) continue;
           if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
           if (pathGuarded(arg, c.node, lang)) continue;
@@ -3779,6 +3780,8 @@ var init_code = __esm({
     };
     ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
     ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
+    ARCHIVE_MODULE_JS = /\bfrom\s+['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|@zip\.js\/zip\.js|fflate|node-7z)['"]|\brequire\(\s*['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|fflate|node-7z)['"]\s*\)/;
+    ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:zipfile|tarfile)|from\s+(?:zipfile|tarfile)\s+import)\b/m;
     PATH_GUARD = /\.startsWith\(|str_starts_with\(|\.relative\(|['"]\.\.['"]|\bresolveInside|\bisInside|\bisWithin|\bsafeJoin|\bsafe_join|realpath|is_relative_to|commonpath|Storage::disk|->exists\(/;
     openRedirect = {
       kind: "ast",
@@ -16429,7 +16432,7 @@ function hasServerEntry(files, unitPath, scripts, owns = () => true) {
     const base = f.path.slice(f.path.lastIndexOf("/") + 1);
     if (SERVER_FILES.test(base) || /^Dockerfile\./.test(base)) return true;
     if (f.isTest || f.kind !== "source") continue;
-    const text = files.read(f.path);
+    const text = files.read(f.path)?.replace(/\b(?:function|def|fn)\s+[\w$]+\s*\(/g, "");
     if (text && SERVER_CALL.test(text)) return true;
   }
   return false;

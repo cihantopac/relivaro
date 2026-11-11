@@ -525,6 +525,20 @@ describe('unit kind', () => {
       }),
     ).toBe('web-backend');
   });
+  it('a function named serve that wraps a server library is a declaration, not a server entry', () => {
+    const hono = JSON.stringify({
+      name: 'adapter-runtime',
+      version: '0.0.0',
+      dependencies: { hono: '4.0.0' },
+    });
+    expect(
+      kindOf({
+        'package.json': hono,
+        'src/serve.ts':
+          "import { serve as honoServe } from '@hono/node-server';\nexport function serve(app: any, port = 8080) {\n  return honoServe({ fetch: app.fetch, port });\n}\n",
+      }),
+    ).toBe('library');
+  });
   it('a start script that runs a file makes a service', () => {
     const withStart = JSON.stringify({ ...JSON.parse(pkg), scripts: { start: 'node dist/main.js' } });
     expect(kindOf({ 'package.json': withStart, 'src/index.ts': 'export const x = 1;\n' })).toBe(
@@ -535,5 +549,20 @@ describe('unit kind', () => {
     for (const r of ["'/v1/health'", '"/api/v2/healthz"', '`/v1/ready`', "'/health'"])
       expect(HEALTH_ROUTE_RE.test(r), r).toBe(true);
     expect(HEALTH_ROUTE_RE.test("'/v1/users'")).toBe(false);
+  });
+});
+
+describe('archive entry paths', () => {
+  const src = (imports: string) =>
+    `${imports}import { rm } from 'node:fs/promises';\nimport express from 'express';\nexport const app = express();\nexport function drop(entry: { path: string }) {\n  return rm(entry.path, { force: true });\n}\n`;
+  it('an entry.path outside any archive code is not zip slip', async () => {
+    expect(await ruleHits(makeTree({ 'uploads.ts': src('') }), 'sec/path-traversal')).toEqual([]);
+  });
+  it('an entry.path in a file that reads archives is zip slip', async () => {
+    const hits = await ruleHits(
+      makeTree({ 'unpack.ts': src("import yauzl from 'yauzl';\n") }),
+      'sec/path-traversal',
+    );
+    expect(hits).toHaveLength(1);
   });
 });

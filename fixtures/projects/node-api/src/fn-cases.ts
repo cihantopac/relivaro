@@ -4,6 +4,7 @@ import path from 'node:path';
 import cors from 'cors';
 import express from 'express';
 import jwt from 'jsonwebtoken';
+import tar from 'tar-stream';
 
 const JWT_SECRET = 'secret';
 const corsOptions = { origin: '*', credentials: true };
@@ -43,6 +44,8 @@ export function issueToken(payload: object) {
 export function issueTokenFromEnv(payload: object) {
   return jwt.sign(payload, process.env.JWT_SECRET as string, { expiresIn: '1h' });
 }
+
+export const extractor = tar.extract();
 
 export function writeEntry(dest: string, entry: { path: string }) {
   return fs.createWriteStream(path.join(dest, entry.path)); // expect: sec/path-traversal

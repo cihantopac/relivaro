@@ -574,7 +574,7 @@ const pathTraversal: AstRule = {
         continue;
       const arg = c.args[0];
       if (!arg || isStaticString(arg, lang)) continue;
-      const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang);
+      const fromArchive = !ctx.tainted(arg) && archiveEntryName(arg, lang, ctx.source);
       if (!ctx.tainted(arg) && !fromArchive) continue;
       // Joining with a base directory and normalising does not prevent traversal; basename or a containment check does.
       if (/basename|secure_filename|safe_join|realpath/.test(arg.text)) continue;
@@ -621,9 +621,17 @@ const pathTraversal: AstRule = {
 const ARCHIVE_ENTRY_JS = /^(?:entry|zipEntry|header)\.(?:path|entryName|fileName|name)$/;
 const ARCHIVE_ENTRY_PY = /^(?:member|zinfo|zip_info|info|entry|tarinfo)\.(?:name|filename)$/;
 
-/** The path contains an archive entry name (`entry.path`, `header.name`, `member.name`, a `namelist()` element). */
-function archiveEntryName(arg: Node, lang: Language): boolean {
+const ARCHIVE_MODULE_JS =
+  /\bfrom\s+['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|@zip\.js\/zip\.js|fflate|node-7z)['"]|\brequire\(\s*['"](?:adm-zip|yauzl(?:-promise)?|unzipper|unzip-stream|tar|tar-stream|tar-fs|jszip|decompress|node-stream-zip|extract-zip|fflate|node-7z)['"]\s*\)/;
+const ARCHIVE_MODULE_PY = /^\s*(?:import\s+(?:zipfile|tarfile)|from\s+(?:zipfile|tarfile)\s+import)\b/m;
+
+/**
+ * The path contains an archive entry name (`entry.path`, `header.name`, `member.name`, a `namelist()` element) in a
+ * file that reads archives. Without an archive library, `entry.path` is just an application record.
+ */
+function archiveEntryName(arg: Node, lang: Language, source: string): boolean {
   if (lang === 'php') return false;
+  if (!(isJs(lang) ? ARCHIVE_MODULE_JS : ARCHIVE_MODULE_PY).test(source)) return false;
   const re = isJs(lang) ? ARCHIVE_ENTRY_JS : ARCHIVE_ENTRY_PY;
   let hit = false;
   const loopVars = new Set<string>();
