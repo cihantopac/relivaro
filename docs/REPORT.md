@@ -72,6 +72,11 @@ False positives and accepted risks leave the action-center counts and *Fix first
 their verification filter. Release gates are computed from detection and ignore verdicts, so an accepted risk still
 counts in `relivaro release`; use a baseline (`relivaro baseline`) when an accepted finding should stop gating.
 
+**Accepted in code.** A `relivaro-accept` comment (see [CONFIG.md](CONFIG.md#suppressions)) marks a finding as an
+accepted risk in the code itself. The finding stays in the report with the *Accepted risk* state and the text
+*Accepted in code: <reason>*; SARIF carries it as an `inSource` suppression with status `accepted`. Such a finding does
+not fail `--fail-on` or release gates. `--no-inline-suppressions` turns these comments off.
+
 **Opening the report.** The terminal summary and `--json --compact` output print the absolute report path and the
 open command for the platform; `--open` (on analysis commands and `relivaro report`) opens it in the default browser.
 

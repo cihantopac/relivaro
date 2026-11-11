@@ -40,7 +40,8 @@ export interface ReleaseAssessment {
 
 /** "apps/web: " for a sub-project, nothing for the project root. */
 const unitPrefix = (unit: string) => (unit === '.' ? '' : `${unit}: `);
-const open = (run: RunRecord) => run.findings.filter((f) => f.status === 'open');
+/** Open findings that can block a release: an accepted risk (`relivaro-accept`) is shown but does not block. */
+const open = (run: RunRecord) => run.findings.filter((f) => f.status === 'open' && !f.accepted);
 const ids = (fs: Finding[]) => fs.map((f) => f.id);
 
 function checkGate(

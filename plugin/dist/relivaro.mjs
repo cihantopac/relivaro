@@ -22159,7 +22159,7 @@ init_discover();
 // src/release/readiness.ts
 init_files();
 var unitPrefix = (unit) => unit === "." ? "" : `${unit}: `;
-var open = (run2) => run2.findings.filter((f) => f.status === "open");
+var open = (run2) => run2.findings.filter((f) => f.status === "open" && !f.accepted);
 var ids = (fs2) => fs2.map((f) => f.id);
 function checkGate(run2, kind, title, failStatus) {
   const cs = run2.checks.filter((c) => c.kind === kind);
@@ -22635,10 +22635,34 @@ var DOWNGRADE = {
   info: "info"
 };
 var SUPPRESS_RE = /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
+var ACCEPT_RE = /(?:\/\/|#|\/\*|<!--|\{\{--|^\s*\*)\s*relivaro-accept(-next-line)?(?![\w-])(.*)$/;
+var ACCEPT_BODY_RE = /^\s+([\w/.-]+(?:\s*,\s*[\w/.-]+)*)\s*:\s*(.*)$/;
+var COMMENT_END = /\s*(?:\*\/|-->|--\}\}|#}}|\?>)\s*$/;
 function parseSuppressions(lines) {
-  const s = { file: { all: false, rules: /* @__PURE__ */ new Set() }, lines: /* @__PURE__ */ new Map() };
+  const s = {
+    file: { all: false, rules: /* @__PURE__ */ new Set() },
+    lines: /* @__PURE__ */ new Map(),
+    accept: /* @__PURE__ */ new Map(),
+    invalidAccept: []
+  };
   for (let i2 = 0; i2 < lines.length; i2++) {
     const l = lines[i2];
+    if (l.includes("relivaro-accept")) {
+      const a = ACCEPT_RE.exec(l);
+      if (a) {
+        const body2 = ACCEPT_BODY_RE.exec(a[2] ?? "");
+        const rules2 = new Set(
+          (body2?.[1] ?? "").split(",").map((r) => r.trim()).filter((r) => r.includes("/"))
+        );
+        const reason = (body2?.[2] ?? "").replace(COMMENT_END, "").trim();
+        if (!rules2.size || reason.length < 3) s.invalidAccept.push(i2 + 1);
+        else {
+          const entry2 = { rules: rules2, reason };
+          if (a[1] !== "-next-line") s.accept.set(i2 + 1, entry2);
+          s.accept.set(i2 + 2, entry2);
+        }
+      }
+    }
     if (!l.includes("relivaro-ignore")) continue;
     const m = SUPPRESS_RE.exec(l);
     if (!m) continue;
@@ -22681,14 +22705,34 @@ function snippetAround(lines, line, context = 1) {
 }
 var TEST_UNSAFE_FIXERS = /* @__PURE__ */ new Set(["php-unserialize-allowed-classes", "tls-verify-enable"]);
 var FindingBuilder = class {
-  constructor(project) {
+  constructor(project, opts = {}) {
     this.project = project;
+    this.opts = opts;
   }
   project;
+  opts;
   occurrences = /* @__PURE__ */ new Map();
   findings = [];
   lineCache = /* @__PURE__ */ new Map();
   suppressionCache = /* @__PURE__ */ new Map();
+  /** Malformed inline annotations, reported in `errors.rules`. */
+  annotationErrors = [];
+  /** Parses (once) the inline annotations of a file; malformed acceptances are recorded as errors. */
+  annotations(file, lines) {
+    if (this.opts.inlineSuppressions === false) return void 0;
+    let s = this.suppressionCache.get(file);
+    if (!s) {
+      s = parseSuppressions(lines);
+      this.suppressionCache.set(file, s);
+      for (const line of s.invalidAccept)
+        this.annotationErrors.push({
+          rule: "relivaro-accept",
+          file,
+          message: `Invalid relivaro-accept at ${file}:${line}: a rule id and a reason are required`
+        });
+    }
+    return s;
+  }
   linesOf(file) {
     let l = this.lineCache.get(file);
     if (!l) {
@@ -22728,14 +22772,13 @@ var FindingBuilder = class {
     }
     if (!SEVERITIES.includes(severity)) severity = rule.severity;
     let suppression;
-    if (file && lines) {
-      let s = this.suppressionCache.get(file);
-      if (!s) {
-        s = parseSuppressions(lines);
-        this.suppressionCache.set(file, s);
-      }
-      const sup = suppressedBy(s, rule.id, line);
+    let accepted;
+    const notes = file && lines ? this.annotations(file, lines) : void 0;
+    if (notes) {
+      const sup = suppressedBy(notes, rule.id, line);
       if (sup) suppression = { kind: "inline", reason: sup.reason };
+      const acc = line !== void 0 ? notes.accept.get(line) : void 0;
+      if (!suppression && acc?.rules.has(rule.id)) accepted = { reason: acc.reason, source: "inline" };
     }
     const finding = {
       id: findingId(fp),
@@ -22763,6 +22806,7 @@ var FindingBuilder = class {
     const fixer = hit.fixer === null ? void 0 : hit.fixer ?? rule.fixer;
     if (fixer && !(pf?.isTest && TEST_UNSAFE_FIXERS.has(fixer))) finding.fixer = fixer;
     if (suppression) finding.suppression = suppression;
+    if (accepted) finding.accepted = accepted;
     this.findings.push(finding);
     return finding;
   }
@@ -22790,6 +22834,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
     if (!applicableFileRules.length && !applicableAst.length) continue;
     const text = project.files.read(file.path);
     if (text === void 0) continue;
+    if (text.includes("relivaro-accept")) builder.annotations(file.path, text.split(/\r?\n/));
     if (applicableFileRules.length) {
       const fctx = { project, file, text, lines: text.split(/\r?\n/) };
       for (const rule of applicableFileRules) {
@@ -22849,6 +22894,7 @@ async function analyze(project, allRules, opts = {}, builder = new FindingBuilde
       ruleErrors.push({ rule: rule.id, message: e.message });
     }
   }
+  ruleErrors.push(...builder.annotationErrors);
   return {
     findings: builder.findings,
     rulesRun: rules.map((r) => r.id),
@@ -22870,6 +22916,7 @@ function summarize(findings) {
     open: 0,
     suppressed: 0,
     baseline: 0,
+    accepted: 0,
     bySeverity: Object.fromEntries(SEVERITIES.map((x) => [x, 0])),
     byCategory: Object.fromEntries(CATEGORIES.map((x) => [x, 0]))
   };
@@ -22878,6 +22925,7 @@ function summarize(findings) {
     else if (f.status === "baseline") s.baseline++;
     else {
       s.open++;
+      if (f.accepted) s.accepted = (s.accepted ?? 0) + 1;
       s.bySeverity[f.severity]++;
       s.byCategory[f.category]++;
     }
@@ -22936,7 +22984,7 @@ async function runAudit(opts) {
   const ctx = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
-  const builder = new FindingBuilder(ctx);
+  const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
   progress("analysing");
   const analysis2 = await analyze(ctx, RULES, { categories, rules: opts.rules }, builder);
   const limitations = [];
@@ -23016,9 +23064,19 @@ async function runAudit(opts) {
   const coverageReports = readCoverage(files, profile);
   const findings = builder.findings.sort(compareFindings);
   const gaps = categories.includes("testing") || categories.includes("quality") ? testGaps(files, findings, analysis2.complexity, coverageReports) : [];
-  if (analysis2.ruleErrors.length)
+  const internalErrors = analysis2.ruleErrors.filter((e) => e.rule !== "relivaro-accept");
+  const invalidAccepts = analysis2.ruleErrors.length - internalErrors.length;
+  if (internalErrors.length)
     limitations.push(
-      `${analysis2.ruleErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`
+      `${internalErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`
+    );
+  if (invalidAccepts)
+    limitations.push(
+      `${invalidAccepts} \`relivaro-accept\` comment(s) had no rule id or no reason and accepted nothing (see errors.rules in report.json).`
+    );
+  if (opts.inlineSuppressions === false)
+    limitations.push(
+      "Inline relivaro-ignore/relivaro-accept comments in the audited code were not honoured (--no-inline-suppressions)."
     );
   if (analysis2.parseErrors.length)
     limitations.push(
@@ -23121,7 +23179,7 @@ async function runAudit(opts) {
 function gateFailed(run2, failOn) {
   if (failOn === "none") return false;
   return run2.findings.some(
-    (f) => f.status === "open" && severityAtLeast(f.severity, failOn) && f.confidence !== "low"
+    (f) => f.status === "open" && !f.accepted && severityAtLeast(f.severity, failOn) && f.confidence !== "low"
   );
 }
 
@@ -24649,6 +24707,7 @@ var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'se
 function vstate(f) {
   var r = REV[f.id];
   if (r) return r.verdict;
+  if (f.accepted) return 'accepted';
   return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
 }
 function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
@@ -24999,7 +25058,7 @@ function findingBody(f) {
   var r = REV[f.id], rm = remOf(f);
   b.appendChild(el('div', { cls: 'verdict v-' + vstate(f) }, [
     el('div', { cls: 'vh' }, [vsBadge(vstate(f)), r ? el('span', { cls: 'faint', text: t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') }) : null]),
-    r ? el('p', { text: r.justification }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
+    r ? el('p', { text: r.justification }) : f.accepted ? el('p', { text: t('finding.acceptedInCode', { r: f.accepted.reason }) }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
     r && r.severity ? el('p', { cls: 'faint', text: t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) }) : null,
     r && r.evidence && r.evidence.length ? el('div', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); })) : null
   ]));
@@ -25427,6 +25486,7 @@ var en = {
   "finding.reviewSeverity": "Reviewer severity: {s}",
   "finding.carried": "recorded in run {run} for the same code",
   "finding.notReviewed": "Scanner candidate, not reviewed yet. Check the code before changing it.",
+  "finding.acceptedInCode": "Accepted in code: {r}",
   "finding.observed": "Observed by running a project tool (see the command output).",
   "finding.copyFail": "Selected: press Ctrl+C",
   "finding.reviewDiff": "changes behaviour, review the diff",
@@ -25698,6 +25758,7 @@ var tr = {
   "finding.reviewBy": "{kind} incelemesi: {name} \xB7 {when}",
   "finding.reviewSeverity": "\u0130nceleyenin \xF6nem derecesi: {s}",
   "finding.carried": "ayn\u0131 kod i\xE7in {run} \xE7al\u0131\u015Ft\u0131rmas\u0131nda kaydedildi",
+  "finding.acceptedInCode": "Kodda kabul edildi: {r}",
   "finding.notReviewed": "Taraman\u0131n buldu\u011Fu bir aday; hen\xFCz incelenmedi. De\u011Fi\u015Ftirmeden \xF6nce kodu kontrol edin.",
   "finding.observed": "Bir proje arac\u0131 \xE7al\u0131\u015Ft\u0131r\u0131l\u0131rken g\xF6zlemlendi (komut \xE7\u0131kt\u0131s\u0131na bak\u0131n).",
   "finding.copyFail": "Se\xE7ildi: Ctrl+C\u2019ye bas\u0131n",
@@ -26368,6 +26429,7 @@ function remediationOf(f, review) {
   if (review?.verdict === "false-positive") return { kind: "none", reason: "false-positive" };
   if (review?.verdict === "accepted") return { kind: "none", reason: "accepted" };
   if (review?.verdict === "needs-runtime") return { kind: "manual", reason: "reviewed-runtime" };
+  if (!review && f.accepted) return { kind: "none", reason: "accepted" };
   const fixer = f.fixer ? findFixer(f.fixer) : void 0;
   if (fixer)
     return {
@@ -26566,7 +26628,7 @@ function toMarkdown(run2, opts = {}) {
     const r = review[f.id];
     const rem = remediationOf(f, r);
     L.push(
-      `**Status:** ${r ? `${REVIEW_LABEL[r.verdict]} (${r.reviewer.kind} review by ${r.reviewer.name}${r.carriedFrom ? `, run ${r.carriedFrom}` : ""}): ${r.justification}` : "detected, not reviewed"} \xB7 **Remediation:** ${rem.kind === "none" ? "none" : rem.kind === "deterministic" ? "deterministic fix" : rem.kind === "agent" ? "agent-assisted" : "manual review"} \u2014 ${REMEDIATION_TEXT[rem.reason]}`
+      `**Status:** ${r ? `${REVIEW_LABEL[r.verdict]} (${r.reviewer.kind} review by ${r.reviewer.name}${r.carriedFrom ? `, run ${r.carriedFrom}` : ""}): ${r.justification}` : f.accepted ? `${REVIEW_LABEL.accepted} (Accepted in code: ${esc(f.accepted.reason)})` : "detected, not reviewed"} \xB7 **Remediation:** ${rem.kind === "none" ? "none" : rem.kind === "deterministic" ? "deterministic fix" : rem.kind === "agent" ? "agent-assisted" : "manual review"} \u2014 ${REMEDIATION_TEXT[rem.reason]}`
     );
     L.push("");
     L.push(f.message);
@@ -26713,6 +26775,10 @@ function result(f, ruleIndex, fallbackUri) {
   ];
   if (f.status === "suppressed")
     r.suppressions = [{ kind: "inSource", justification: f.suppression?.reason ?? "" }];
+  else if (f.accepted)
+    r.suppressions = [
+      { kind: "inSource", status: "accepted", justification: `Accepted in code: ${f.accepted.reason}` }
+    ];
   return r;
 }
 
@@ -26782,7 +26848,7 @@ function effectiveReview(ws, run2, maxRuns = 10) {
 }
 function reviewSummary(run2, index) {
   const open2 = run2.findings.filter((f) => f.status === "open");
-  const count = (v) => open2.filter((f) => index[f.id]?.verdict === v).length;
+  const count = (v) => open2.filter((f) => index[f.id] ? index[f.id].verdict === v : v === "accepted" && !!f.accepted).length;
   const confirmed = count("confirmed");
   const falsePositive = count("false-positive");
   const needsRuntime = count("needs-runtime");
@@ -26985,7 +27051,7 @@ function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, type
     out2.print("");
   }
   out2.print(
-    `${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} baseline`) : ""}`
+    `${paint(on, "bold", `${s.open} open findings`)}: ${SEVERITIES.filter((x) => s.bySeverity[x]).map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`)).join(", ") || "none"}${s.accepted ? paint(on, "gray", ` \xB7 ${s.accepted} accepted`) : ""}${s.suppressed ? paint(on, "gray", ` \xB7 ${s.suppressed} suppressed`) : ""}${s.baseline ? paint(on, "gray", ` \xB7 ${s.baseline} baseline`) : ""}`
   );
   if (!out2.quiet) {
     const open2 = run2.findings.filter((f) => f.status === "open");
@@ -27072,6 +27138,11 @@ var ANALYSIS_OPTS = [
   },
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
+  {
+    name: "no-inline-suppressions",
+    type: "boolean",
+    description: "Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust)."
+  },
   { name: "no-write", type: "boolean", description: "Do not write run data or reports (stdout only)." },
   {
     name: "max-findings",
@@ -27237,6 +27308,7 @@ async function analysisCommand(p, out2, cfg) {
     baseline: p.opts["no-baseline"] ? false : p.opts.baseline,
     release: cfg.release,
     useGit: p.opts["no-git"] ? false : void 0,
+    inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
     noWrite: !!p.opts["no-write"],
     onProgress: out2.progress
   });

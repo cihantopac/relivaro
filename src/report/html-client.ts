@@ -109,6 +109,7 @@ var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'se
 function vstate(f) {
   var r = REV[f.id];
   if (r) return r.verdict;
+  if (f.accepted) return 'accepted';
   return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
 }
 function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
@@ -459,7 +460,7 @@ function findingBody(f) {
   var r = REV[f.id], rm = remOf(f);
   b.appendChild(el('div', { cls: 'verdict v-' + vstate(f) }, [
     el('div', { cls: 'vh' }, [vsBadge(vstate(f)), r ? el('span', { cls: 'faint', text: t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') }) : null]),
-    r ? el('p', { text: r.justification }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
+    r ? el('p', { text: r.justification }) : f.accepted ? el('p', { text: t('finding.acceptedInCode', { r: f.accepted.reason }) }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
     r && r.severity ? el('p', { cls: 'faint', text: t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) }) : null,
     r && r.evidence && r.evidence.length ? el('div', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); })) : null
   ]));

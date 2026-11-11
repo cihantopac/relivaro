@@ -104,5 +104,9 @@ function result(f: Finding, ruleIndex: number | undefined, fallbackUri: string):
   ];
   if (f.status === 'suppressed')
     r.suppressions = [{ kind: 'inSource', justification: f.suppression?.reason ?? '' }];
+  else if (f.accepted)
+    r.suppressions = [
+      { kind: 'inSource', status: 'accepted', justification: `Accepted in code: ${f.accepted.reason}` },
+    ];
   return r;
 }

@@ -2,7 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { gateFailed, runAudit } from '../../src/audit.js';
 import { parseArgs } from '../../src/cli/args.js';
 import { defaultConfig, validateConfig } from '../../src/core/config.js';
 import type { RelivaroError } from '../../src/core/errors.js';
@@ -214,5 +215,91 @@ describe('tool reports', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('inline annotations', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const LOOP = 'for (const r of rows) await pool.query("UPDATE t SET x = 1 WHERE id = $1", [r]);';
+  async function auditSource(source: string, opts: { inlineSuppressions?: boolean } = {}) {
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-annot-'));
+    made.push(dir);
+    writeFileSync(join(dir, 'jobs.ts'), source);
+    const { run } = await runAudit({
+      root: dir,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      rules: ['perf/query-in-loop'],
+      ...opts,
+    });
+    return run;
+  }
+  const fn = (comment: string) =>
+    `import { pool } from './db';\nexport async function touch(rows: string[]) {\n  ${comment}\n  ${LOOP}\n}\n`;
+
+  it('relivaro-accept-next-line records an accepted finding with its reason', async () => {
+    const run = await auditSource(
+      fn('// relivaro-accept-next-line perf/query-in-loop: sequential row locks, bounded by plan size'),
+    );
+    const f = run.findings.find((x) => x.ruleId === 'perf/query-in-loop');
+    expect(f?.status).toBe('open');
+    expect(f?.accepted).toEqual({ reason: 'sequential row locks, bounded by plan size', source: 'inline' });
+    expect(run.summary.accepted).toBe(1);
+    expect(gateFailed(run, 'low')).toBe(false);
+    expect(run.errors.rules).toEqual([]);
+  });
+
+  it('reports show an inline acceptance with its reason', async () => {
+    const { toMarkdown } = await import('../../src/report/markdown.js');
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const run = await auditSource(fn('// relivaro-accept-next-line perf/query-in-loop: bounded by plan size'));
+    expect(toMarkdown(run)).toContain('Accepted in code: bounded by plan size');
+    const result = (toSarif(run) as any).runs[0].results.find((r: any) => r.ruleId === 'perf/query-in-loop');
+    expect(result.suppressions).toEqual([
+      { kind: 'inSource', status: 'accepted', justification: 'Accepted in code: bounded by plan size' },
+    ]);
+  });
+
+  it('relivaro-accept without a reason accepts nothing and is reported', async () => {
+    const run = await auditSource(fn('// relivaro-accept-next-line perf/query-in-loop'));
+    const f = run.findings.find((x) => x.ruleId === 'perf/query-in-loop');
+    expect(f?.accepted).toBeUndefined();
+    expect(gateFailed(run, 'low')).toBe(true);
+    expect(run.errors.rules.map((e) => e.message)).toEqual([
+      'Invalid relivaro-accept at jobs.ts:3: a rule id and a reason are required',
+    ]);
+  });
+
+  it('relivaro-accept without a rule id accepts nothing and is reported', async () => {
+    const run = await auditSource(fn('// relivaro-accept-next-line: it is fine'));
+    expect(run.findings.find((x) => x.ruleId === 'perf/query-in-loop')?.accepted).toBeUndefined();
+    expect(run.errors.rules.map((e) => e.message)).toEqual([
+      'Invalid relivaro-accept at jobs.ts:3: a rule id and a reason are required',
+    ]);
+  });
+
+  it('inlineSuppressions: false ignores relivaro-ignore-file and relivaro-accept', async () => {
+    const src = `// relivaro-ignore-file\n${fn('// relivaro-accept-next-line perf/query-in-loop: bounded')}`;
+    const honoured = await auditSource(src);
+    expect(honoured.findings.find((x) => x.ruleId === 'perf/query-in-loop')?.status).toBe('suppressed');
+    const run = await auditSource(src, { inlineSuppressions: false });
+    const f = run.findings.find((x) => x.ruleId === 'perf/query-in-loop');
+    expect(f?.status).toBe('open');
+    expect(f?.accepted).toBeUndefined();
+    expect(run.limitations).toContain(
+      'Inline relivaro-ignore/relivaro-accept comments in the audited code were not honoured (--no-inline-suppressions).',
+    );
+  });
+
+  it('audit accepts --no-inline-suppressions', async () => {
+    const { COMMANDS } = await import('../../src/cli/commands.js');
+    const audit = COMMANDS.find((c) => c.spec.name === 'audit')!;
+    expect(parseArgs(['.', '--no-inline-suppressions'], audit.spec).opts['no-inline-suppressions']).toBe(
+      true,
+    );
   });
 });

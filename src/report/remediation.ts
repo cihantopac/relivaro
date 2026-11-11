@@ -95,6 +95,7 @@ export function remediationOf(f: Finding, review?: Pick<ReviewEntry, 'verdict'>)
   if (review?.verdict === 'false-positive') return { kind: 'none', reason: 'false-positive' };
   if (review?.verdict === 'accepted') return { kind: 'none', reason: 'accepted' };
   if (review?.verdict === 'needs-runtime') return { kind: 'manual', reason: 'reviewed-runtime' };
+  if (!review && f.accepted) return { kind: 'none', reason: 'accepted' };
   const fixer = f.fixer ? findFixer(f.fixer) : undefined;
   if (fixer)
     return {

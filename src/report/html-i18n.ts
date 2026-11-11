@@ -84,6 +84,7 @@ const en = {
   'finding.reviewSeverity': 'Reviewer severity: {s}',
   'finding.carried': 'recorded in run {run} for the same code',
   'finding.notReviewed': 'Scanner candidate, not reviewed yet. Check the code before changing it.',
+  'finding.acceptedInCode': 'Accepted in code: {r}',
   'finding.observed': 'Observed by running a project tool (see the command output).',
   'finding.copyFail': 'Selected: press Ctrl+C',
   'finding.reviewDiff': 'changes behaviour, review the diff',
@@ -367,6 +368,7 @@ const tr: Record<I18nKey, string> = {
   'finding.reviewBy': '{kind} incelemesi: {name} · {when}',
   'finding.reviewSeverity': 'İnceleyenin önem derecesi: {s}',
   'finding.carried': 'aynı kod için {run} çalıştırmasında kaydedildi',
+  'finding.acceptedInCode': 'Kodda kabul edildi: {r}',
   'finding.notReviewed':
     'Taramanın bulduğu bir aday; henüz incelenmedi. Değiştirmeden önce kodu kontrol edin.',
   'finding.observed': 'Bir proje aracı çalıştırılırken gözlemlendi (komut çıktısına bakın).',

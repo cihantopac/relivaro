@@ -85,15 +85,47 @@ const DOWNGRADE: Record<Severity, Severity> = {
 interface Suppressions {
   file: { all: boolean; rules: Set<string> };
   lines: Map<number, { all: boolean; rules: Set<string>; reason?: string }>;
+  /** Inline acceptances by line: the rule ids accepted on that line and the stated reason. */
+  accept: Map<number, { rules: Set<string>; reason: string }>;
+  /** Malformed acceptance annotations: 1-based line numbers. */
+  invalidAccept: number[];
 }
 
 const SUPPRESS_RE =
   /relivaro-ignore(-next-line|-file)?(?:\s+([\w/,.-]+(?:\s*,\s*[\w/.-]+)*))?(?:\s*[:—-]\s*(.*))?/;
+/** `relivaro-accept[-next-line] <rule-id>[,<rule-id>]: <reason>`, only inside a comment. */
+const ACCEPT_RE = /(?:\/\/|#|\/\*|<!--|\{\{--|^\s*\*)\s*relivaro-accept(-next-line)?(?![\w-])(.*)$/;
+const ACCEPT_BODY_RE = /^\s+([\w/.-]+(?:\s*,\s*[\w/.-]+)*)\s*:\s*(.*)$/;
+const COMMENT_END = /\s*(?:\*\/|-->|--\}\}|#}}|\?>)\s*$/;
 
 export function parseSuppressions(lines: string[]): Suppressions {
-  const s: Suppressions = { file: { all: false, rules: new Set() }, lines: new Map() };
+  const s: Suppressions = {
+    file: { all: false, rules: new Set() },
+    lines: new Map(),
+    accept: new Map(),
+    invalidAccept: [],
+  };
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i]!;
+    if (l.includes('relivaro-accept')) {
+      const a = ACCEPT_RE.exec(l);
+      if (a) {
+        const body = ACCEPT_BODY_RE.exec(a[2] ?? '');
+        const rules = new Set(
+          (body?.[1] ?? '')
+            .split(',')
+            .map((r) => r.trim())
+            .filter((r) => r.includes('/')),
+        );
+        const reason = (body?.[2] ?? '').replace(COMMENT_END, '').trim();
+        if (!rules.size || reason.length < 3) s.invalidAccept.push(i + 1);
+        else {
+          const entry = { rules, reason };
+          if (a[1] !== '-next-line') s.accept.set(i + 1, entry);
+          s.accept.set(i + 2, entry);
+        }
+      }
+    }
     if (!l.includes('relivaro-ignore')) continue;
     const m = SUPPRESS_RE.exec(l);
     if (!m) continue;
@@ -156,8 +188,30 @@ export class FindingBuilder {
   readonly findings: Finding[] = [];
   private readonly lineCache = new Map<string, string[]>();
   private readonly suppressionCache = new Map<string, Suppressions>();
+  /** Malformed inline annotations, reported in `errors.rules`. */
+  readonly annotationErrors: { rule: string; file: string; message: string }[] = [];
 
-  constructor(private readonly project: ProjectContext) {}
+  constructor(
+    private readonly project: ProjectContext,
+    private readonly opts: { inlineSuppressions?: boolean } = {},
+  ) {}
+
+  /** Parses (once) the inline annotations of a file; malformed acceptances are recorded as errors. */
+  annotations(file: string, lines: string[]): Suppressions | undefined {
+    if (this.opts.inlineSuppressions === false) return undefined;
+    let s = this.suppressionCache.get(file);
+    if (!s) {
+      s = parseSuppressions(lines);
+      this.suppressionCache.set(file, s);
+      for (const line of s.invalidAccept)
+        this.annotationErrors.push({
+          rule: 'relivaro-accept',
+          file,
+          message: `Invalid relivaro-accept at ${file}:${line}: a rule id and a reason are required`,
+        });
+    }
+    return s;
+  }
 
   private linesOf(file: string): string[] | undefined {
     let l = this.lineCache.get(file);
@@ -205,14 +259,13 @@ export class FindingBuilder {
     if (!SEVERITIES.includes(severity)) severity = rule.severity;
 
     let suppression: Finding['suppression'];
-    if (file && lines) {
-      let s = this.suppressionCache.get(file);
-      if (!s) {
-        s = parseSuppressions(lines);
-        this.suppressionCache.set(file, s);
-      }
-      const sup = suppressedBy(s, rule.id, line);
+    let accepted: Finding['accepted'];
+    const notes = file && lines ? this.annotations(file, lines) : undefined;
+    if (notes) {
+      const sup = suppressedBy(notes, rule.id, line);
       if (sup) suppression = { kind: 'inline', reason: sup.reason };
+      const acc = line !== undefined ? notes.accept.get(line) : undefined;
+      if (!suppression && acc?.rules.has(rule.id)) accepted = { reason: acc.reason, source: 'inline' };
     }
 
     const finding: Finding = {
@@ -246,6 +299,7 @@ export class FindingBuilder {
     const fixer = hit.fixer === null ? undefined : (hit.fixer ?? rule.fixer);
     if (fixer && !(pf?.isTest && TEST_UNSAFE_FIXERS.has(fixer))) finding.fixer = fixer;
     if (suppression) finding.suppression = suppression;
+    if (accepted) finding.accepted = accepted;
     this.findings.push(finding);
     return finding;
   }
@@ -285,6 +339,7 @@ export async function analyze(
     if (!applicableFileRules.length && !applicableAst.length) continue;
     const text = project.files.read(file.path);
     if (text === undefined) continue;
+    if (text.includes('relivaro-accept')) builder.annotations(file.path, text.split(/\r?\n/));
     if (applicableFileRules.length) {
       // One context per file, shared by its rules, so per-file parse caches (e.g. workflows) are reused.
       const fctx = { project, file, text, lines: text.split(/\r?\n/) };
@@ -347,6 +402,7 @@ export async function analyze(
     }
   }
 
+  ruleErrors.push(...builder.annotationErrors);
   return {
     findings: builder.findings,
     rulesRun: rules.map((r) => r.id),

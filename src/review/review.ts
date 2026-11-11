@@ -135,7 +135,8 @@ export function effectiveReview(ws: Workspace, run: RunRecord, maxRuns = 10): Re
 
 export function reviewSummary(run: RunRecord, index: Record<string, ReviewEntry>) {
   const open = run.findings.filter((f) => f.status === 'open');
-  const count = (v: Verdict) => open.filter((f) => index[f.id]?.verdict === v).length;
+  const count = (v: Verdict) =>
+    open.filter((f) => (index[f.id] ? index[f.id]!.verdict === v : v === 'accepted' && !!f.accepted)).length;
   const confirmed = count('confirmed');
   const falsePositive = count('false-positive');
   const needsRuntime = count('needs-runtime');

@@ -126,7 +126,7 @@ export function toMarkdown(
     const r = review[f.id];
     const rem = remediationOf(f, r);
     L.push(
-      `**Status:** ${r ? `${REVIEW_LABEL[r.verdict]} (${r.reviewer.kind} review by ${r.reviewer.name}${r.carriedFrom ? `, run ${r.carriedFrom}` : ''}): ${r.justification}` : 'detected, not reviewed'} · **Remediation:** ${rem.kind === 'none' ? 'none' : rem.kind === 'deterministic' ? 'deterministic fix' : rem.kind === 'agent' ? 'agent-assisted' : 'manual review'} — ${REMEDIATION_TEXT[rem.reason]}`,
+      `**Status:** ${r ? `${REVIEW_LABEL[r.verdict]} (${r.reviewer.kind} review by ${r.reviewer.name}${r.carriedFrom ? `, run ${r.carriedFrom}` : ''}): ${r.justification}` : f.accepted ? `${REVIEW_LABEL.accepted} (Accepted in code: ${esc(f.accepted.reason)})` : 'detected, not reviewed'} · **Remediation:** ${rem.kind === 'none' ? 'none' : rem.kind === 'deterministic' ? 'deterministic fix' : rem.kind === 'agent' ? 'agent-assisted' : 'manual review'} — ${REMEDIATION_TEXT[rem.reason]}`,
     );
     L.push('');
     L.push(f.message);

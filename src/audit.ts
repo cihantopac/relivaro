@@ -37,6 +37,8 @@ export interface AuditOptions {
   baseline?: string | false;
   release?: boolean;
   useGit?: boolean;
+  /** Honour `relivaro-ignore*` / `relivaro-accept*` comments in the audited code. Default true. */
+  inlineSuppressions?: boolean;
   /** Do not write anything to disk. */
   noWrite?: boolean;
   onProgress?: (msg: string) => void;
@@ -48,6 +50,8 @@ export interface Summary {
   open: number;
   suppressed: number;
   baseline: number;
+  /** Open findings accepted as a risk (inline `relivaro-accept`); included in `open`. */
+  accepted?: number;
   bySeverity: Record<Severity, number>;
   byCategory: Record<Category, number>;
 }
@@ -121,6 +125,7 @@ export function summarize(findings: Finding[]): Summary {
     open: 0,
     suppressed: 0,
     baseline: 0,
+    accepted: 0,
     bySeverity: Object.fromEntries(SEVERITIES.map((x) => [x, 0])) as Record<Severity, number>,
     byCategory: Object.fromEntries(CATEGORIES.map((x) => [x, 0])) as Record<Category, number>,
   };
@@ -129,6 +134,7 @@ export function summarize(findings: Finding[]): Summary {
     else if (f.status === 'baseline') s.baseline++;
     else {
       s.open++;
+      if (f.accepted) s.accepted = (s.accepted ?? 0) + 1;
       s.bySeverity[f.severity]++;
       s.byCategory[f.category]++;
     }
@@ -209,7 +215,7 @@ export async function runAudit(
   const ctx: ProjectContext = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
-  const builder = new FindingBuilder(ctx);
+  const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
   progress('analysing');
   const analysis = await analyze(ctx, RULES, { categories, rules: opts.rules }, builder);
 
@@ -298,9 +304,19 @@ export async function runAudit(
       ? testGaps(files, findings, analysis.complexity, coverageReports)
       : [];
 
-  if (analysis.ruleErrors.length)
+  const internalErrors = analysis.ruleErrors.filter((e) => e.rule !== 'relivaro-accept');
+  const invalidAccepts = analysis.ruleErrors.length - internalErrors.length;
+  if (internalErrors.length)
     limitations.push(
-      `${analysis.ruleErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`,
+      `${internalErrors.length} internal rule error(s) occurred (see errors.rules in report.json); results for those rules are incomplete.`,
+    );
+  if (invalidAccepts)
+    limitations.push(
+      `${invalidAccepts} \`relivaro-accept\` comment(s) had no rule id or no reason and accepted nothing (see errors.rules in report.json).`,
+    );
+  if (opts.inlineSuppressions === false)
+    limitations.push(
+      'Inline relivaro-ignore/relivaro-accept comments in the audited code were not honoured (--no-inline-suppressions).',
     );
   if (analysis.parseErrors.length)
     limitations.push(
@@ -408,6 +424,7 @@ export async function runAudit(
 export function gateFailed(run: RunRecord, failOn: Severity | 'none'): boolean {
   if (failOn === 'none') return false;
   return run.findings.some(
-    (f) => f.status === 'open' && severityAtLeast(f.severity, failOn) && f.confidence !== 'low',
+    (f) =>
+      f.status === 'open' && !f.accepted && severityAtLeast(f.severity, failOn) && f.confidence !== 'low',
   );
 }

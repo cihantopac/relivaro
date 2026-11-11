@@ -43,5 +43,12 @@ JSON Schema: [`schemas/config.schema.json`](../schemas/config.schema.json). `rel
 - Inline, same line or the line above: `// relivaro-ignore sec/xss: sanitized by renderMarkdown()` (any comment
   syntax). Without a rule id it suppresses every rule on that line. `relivaro-ignore-next-line` and
   `relivaro-ignore-file [rule-ids]` are also supported. Suppressed findings stay visible in reports with the reason.
+- Inline acceptance, same line or the line above:
+  `// relivaro-accept-next-line perf/query-in-loop: sequential row locks, bounded by plan size`. A rule id and a reason
+  (at least 3 characters) are required; a comment without them accepts nothing and is listed in `errors.rules`. An
+  accepted finding is not hidden: it stays open in reports, marked *Accepted in code* with the reason, and counts as
+  an accepted risk. Unlike a review verdict, it does not fail `--fail-on` or block `relivaro release`.
+- `--no-inline-suppressions` ignores every `relivaro-ignore*` and `relivaro-accept*` comment in the audited code, for
+  code you do not trust (third-party archives, hostile fixtures). The run records a limitation when it is set.
 - Baseline: `relivaro baseline` writes `relivaro-baseline.json` (fingerprints only). Baseline findings are reported but
   do not fail gates; commit the file to share it. Use `--no-baseline` to ignore it.

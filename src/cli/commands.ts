@@ -100,6 +100,12 @@ const ANALYSIS_OPTS: OptSpec[] = [
   },
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
+  {
+    name: 'no-inline-suppressions',
+    type: 'boolean',
+    description:
+      'Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust).',
+  },
   { name: 'no-write', type: 'boolean', description: 'Do not write run data or reports (stdout only).' },
   {
     name: 'max-findings',
@@ -305,6 +311,7 @@ async function analysisCommand(
     baseline: p.opts['no-baseline'] ? false : (p.opts.baseline as string | undefined),
     release: cfg.release,
     useGit: p.opts['no-git'] ? false : undefined,
+    inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
     noWrite: !!p.opts['no-write'],
     onProgress: out.progress,
   });

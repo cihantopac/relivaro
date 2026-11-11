@@ -67,7 +67,7 @@ security"), do only that, using the matching command or skill (`/relivaro:securi
    medium ones; use the `finding-verifier` agent for a second look when there are many. Record every verdict you
    reached in the run so the HTML report shows it (one call per group, same justification):
    `relivaro review add --path <path> --run <runId> --finding <ids> --verdict <confirmed|false-positive|needs-runtime|accepted> --reason "<one sentence>" --evidence <file:line> --reviewer claude-code`.
-   Record only what you actually checked. Use `accepted` only when the user explicitly accepts the risk. Do not add suppressions without approval.
+   Record only what you actually checked. Use `accepted` only when the user explicitly accepts the risk. Do not add suppressions or `relivaro-accept` comments without approval. Audit code you do not trust with `--no-inline-suppressions`.
 4. **Report** — the short final response below. Everything else (each finding, rejected candidates with reasons,
    evidence, limitations) is already in the HTML report.
 5. **Improve (only with approval)** — follow `/relivaro:optimize`. The report's action center lets the user select

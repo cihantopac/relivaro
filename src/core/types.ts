@@ -69,6 +69,11 @@ export interface Finding {
   fingerprint: string;
   status: FindingStatus;
   suppression?: { kind: 'inline' | 'baseline' | 'config'; reason?: string };
+  /**
+   * An accepted risk: shown and counted, but it does not fail gates. `inline` comes from a `relivaro-accept`
+   * comment in the code, `review` from a recorded review verdict.
+   */
+  accepted?: { reason: string; source: 'inline' | 'review' };
 }
 
 export type Language = 'javascript' | 'typescript' | 'tsx' | 'php' | 'python';

@@ -144,7 +144,7 @@ export function printRunSummary(
       SEVERITIES.filter((x) => s.bySeverity[x])
         .map((x) => paint(on, SEV_STYLE[x], `${s.bySeverity[x]} ${x}`))
         .join(', ') || 'none'
-    }${s.suppressed ? paint(on, 'gray', ` · ${s.suppressed} suppressed`) : ''}${s.baseline ? paint(on, 'gray', ` · ${s.baseline} baseline`) : ''}`,
+    }${s.accepted ? paint(on, 'gray', ` · ${s.accepted} accepted`) : ''}${s.suppressed ? paint(on, 'gray', ` · ${s.suppressed} suppressed`) : ''}${s.baseline ? paint(on, 'gray', ` · ${s.baseline} baseline`) : ''}`,
   );
   if (!out.quiet) {
     const open = run.findings.filter((f) => f.status === 'open');
