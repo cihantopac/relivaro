@@ -98,10 +98,11 @@ describe('discover workspace root', () => {
   it('discover sets workspaceRoot for a package audited alone', () => {
     const root = tree(PNPM_TREE);
     const profile = discover(new FileSet(join(root, 'packages/preflight'), { useGit: false }));
+    // Only script names leave the ancestor: their commands are content from outside the audit root.
     expect(profile.workspaceRoot).toEqual({
       rel: 'packages/preflight',
       lockfiles: ['pnpm-lock.yaml'],
-      scripts: { test: 'vitest' },
+      scripts: ['test'],
       packageManager: 'pnpm',
     });
     expect(JSON.stringify(profile.workspaceRoot)).not.toContain(root);

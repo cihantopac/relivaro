@@ -406,7 +406,11 @@ const xss: AstRule = {
         if (!body || isStaticString(body, lang) || SANITIZE_CALL.test(body.text)) continue;
         let html = false;
         walk(body, (n) => {
-          if (!html && isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? '')) html = true;
+          if (html) return false;
+          if (isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? '')) html = true;
+          // Template literal: the HTML lives in the text between substitutions.
+          else if (n.type === 'template_string' && /<[a-z!/]/i.test(n.text.replace(/\$\{[^}]*\}/g, '')))
+            html = true;
         });
         if (!html || !ctx.tainted(body)) continue;
         out.push({

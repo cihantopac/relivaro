@@ -55,6 +55,23 @@ describe('isSafePart', () => {
       await sqlHits("await pool.query(`SELECT ${rows.map((r) => r.name).join(',')} FROM t`);"),
     ).toHaveLength(1);
   });
+  const route = (body: string) =>
+    sqlHitsIn(
+      `import express from 'express';\nconst app = express();\napp.get('/x', async (req, res) => {\n${body}\n});\n`,
+    );
+  it('a variable assigned from req.query.count is not a constant number', async () => {
+    const hits = await route(
+      '  const limit = req.query.count;\n  res.json(await pool.query(`SELECT * FROM t LIMIT ${limit}`));',
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.severity).toBe('high');
+  });
+  it('a ternary with a req.query.size branch is not constant', async () => {
+    const hits = await route(
+      "  const order = req.query.dir ? req.query.size : 'ASC';\n  res.json(await pool.query(`SELECT * FROM t ORDER BY id ${order}`));",
+    );
+    expect(hits).toHaveLength(1);
+  });
 });
 
 describe('walk', () => {

@@ -1,6 +1,6 @@
 {
   "relivaro": "1.4.0",
-  "measuredAt": "2026-11-11T16:58:18.591Z",
+  "measuredAt": "2026-11-11T17:13:47.134Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 108
+        "ms": 105
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 86
+        "ms": 83
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 74
+        "ms": 72
       },
       "monorepo-docker": {
         "tp": 1,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 68
+        "ms": 76
       },
       "next-app": {
         "tp": 12,
@@ -57,15 +57,15 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 96
+        "ms": 105
       },
       "node-api": {
-        "tp": 62,
+        "tp": 64,
         "fp": 0,
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 105
+        "ms": 108
       },
       "python-app": {
         "tp": 32,
@@ -73,7 +73,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 80
+        "ms": 79
       },
       "regressions": {
         "tp": 5,
@@ -81,7 +81,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 97
+        "ms": 99
       },
       "static-site": {
         "tp": 3,
@@ -119,7 +119,7 @@
         "fn": 0
       },
       "perf/query-in-loop": {
-        "tp": 6,
+        "tp": 7,
         "fp": 0,
         "fn": 0
       },
@@ -224,7 +224,7 @@
         "fn": 0
       },
       "sec/xss": {
-        "tp": 4,
+        "tp": 5,
         "fp": 0,
         "fn": 0
       },
@@ -500,7 +500,7 @@
       }
     },
     "total": {
-      "tp": 170,
+      "tp": 172,
       "fp": 0,
       "fn": 0,
       "precision": 1,
@@ -514,12 +514,12 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 83,
-      "medianMs": 1483,
-      "minMs": 1453,
-      "maxMs": 1489,
-      "filesPerSecond": 2063,
-      "linesPerSecond": 32760,
-      "peakRssMb": 129,
+      "medianMs": 1440,
+      "minMs": 1419,
+      "maxMs": 1496,
+      "filesPerSecond": 2125,
+      "linesPerSecond": 33744,
+      "peakRssMb": 145,
       "openFindings": 60
     },
     "repositories": []

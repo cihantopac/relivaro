@@ -480,11 +480,33 @@ describe('dockerfile build context', () => {
     const root = makeTree({ '.dockerignore': '.git\n', 'repo/package.json': '{}', 'repo/Dockerfile': DF });
     expect(await ruleHits(join(root, 'repo'), 'sec/docker-context-leak')).toHaveLength(1);
   });
-  it('build context: an unknown context without any .dockerignore is reported at low confidence', async () => {
+  it('build context: no .dockerignore anywhere keeps medium confidence', async () => {
     const hits = await ruleHits(makeTree({ 'svc/Dockerfile': DF }), 'sec/docker-context-leak');
     expect(hits).toHaveLength(1);
-    expect(hits[0]!.confidence).toBe('low');
+    expect(hits[0]!.confidence).toBe('medium');
     expect(hits[0]!.message).toContain('is not determined');
+  });
+  it('build context: an unknown context with a .dockerignore elsewhere is reported at low confidence', async () => {
+    const hits = await ruleHits(
+      makeTree({ 'svc/Dockerfile': DF, 'other/.dockerignore': '.git\n', 'other/x.js': '1;\n' }),
+      'sec/docker-context-leak',
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.confidence).toBe('low');
+  });
+  it("build context: GitHub's Docker starter workflow names the root as context", async () => {
+    const wf = [
+      'on: push',
+      'jobs:',
+      '  b:',
+      '    runs-on: ubuntu-latest',
+      '    steps:',
+      '      - run: docker build . --file Dockerfile --tag my-image-name:$(date +%s)',
+      '      - run: docker build . -t img:${{ github.sha }}',
+      '',
+    ].join('\n');
+    const root = makeTree({ Dockerfile: DF, '.dockerignore': '.git\n', '.github/workflows/docker.yml': wf });
+    expect(await ruleHits(root, 'sec/docker-context-leak')).toEqual([]);
   });
   it('build context: a CI build step names the context', async () => {
     const wf =
@@ -538,6 +560,15 @@ describe('unit kind', () => {
           "import { serve as honoServe } from '@hono/node-server';\nexport function serve(app: any, port = 8080) {\n  return honoServe({ fetch: app.fetch, port });\n}\n",
       }),
     ).toBe('library');
+  });
+  it('a Go service without a Dockerfile stays web-backend', () => {
+    expect(
+      kindOf({
+        'go.mod': 'module example.com/svc\n\ngo 1.22\n\nrequire github.com/gin-gonic/gin v1.10.0\n',
+        'main.go':
+          'package main\n\nimport "github.com/gin-gonic/gin"\n\nfunc main() {\n\tr := gin.Default()\n\tr.Run(":8080")\n}\n',
+      }),
+    ).toBe('web-backend');
   });
   it('a start script that runs a file makes a service', () => {
     const withStart = JSON.stringify({ ...JSON.parse(pkg), scripts: { start: 'node dist/main.js' } });

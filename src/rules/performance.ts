@@ -98,6 +98,13 @@ function overShortLiteralList(loop: Node, lang: Language): boolean {
   return els.length <= SHORT_LITERAL_LIST && els.every((e) => isConstantExpression(e, lang));
 }
 
+/** Every loop around the call, up to the function boundary, runs over a short literal list. */
+function boundedByLiterals(loop: Node, lang: Language): boolean {
+  for (let l: Node | null = loop; l; l = enclosingLoop(l, lang))
+    if (!overShortLiteralList(l, lang)) return false;
+  return true;
+}
+
 const queryInLoop: AstRule = {
   kind: 'ast',
   id: 'perf/query-in-loop',
@@ -123,7 +130,7 @@ const queryInLoop: AstRule = {
     const reported = new Set<number>();
     for (const c of ctx.calls) {
       const loop = enclosingLoop(c.node, lang);
-      if (!loop || overShortLiteralList(loop, lang)) continue;
+      if (!loop || boundedByLiterals(loop, lang)) continue;
       let what: string | null = null;
       if (isJs(lang)) {
         const awaited = c.node.parent?.type === 'await_expression';

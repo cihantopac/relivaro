@@ -9,7 +9,7 @@ of the 1.3.0 review: Docker stage and build-context resolution, constant SQL fra
 scope, inline relivaro-accept annotations and --no-inline-suppressions, library vs. service detection, workspace-root
 metadata (lockfiles, scripts, .dockerignore) for packages audited alone, a lockfile size class, unique dependency
 counts, walk-mode visibility (--no-gitignore, --assume-tracked, symlink dedupe) and false negatives inside existing
-rules. 89 rules; 10 fixture projects with 170 expected findings at 100% precision/recall. Next: 1.5.0 (integration
+rules. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall. Next: 1.5.0 (integration
 and hosted scanning), then 1.6.0 (new rule families).
 
 ## Milestones (internal)

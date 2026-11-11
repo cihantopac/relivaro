@@ -1,6 +1,6 @@
 # Release readiness — Relivaro 1.4.0
 
-Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261111-165740-dce64b`, 2026-11-11, darwin/arm64, Node v22.23.2).
+Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261111-171411-642cde`, 2026-11-11, darwin/arm64, Node v22.23.2).
 
 ## Result: **READY** — score 89/100
 
@@ -10,7 +10,7 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 | Gate | Status | Basis | Evidence |
 | --- | --- | --- | --- |
 | Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.3s |
-| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 12.7s (242 passed) |
+| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 12.6s (251 passed) |
 | Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.2s |
 | Lint passes | ✅ passed | executed | `npm run lint --silent` passed in 0.2s |
 | No exposed secrets | ✅ passed | static | No secrets detected in analysed files. |
@@ -49,8 +49,8 @@ The remaining worker `sec/sql-injection` findings interpolate function parameter
 
 | Criterion | Evidence |
 | --- | --- |
-| Advertised features work | 242 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
-| Detection accuracy | Fixture corpus: 10 projects, 170 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
+| Advertised features work | 251 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
+| Detection accuracy | Fixture corpus: 10 projects, 172 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
 | Real-world validation | 5 local repositories, all significant findings verified, 19 false-positive patterns fixed and captured as regressions ([VALIDATION.md](VALIDATION.md)) |
 | Safe fix / verify / rollback | Integration tests: static verification, isolated command verification rejecting a regression without touching the tree, stale-plan and rollback-conflict refusal, exact restore, transactional multi-file apply (failed write restored), interrupted-apply rollback, forced rollback preserving later edits, corrupt-backup refusal, symlinks in the verification copy, unverifiable findings never counted as resolved |
 | Security boundaries | Security tests: secret redaction in all formats, untracked `.env` never read, symlink escape, git `core.fsmonitor` execution attempt, no-shell argv, env scrubbing, output caps, offline guarantee, load-target policy (incl. IPv4-mapped/NAT64/CGNAT and connection-time DNS re-validation), HTML injection and offline self-containment, EN/TR string parity |

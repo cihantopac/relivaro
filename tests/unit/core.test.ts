@@ -412,3 +412,67 @@ describe('1.3.0 review minors', () => {
     expect(Object.keys(I18N.tr)).toContain('kpi.accepted');
   });
 });
+
+describe('branch review fixes', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const tree = (files: Record<string, string>) => {
+    const root = mkdtempSync(join(tmpdir(), 'rlv-fix-'));
+    made.push(root);
+    for (const [p, c] of Object.entries(files)) {
+      mkdirSync(join(root, p, '..'), { recursive: true });
+      writeFileSync(join(root, p), c);
+    }
+    return root;
+  };
+
+  it('a large git-ignored tree never ends the walk of the analysed tree', async () => {
+    const root = tree({ '.gitignore': 'data/\n', 'asrc/a.js': 'eval(process.argv[2]);\n' });
+    mkdirSync(join(root, 'data'));
+    for (let i = 0; i < 20_050; i++) writeFileSync(join(root, 'data', 'f' + i), '');
+    const files = new FileSet(root, { useGit: false });
+    expect(files.files.map((f) => f.path)).toContain('asrc/a.js');
+    const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
+    expect(run.limitations.some((l) => /^At least 20000 file\(s\) ignored by \.gitignore/.test(l))).toBe(
+      true,
+    );
+  }, 60_000);
+
+  it('a symlink whose target is excluded is still analysed through the link', () => {
+    const root = tree({ 'third/evil.js': 'eval(x);\n', 'src/ok.js': '1;\n' });
+    symlinkSync('../third/evil.js', join(root, 'src/evil.js'));
+    const files = new FileSet(root, { useGit: false, exclude: ['third/**'] });
+    expect(files.files.map((f) => f.path)).toContain('src/evil.js');
+    expect(files.skipped.symlinkDuplicate).toBe(0);
+  });
+
+  it('a trailing relivaro-accept applies to its own line only', async () => {
+    const dir = tree({
+      'jobs.ts':
+        "import { pool } from './db';\nexport async function touch(rows: string[], other: string[]) {\n" +
+        '  for (const r of rows) await pool.query("UPDATE t SET x = 1 WHERE id = $1", [r]); // relivaro-accept perf/query-in-loop: bounded by plan size\n' +
+        '  for (const o of other) await pool.query("UPDATE u SET x = 1 WHERE id = $1", [o]);\n}\n',
+    });
+    const { run } = await runAudit({
+      root: dir,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      rules: ['perf/query-in-loop'],
+    });
+    const byLine = new Map(run.findings.map((f) => [f.location?.line, f.accepted]));
+    expect(byLine.get(3)).toEqual({ reason: 'bounded by plan size', source: 'inline' });
+    expect(byLine.has(4)).toBe(true);
+    expect(byLine.get(4)).toBeUndefined();
+  });
+
+  it('--assume-tracked never reads the head of a sensitive file to detect tool reports', () => {
+    const root = tree({ 'credentials.json': '{"schemaVersion":1,"tool":{"name":"relivaro"}}\n' });
+    const files = new FileSet(root, { useGit: false, assumeTracked: true });
+    expect(files.skipped.reports).toBe(0);
+    expect(files.files.map((f) => f.path)).toContain('credentials.json');
+    expect(files.read('credentials.json')).toBeUndefined();
+  });
+});

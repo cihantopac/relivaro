@@ -408,7 +408,7 @@ import {
   realpathSync,
   statSync
 } from "node:fs";
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 function isEnvTemplate(path) {
   return ENV_TEMPLATE.test(basename(path));
 }
@@ -600,13 +600,15 @@ function walk(root, respectGitignore = true) {
   const ignore = respectGitignore ? readRootGitignore(root) : [];
   const gitignored = [];
   let gitignoredCount = 0;
+  let gitignoredCapped = false;
+  let truncated = false;
   const note = (entry) => {
     if (gitignored.length < 20) gitignored.push(entry);
   };
-  const stack = [{ dir: "", ignored: false }];
-  let visited = 0;
-  while (stack.length) {
-    const { dir, ignored } = stack.pop();
+  const stack = [""];
+  const ignoredStack = [];
+  while (stack.length && !truncated) {
+    const dir = stack.pop();
     let entries;
     try {
       entries = readdirSync(join(root, dir), { withFileTypes: true });
@@ -615,25 +617,45 @@ function walk(root, respectGitignore = true) {
     }
     for (const e of entries) {
       const rel = dir ? `${dir}/${e.name}` : e.name;
-      if (++visited > 4e5) return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
       if (e.isDirectory()) {
         if (DEFAULT_EXCLUDED_DIRS.has(e.name)) continue;
-        const ign = ignored || ignore.length > 0 && matchesAny(`${rel}/`, ignore);
-        if (ign && !ignored) note(`${rel}/`);
-        stack.push({ dir: rel, ignored: ign });
+        if (ignore.length > 0 && matchesAny(`${rel}/`, ignore)) {
+          note(`${rel}/`);
+          ignoredStack.push(rel);
+        } else stack.push(rel);
       } else if (e.isFile() || e.isSymbolicLink()) {
-        const ign = ignored || ignore.length > 0 && matchesAny(rel, ignore);
-        if (ign && (ignored || !isSensitivePath(rel))) {
+        if (ignore.length > 0 && matchesAny(rel, ignore) && !isSensitivePath(rel)) {
           gitignoredCount++;
-          if (!ignored) note(rel);
+          note(rel);
           continue;
+        }
+        if (out2.length >= WALK_MAX_FILES) {
+          truncated = true;
+          break;
         }
         out2.push({ path: rel, tracked: void 0 });
       }
-      if (out2.length > 2e5) return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
     }
   }
-  return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
+  while (ignoredStack.length) {
+    const dir = ignoredStack.pop();
+    let entries;
+    try {
+      entries = readdirSync(join(root, dir), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      if (e.isDirectory()) {
+        if (!DEFAULT_EXCLUDED_DIRS.has(e.name)) ignoredStack.push(`${dir}/${e.name}`);
+      } else if (++gitignoredCount >= WALK_MAX_IGNORED) {
+        gitignoredCapped = true;
+        break;
+      }
+    }
+    if (gitignoredCapped) break;
+  }
+  return { entries: out2, gitignored: gitignored.sort(), gitignoredCount, gitignoredCapped, truncated };
 }
 function readRootGitignore(root) {
   try {
@@ -646,7 +668,7 @@ function readRootGitignore(root) {
     return [];
   }
 }
-var DEFAULT_EXCLUDED_DIRS, LANGUAGE_BY_EXT, MANIFESTS, LOCKFILES, TEMPLATE_EXT, DOC_EXT, CONFIG_EXT, OTHER_TEXT_EXT, BINARY_EXT, TEST_DIR, TEST_FILE, SENSITIVE_ENV, ENV_TEMPLATE, KEY_FILE, REPORT_EXT, REPORT_MARKERS, FileSet;
+var DEFAULT_EXCLUDED_DIRS, LANGUAGE_BY_EXT, MANIFESTS, LOCKFILES, TEMPLATE_EXT, DOC_EXT, CONFIG_EXT, OTHER_TEXT_EXT, BINARY_EXT, TEST_DIR, TEST_FILE, SENSITIVE_ENV, ENV_TEMPLATE, KEY_FILE, REPORT_EXT, REPORT_MARKERS, FileSet, WALK_MAX_FILES, WALK_MAX_IGNORED;
 var init_files = __esm({
   "src/fs/files.ts"() {
     "use strict";
@@ -908,6 +930,11 @@ var init_files = __esm({
       /** Size in bytes of each file in `skippedPaths.tooLarge`. */
       skippedSizes = /* @__PURE__ */ new Map();
       cache = /* @__PURE__ */ new Map();
+      /** Walk mode stopped counting git-ignored files, or stopped listing files, at its caps. */
+      walkLimits = {
+        gitignoredCapped: false,
+        truncated: false
+      };
       /** Sensitive files listed because of `assumeTracked`: reported by path, never read. */
       unreadable = /* @__PURE__ */ new Set();
       byPath = /* @__PURE__ */ new Map();
@@ -929,14 +956,43 @@ var init_files = __esm({
           candidates = w.entries;
           this.skipped.gitignored = w.gitignoredCount;
           this.skippedPaths.gitignored = w.gitignored;
+          this.walkLimits = { gitignoredCapped: w.gitignoredCapped, truncated: w.truncated };
         }
         const assumeTracked = !listed && opts.assumeTracked === true;
         const ignoredSensitive = listed ? gitIgnoredSensitive(this.root) : [];
-        const listedPaths = new Set(candidates.map((c) => c.path));
-        const linkTargets = /* @__PURE__ */ new Set();
+        const keptReal = /* @__PURE__ */ new Set();
+        const deferredLinks = [];
         const files = [];
-        for (const { path, tracked: listedTracked } of candidates) {
+        const consider = (path, listedTracked, abs, st, real) => {
           const tracked = assumeTracked ? true : listedTracked;
+          const ext = extname(path).toLowerCase();
+          const sensitive = isSensitivePath(path);
+          if (sensitive && tracked !== true) {
+            this.skipped.sensitive++;
+            this.sensitiveUnread.push({ path, ignored: listed ? false : void 0 });
+            return;
+          }
+          const { kind, language: language2 } = classify(path);
+          const pf = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
+          if (sensitive && assumeTracked) {
+            pf.assumedTracked = true;
+            this.unreadable.add(path);
+          }
+          if (language2) pf.language = language2;
+          if (st.size > (kind === "lockfile" ? this.maxLockfileBytes : this.maxBytes)) {
+            this.skipped.tooLarge++;
+            this.skippedPaths.tooLarge.push(path);
+            this.skippedSizes.set(path, st.size);
+            return;
+          }
+          if (!this.unreadable.has(path) && REPORT_EXT.has(ext) && isToolReport(path, readHead(abs))) {
+            this.skipped.reports++;
+            return;
+          }
+          keptReal.add(real);
+          files.push(pf);
+        };
+        for (const { path, tracked: listedTracked } of candidates) {
           if (isExcludedPath(path) || opts.exclude?.length && matchesAny(path, opts.exclude)) {
             this.skipped.excluded++;
             continue;
@@ -945,8 +1001,7 @@ var init_files = __esm({
             this.skipped.excluded++;
             continue;
           }
-          const ext = extname(path).toLowerCase();
-          if (BINARY_EXT.has(ext)) {
+          if (BINARY_EXT.has(extname(path).toLowerCase())) {
             this.skipped.binary++;
             continue;
           }
@@ -961,58 +1016,33 @@ var init_files = __esm({
           } catch {
             continue;
           }
-          if (st.isSymbolicLink()) {
-            try {
-              const target = realpathSync.native(abs);
-              if (!isInside(this.realRoot, target)) {
-                this.skipped.symlinkOutside++;
-                continue;
-              }
-              const tst = statSync(target);
-              if (tst.isDirectory()) {
-                this.skipped.symlinkDir++;
-                continue;
-              }
-              if (!tst.isFile()) {
-                this.skipped.symlinkOutside++;
-                continue;
-              }
-              const rel = relative(this.realRoot, target).split(sep).join("/");
-              if (rel !== path && listedPaths.has(rel) || linkTargets.has(target)) {
-                this.skipped.symlinkDuplicate++;
-                continue;
-              }
-              linkTargets.add(target);
-              st = tst;
-            } catch {
+          if (st.isSymbolicLink()) deferredLinks.push({ path, listedTracked, abs });
+          else if (st.isFile()) consider(path, listedTracked, abs, st, join(this.realRoot, path));
+        }
+        for (const { path, listedTracked, abs } of deferredLinks) {
+          try {
+            const target = realpathSync.native(abs);
+            if (!isInside(this.realRoot, target)) {
               this.skipped.symlinkOutside++;
               continue;
             }
-          } else if (!st.isFile()) continue;
-          const sensitive = isSensitivePath(path);
-          if (sensitive && tracked !== true) {
-            this.skipped.sensitive++;
-            this.sensitiveUnread.push({ path, ignored: listed ? false : void 0 });
-            continue;
+            const tst = statSync(target);
+            if (tst.isDirectory()) {
+              this.skipped.symlinkDir++;
+              continue;
+            }
+            if (!tst.isFile()) {
+              this.skipped.symlinkOutside++;
+              continue;
+            }
+            if (keptReal.has(target)) {
+              this.skipped.symlinkDuplicate++;
+              continue;
+            }
+            consider(path, listedTracked, abs, tst, target);
+          } catch {
+            this.skipped.symlinkOutside++;
           }
-          const { kind, language: language2 } = classify(path);
-          const pf = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
-          if (sensitive && assumeTracked) {
-            pf.assumedTracked = true;
-            this.unreadable.add(path);
-          }
-          if (language2) pf.language = language2;
-          if (st.size > (kind === "lockfile" ? this.maxLockfileBytes : this.maxBytes)) {
-            this.skipped.tooLarge++;
-            this.skippedPaths.tooLarge.push(path);
-            this.skippedSizes.set(path, st.size);
-            continue;
-          }
-          if (REPORT_EXT.has(ext) && isToolReport(path, readHead(abs))) {
-            this.skipped.reports++;
-            continue;
-          }
-          files.push(pf);
         }
         for (const path of ignoredSensitive) this.sensitiveUnread.push({ path, ignored: true });
         files.sort((a, b) => a.path.localeCompare(b.path));
@@ -1073,6 +1103,8 @@ var init_files = __esm({
         return this.files.filter((f) => re.test(f.path));
       }
     };
+    WALK_MAX_FILES = 2e5;
+    WALK_MAX_IGNORED = 2e4;
   }
 });
 
@@ -1745,7 +1777,7 @@ function isNumericExpression(n) {
   if (n.type === "number" || n.type === "integer" || n.type === "float") return true;
   if (n.type === "parenthesized_expression") return isNumericExpression(n.namedChildren[0]);
   if (n.type === "member_expression")
-    return /^(?:length|size|count)$/.test(n.childForFieldName("property")?.text ?? "");
+    return /^(?:length|size|count)$/.test(n.childForFieldName("property")?.text ?? "") && !REQUEST_LIKE.test(n.childForFieldName("object")?.text ?? "");
   if (n.type === "binary_expression" || n.type === "binary_operator") {
     if (!/^[-+*/]$/.test(n.childForFieldName("operator")?.text ?? "")) return false;
     const l = n.childForFieldName("left");
@@ -1870,6 +1902,17 @@ function importsModule(source, modules) {
 }
 function constInitializer(id) {
   if (id?.type !== "identifier") return void 0;
+  for (let fn = id.parent; fn; fn = fn.parent) {
+    const params = fn.childForFieldName("parameters") ?? fn.childForFieldName("parameter");
+    if (!params || !FUNCTION_SCOPE.has(fn.type)) continue;
+    let shadowed = false;
+    walk2(params, (p) => {
+      if (shadowed) return false;
+      if ((p.type === "identifier" || p.type === "shorthand_property_identifier_pattern") && p.text === id.text)
+        shadowed = true;
+    });
+    if (shadowed) return void 0;
+  }
   let root = id;
   while (root.parent) root = root.parent;
   let found;
@@ -1884,7 +1927,7 @@ function constInitializer(id) {
   });
   return bindings === 1 ? found : void 0;
 }
-var OWASP, API, SAFE_PART_CALL, FUNCTION_SCOPE, SECRET_PURPOSE;
+var OWASP, API, SAFE_PART_CALL, REQUEST_LIKE, FUNCTION_SCOPE, SECRET_PURPOSE;
 var init_helpers = __esm({
   "src/rules/helpers.ts"() {
     "use strict";
@@ -1910,6 +1953,7 @@ var init_helpers = __esm({
       API10: "API10:2023 Unsafe Consumption of APIs"
     };
     SAFE_PART_CALL = /^(?:parseInt|parseFloat|Number|String\(\w+\.length|encodeURIComponent|escapeshellarg|escapeshellcmd|intval|floatval|int|float|shlex\.quote|quote|PDO::quote|\$\w+->quote|mysqli_real_escape_string|addslashes|esc_sql|json_encode|JSON\.stringify|count|len|abs|Math\.\w+|\(int\)|\(float\))/;
+    REQUEST_LIKE = /^(?:req|request|ctx|context|event)\b|\.(?:query|body|params|headers|cookies|args|form|json|searchParams)\b|\$_(?:GET|POST|REQUEST|COOKIE)/;
     FUNCTION_SCOPE = /* @__PURE__ */ new Set([
       "function_declaration",
       "function_expression",
@@ -1977,6 +2021,11 @@ function overShortLiteralList(loop, lang) {
   if (!iter || !/^(?:array|list|tuple)$/.test(iter.type)) return false;
   const els = iter.namedChildren.filter((e) => !!e && e.type !== "comment");
   return els.length <= SHORT_LITERAL_LIST && els.every((e) => isConstantExpression(e, lang));
+}
+function boundedByLiterals(loop, lang) {
+  for (let l = loop; l; l = enclosingLoop(l, lang))
+    if (!overShortLiteralList(l, lang)) return false;
+  return true;
 }
 function isRequestHandler(fn, lang, source) {
   const params = parameterNames(fn, lang);
@@ -2202,7 +2251,7 @@ var init_performance = __esm({
         const reported = /* @__PURE__ */ new Set();
         for (const c of ctx.calls) {
           const loop = enclosingLoop(c.node, lang);
-          if (!loop || overShortLiteralList(loop, lang)) continue;
+          if (!loop || boundedByLiterals(loop, lang)) continue;
           let what = null;
           if (isJs(lang)) {
             const awaited = c.node.parent?.type === "await_expression";
@@ -3609,7 +3658,10 @@ var init_code = __esm({
             if (!body2 || isStaticString(body2, lang) || SANITIZE_CALL.test(body2.text)) continue;
             let html = false;
             walk2(body2, (n) => {
-              if (!html && isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? "")) html = true;
+              if (html) return false;
+              if (isStaticString(n, lang) && /<[a-z!/]/i.test(stringValue(n, lang) ?? "")) html = true;
+              else if (n.type === "template_string" && /<[a-z!/]/i.test(n.text.replace(/\$\{[^}]*\}/g, "")))
+                html = true;
             });
             if (!html || !ctx.tainted(body2)) continue;
             out2.push({
@@ -12356,7 +12408,8 @@ function dockerBuildContexts(files) {
   for (const w of files.byKind("workflow")) {
     const text = files.read(w.path) ?? "";
     for (const m of text.matchAll(/\bdocker\s+(?:buildx\s+)?build\b([^\n&;|]*)/g)) {
-      const toks = m[1].trim().split(/\s+/).filter(Boolean);
+      const args2 = m[1].replace(/\$\{\{[^}]*\}\}/g, " ").replace(/\$\([^)]*\)/g, " ").replace(/`[^`]*`/g, " ");
+      const toks = args2.trim().split(/\s+/).filter(Boolean);
       let file;
       let context;
       for (let i2 = 0; i2 < toks.length; i2++) {
@@ -12365,11 +12418,11 @@ function dockerBuildContexts(files) {
         else if (t2.startsWith("--file=")) file = t2.slice(7);
         else if (BUILD_VALUE_FLAGS.has(t2)) i2++;
         else if (t2.startsWith("-") || t2 === "\\") continue;
-        else if (!t2.includes("$") && !/^https?:|^git@/.test(t2)) context = t2;
+        else if (context === void 0) context = t2;
       }
-      if (context === void 0) continue;
+      if (context === void 0 || context.includes("$") || /^https?:|^git@|^-$/.test(context)) continue;
       const ctxDir = underRoot("", context);
-      if (ctxDir === null) continue;
+      if (ctxDir === null || ctxDir && !files.files.some((f) => f.path.startsWith(`${ctxDir}/`))) continue;
       add(file ? underRoot("", file) : underRoot(ctxDir, "Dockerfile"), ctxDir);
     }
     let doc;
@@ -12854,10 +12907,11 @@ var init_files2 = __esm({
             ancestorIgnore = ws ? ancestorDockerignore(ctx.files.realRoot, ws.dir) : null;
           }
           if (ancestorIgnore) continue;
+          const anyDockerignore = ctx.files.files.some((x) => /(?:^|\/|\.)dockerignore$/.test(x.path));
           out2.push({
             file: f.path,
             line: copy.line,
-            confidence: "low",
+            confidence: anyDockerignore ? "low" : "medium",
             message: `The build context of \`${f.path}\` is not determined (no compose or CI build step names it) and no \`.dockerignore\` was found in its directory or any parent; \`${copy.op} ${copy.args}\` may copy secrets and \`.git\`.`
           });
         }
@@ -16353,7 +16407,7 @@ function discover(files) {
   const workspaceRoot = ws ? {
     rel: ws.rel,
     lockfiles: ws.lockfiles,
-    scripts: ws.scripts,
+    scripts: Object.keys(ws.scripts).sort(),
     ...ws.packageManager ? { packageManager: ws.packageManager } : {}
   } : void 0;
   return {
@@ -16409,7 +16463,8 @@ function unitKind(kinds, ms, serverEntry) {
   const fe = kinds.includes("frontend");
   const be = kinds.includes("backend");
   if (fe && be) return "fullstack";
-  if (be) return serverEntry() ? "web-backend" : ms.length ? "library" : "unknown";
+  if (be)
+    return serverEntry() || ms.some((m) => m.ecosystem !== "npm" && m.ecosystem !== "PyPI") ? "web-backend" : ms.length ? "library" : "unknown";
   if (fe) return "web-frontend";
   if (ms.some((m) => m.extra.bin)) return "cli";
   if (ms.length) return "library";
@@ -22875,8 +22930,7 @@ function parseSuppressions(lines) {
         if (!rules2.size || reason.length < 3) s.invalidAccept.push(i2 + 1);
         else {
           const entry2 = { rules: rules2, reason };
-          if (a[1] !== "-next-line") s.accept.set(i2 + 1, entry2);
-          s.accept.set(i2 + 2, entry2);
+          s.accept.set(a[1] === "-next-line" ? i2 + 2 : i2 + 1, entry2);
         }
       }
     }
@@ -23314,9 +23368,13 @@ async function runAudit(opts) {
     );
   if (files.skipped.gitignored)
     limitations.push(
-      `${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored.slice(0, 5).join(
+      `${files.walkLimits.gitignoredCapped ? "At least " : ""}${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored.slice(0, 5).join(
         ", "
       )}${files.skippedPaths.gitignored.length > 5 ? ", \u2026" : ""}); use --no-gitignore to include them.`
+    );
+  if (files.walkLimits.truncated)
+    limitations.push(
+      "The file walk stopped at its limit of 200000 files; the rest of the tree was not listed or analysed."
     );
   if (files.skipped.reports)
     limitations.push(
@@ -23416,7 +23474,7 @@ var CHECK_SCRIPT = {
   lint: /^lint(?::|$)/
 };
 function noCommandsLimitation(kinds, ws) {
-  const defined = ws ? Object.keys(ws.scripts).filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n))).sort() : [];
+  const defined = ws ? ws.scripts.filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n))).sort() : [];
   if (!ws || !defined.length) return `No ${kinds.join("/")} commands were detected.`;
   const up = ws.rel.split("/").map(() => "..").join("/");
   return `No ${kinds.join("/")} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(", ")}. Run the audit from the workspace root to include them.`;

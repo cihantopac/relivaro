@@ -92,7 +92,8 @@ export interface ProjectProfile {
   workspaceRoot?: {
     rel: string;
     lockfiles: string[];
-    scripts: Record<string, string>;
+    /** Script names only: the commands are content from outside the audit root and may carry credentials. */
+    scripts: string[];
     packageManager?: string;
   };
 }
@@ -543,7 +544,7 @@ export function discover(files: FileSet): ProjectProfile {
     ? {
         rel: ws.rel,
         lockfiles: ws.lockfiles,
-        scripts: ws.scripts,
+        scripts: Object.keys(ws.scripts).sort(),
         ...(ws.packageManager ? { packageManager: ws.packageManager } : {}),
       }
     : undefined;
@@ -607,7 +608,13 @@ function unitKind(kinds: TechKind[], ms: ManifestInfo[], serverEntry: () => bool
   const be = kinds.includes('backend');
   if (fe && be) return 'fullstack';
   // A backend framework among the dependencies is not a service by itself: adapters and plugins depend on it too.
-  if (be) return serverEntry() ? 'web-backend' : ms.length ? 'library' : 'unknown';
+  // Server entries are recognised for JS/TS and Python only; other ecosystems (Go, Rust, JVM, PHP) keep the old rule.
+  if (be)
+    return serverEntry() || ms.some((m) => m.ecosystem !== 'npm' && m.ecosystem !== 'PyPI')
+      ? 'web-backend'
+      : ms.length
+        ? 'library'
+        : 'unknown';
   if (fe) return 'web-frontend';
   if (ms.some((m) => m.extra.bin)) return 'cli';
   if (ms.length) return 'library';

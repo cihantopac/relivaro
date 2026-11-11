@@ -757,10 +757,12 @@ const dockerCopyAll: ProjectRule = {
         ancestorIgnore = ws ? ancestorDockerignore(ctx.files.realRoot, ws.dir) : null;
       }
       if (ancestorIgnore) continue;
+      // With no .dockerignore anywhere, every possible context lacks one; only another context's file makes it uncertain.
+      const anyDockerignore = ctx.files.files.some((x) => /(?:^|\/|\.)dockerignore$/.test(x.path));
       out.push({
         file: f.path,
         line: copy.line,
-        confidence: 'low',
+        confidence: anyDockerignore ? 'low' : 'medium',
         message: `The build context of \`${f.path}\` is not determined (no compose or CI build step names it) and no \`.dockerignore\` was found in its directory or any parent; \`${copy.op} ${copy.args}\` may copy secrets and \`.git\`.`,
       });
     }
@@ -833,7 +835,12 @@ function dockerBuildContexts(files: ProjectContext['files']): Map<string, string
   for (const w of files.byKind('workflow')) {
     const text = files.read(w.path) ?? '';
     for (const m of text.matchAll(/\bdocker\s+(?:buildx\s+)?build\b([^\n&;|]*)/g)) {
-      const toks = m[1]!.trim().split(/\s+/).filter(Boolean);
+      // Shell and Actions substitutions (`$(date +%s)`, `${{ github.sha }}`, backticks) are never the context.
+      const args = m[1]!
+        .replace(/\$\{\{[^}]*\}\}/g, ' ')
+        .replace(/\$\([^)]*\)/g, ' ')
+        .replace(/`[^`]*`/g, ' ');
+      const toks = args.trim().split(/\s+/).filter(Boolean);
       let file: string | undefined;
       let context: string | undefined;
       for (let i = 0; i < toks.length; i++) {
@@ -842,11 +849,12 @@ function dockerBuildContexts(files: ProjectContext['files']): Map<string, string
         else if (t.startsWith('--file=')) file = t.slice(7);
         else if (BUILD_VALUE_FLAGS.has(t)) i++;
         else if (t.startsWith('-') || t === '\\') continue;
-        else if (!t.includes('$') && !/^https?:|^git@/.test(t)) context = t;
+        else if (context === undefined) context = t; // the first positional argument is the context
       }
-      if (context === undefined) continue;
+      if (context === undefined || context.includes('$') || /^https?:|^git@|^-$/.test(context)) continue;
       const ctxDir = underRoot('', context);
-      if (ctxDir === null) continue;
+      // A context that is not a directory of the tree is not a context we can check: treat it as unknown.
+      if (ctxDir === null || (ctxDir && !files.files.some((f) => f.path.startsWith(`${ctxDir}/`)))) continue;
       add(file ? underRoot('', file) : underRoot(ctxDir, 'Dockerfile'), ctxDir);
     }
     type Workflow = {

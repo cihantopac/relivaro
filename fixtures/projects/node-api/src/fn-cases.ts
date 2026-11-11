@@ -25,6 +25,10 @@ fnCases.get('/greet', (req, res) => {
   res.send('<p>' + req.query.q + '</p>'); // expect: sec/xss
 });
 
+fnCases.get('/greet-template', (req, res) => {
+  res.send(`<p>${req.query.q}</p>`); // expect: sec/xss
+});
+
 fnCases.get('/greet-escaped', (req, res) => {
   res.send(escapeHtml(req.query.q));
 });
@@ -39,6 +43,10 @@ fnCases.use(cors({ origin: 'https://app.example', credentials: true }));
 
 export function issueToken(payload: object) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' }); // expect: sec/hardcoded-signing-secret
+}
+
+export function issueTokenWith(payload: object, JWT_SECRET: string) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '1h' });
 }
 
 export function issueTokenFromEnv(payload: object) {

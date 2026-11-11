@@ -45,7 +45,7 @@ JSON Schema: [`schemas/config.schema.json`](../schemas/config.schema.json). `rel
 - Inline, same line or the line above: `// relivaro-ignore sec/xss: sanitized by renderMarkdown()` (any comment
   syntax). Without a rule id it suppresses every rule on that line. `relivaro-ignore-next-line` and
   `relivaro-ignore-file [rule-ids]` are also supported. Suppressed findings stay visible in reports with the reason.
-- Inline acceptance, same line or the line above:
+- Inline acceptance, on its own line (`relivaro-accept`) or for the line below (`relivaro-accept-next-line`):
   `// relivaro-accept-next-line perf/query-in-loop: sequential row locks, bounded by plan size`. A rule id and a reason
   (at least 3 characters) are required; a comment without them accepts nothing and is listed in `errors.rules`. An
   accepted finding is not hidden: it stays open in reports, marked *Accepted in code* with the reason, and counts as

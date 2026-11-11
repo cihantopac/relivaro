@@ -16,14 +16,16 @@ negatives that fall inside existing rules, and the deferred minors of the 1.3.0 
 - **`sec/docker-context-leak` finds the real build context.** The context comes from a compose `build.context`, a CI
   `docker build -f … <ctx>` step or `docker/build-push-action` (`context:`/`file:`). An unknown context checks the
   Dockerfile's directory, its parents and the workspace root's `.dockerignore`; when nothing is found the finding says
-  the context is not determined and has low confidence.
+  the context is not determined; its confidence is low when another `.dockerignore` exists in the tree.
 - **Constant SQL fragments.** `sec/sql-injection` treats a ternary whose two branches are literals
-  (`${lock ? 'FOR UPDATE' : ''}`), number arithmetic over `.length`/`.size`/`.count` (`$${params.length + 1}`) and a
+  (`${lock ? 'FOR UPDATE' : ''}`), number arithmetic over `.length`/`.size`/`.count` of non-request values (`$${params.length + 1}`) and a
   `.map(…).join(…)` over a constant array whose callback only formats its own parameter as constant. A branch with
   user input is still reported.
 - **Tests and short literal lists.** `perf/query-in-loop` and `sec/sensitive-data-in-logs` no longer report in test
-  files, and `perf/query-in-loop` skips a loop over a literal array of at most 10 constants.
-- **Libraries are not services.** A backend framework among a package's dependencies no longer makes it a service:
+  files, and `perf/query-in-loop` skips a query whose enclosing loops all run over
+  a literal array of at most 10 constants.
+- **Libraries are not services.** In a JS/TS or Python package, a backend framework among the dependencies no
+  longer makes it a service:
   it needs a server entry (`.listen(`, `createServer(`, `serve(`, `uvicorn.run(`, `app.run(`, `Deno.serve(`, a
   `start`/`dev` script that runs a file or framework server, or a `Dockerfile`/`Procfile`/`main.py`/`manage.py`/
   `artisan`). `rel/no-health-check` recognises versioned routes such as `/v1/health` and `/api/v2/healthz`.

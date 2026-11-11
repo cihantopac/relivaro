@@ -347,11 +347,15 @@ export async function runAudit(
     );
   if (files.skipped.gitignored)
     limitations.push(
-      `${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored
+      `${files.walkLimits.gitignoredCapped ? 'At least ' : ''}${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored
         .slice(0, 5)
         .join(
           ', ',
         )}${files.skippedPaths.gitignored.length > 5 ? ', …' : ''}); use --no-gitignore to include them.`,
+    );
+  if (files.walkLimits.truncated)
+    limitations.push(
+      'The file walk stopped at its limit of 200000 files; the rest of the tree was not listed or analysed.',
     );
   if (files.skipped.reports)
     limitations.push(
@@ -458,11 +462,7 @@ const CHECK_SCRIPT: Record<CheckKind, RegExp> = {
 
 /** "No build/test commands were detected", naming the workspace root's scripts when a package is audited alone. */
 export function noCommandsLimitation(kinds: CheckKind[], ws: ProjectProfile['workspaceRoot']): string {
-  const defined = ws
-    ? Object.keys(ws.scripts)
-        .filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n)))
-        .sort()
-    : [];
+  const defined = ws ? ws.scripts.filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n))).sort() : [];
   if (!ws || !defined.length) return `No ${kinds.join('/')} commands were detected.`;
   const up = ws.rel
     .split('/')

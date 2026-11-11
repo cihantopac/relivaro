@@ -134,8 +134,8 @@ export function parseSuppressions(lines: string[]): Suppressions {
         if (!rules.size || reason.length < 3) s.invalidAccept.push(i + 1);
         else {
           const entry = { rules, reason };
-          if (a[1] !== '-next-line') s.accept.set(i + 1, entry);
-          s.accept.set(i + 2, entry);
+          // Narrower than relivaro-ignore: an acceptance covers exactly one line, its own or (-next-line) the next.
+          s.accept.set(a[1] === '-next-line' ? i + 2 : i + 1, entry);
         }
       }
     }

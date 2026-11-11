@@ -14,11 +14,11 @@ The corpus annotates every expected finding inline; anything else Relivaro repor
 | monorepo-docker | 1 | 0 | 0 | 100% | 100% |
 | monorepo-lib | 1 | 0 | 0 | 100% | 100% |
 | next-app | 12 | 0 | 0 | 100% | 100% |
-| node-api | 62 | 0 | 0 | 100% | 100% |
+| node-api | 64 | 0 | 0 | 100% | 100% |
 | python-app | 32 | 0 | 0 | 100% | 100% |
 | regressions | 5 | 0 | 0 | 100% | 100% |
 | static-site | 3 | 0 | 0 | 100% | 100% |
-| **total** | **170** | **0** | **0** | **100.0%** | **100.0%** |
+| **total** | **172** | **0** | **0** | **100.0%** | **100.0%** |
 
 Detection accuracy re-measured 2026-11-11 with Relivaro 1.4.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
 

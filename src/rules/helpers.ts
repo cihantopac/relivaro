@@ -177,13 +177,20 @@ export function isConstantExpression(n: Node | null | undefined, lang: Language)
   return false;
 }
 
+const REQUEST_LIKE =
+  /^(?:req|request|ctx|context|event)\b|\.(?:query|body|params|headers|cookies|args|form|json|searchParams)\b|\$_(?:GET|POST|REQUEST|COOKIE)/;
+
 /** Number literals, `.length`/`.size`/`.count` and `+ - * /` arithmetic over them: never a string to inject. */
 function isNumericExpression(n: Node | null | undefined): boolean {
   if (!n) return false;
   if (n.type === 'number' || n.type === 'integer' || n.type === 'float') return true;
   if (n.type === 'parenthesized_expression') return isNumericExpression(n.namedChildren[0]);
+  // `.length` of a local array is a number; `req.query.count` is a string the client controls.
   if (n.type === 'member_expression')
-    return /^(?:length|size|count)$/.test(n.childForFieldName('property')?.text ?? '');
+    return (
+      /^(?:length|size|count)$/.test(n.childForFieldName('property')?.text ?? '') &&
+      !REQUEST_LIKE.test(n.childForFieldName('object')?.text ?? '')
+    );
   if (n.type === 'binary_expression' || n.type === 'binary_operator') {
     if (!/^[-+*/]$/.test(n.childForFieldName('operator')?.text ?? '')) return false;
     const l = n.childForFieldName('left');
@@ -382,6 +389,21 @@ export function isJsLang(lang: Language): boolean {
  */
 export function constInitializer(id: Node | null | undefined): Node | undefined {
   if (id?.type !== 'identifier') return undefined;
+  // A parameter of an enclosing function with the same name shadows any module constant.
+  for (let fn: Node | null = id.parent; fn; fn = fn.parent) {
+    const params = fn.childForFieldName('parameters') ?? fn.childForFieldName('parameter');
+    if (!params || !FUNCTION_SCOPE.has(fn.type)) continue;
+    let shadowed = false;
+    walk(params, (p) => {
+      if (shadowed) return false;
+      if (
+        (p.type === 'identifier' || p.type === 'shorthand_property_identifier_pattern') &&
+        p.text === id.text
+      )
+        shadowed = true;
+    });
+    if (shadowed) return undefined;
+  }
   let root: Node = id;
   while (root.parent) root = root.parent;
   let found: Node | undefined;
