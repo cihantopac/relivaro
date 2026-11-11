@@ -617,7 +617,18 @@ function unitKind(kinds: TechKind[], ms: ManifestInfo[], serverEntry: () => bool
 const SERVER_CALL =
   /\.listen\s*\(|\bcreateServer\s*\(|(?:^|[^\w.])serve\s*\(|\buvicorn\.run\s*\(|\bapp\.run\s*\(|\bDeno\.serve\s*\(|\bBun\.serve\s*\(/;
 const SERVER_SCRIPT =
-  /(?:^|[\s;&|])(?:node|tsx|ts-node|ts-node-dev|bun|nodemon)\s+(?:--?[\w-]+(?:=\S+)?\s+)*[\w./@-]+\.[cm]?[jt]s\b|\b(?:next|nest|fastify)\s+start\b|\b(?:uvicorn|gunicorn|hypercorn|daphne)\b|\bflask\s+run\b|\bartisan\s+serve\b/;
+  /\b(?:next|nest|fastify)\s+start\b|\b(?:uvicorn|gunicorn|hypercorn|daphne)\b|\bflask\s+run\b|\bartisan\s+serve\b/;
+const FILE_RUNNERS = new Set(['node', 'tsx', 'ts-node', 'ts-node-dev', 'bun', 'nodemon']);
+
+/** `node dist/main.js`, `tsx watch src/server.ts`: a script command that runs a JS/TS file with a runtime. */
+function runsServerFile(script: string): boolean {
+  for (const cmd of script.split(/&&|\|\||[;&|]/)) {
+    const toks = cmd.trim().split(/\s+/);
+    const at = toks.findIndex((t) => FILE_RUNNERS.has(t));
+    if (at >= 0 && toks.slice(at + 1).some((t) => !t.startsWith('-') && /\.[cm]?[jt]s$/.test(t))) return true;
+  }
+  return false;
+}
 const SERVER_FILES =
   /^(?:Dockerfile|Procfile|main\.py|manage\.py|wsgi\.py|asgi\.py|artisan|wrangler\.toml|serverless\.ya?ml|fly\.toml)$/;
 
@@ -633,7 +644,7 @@ export function hasServerEntry(
   owns: (path: string) => boolean = () => true,
 ): boolean {
   for (const name of ['start', 'dev', 'serve'])
-    if (scripts[name] && SERVER_SCRIPT.test(scripts[name])) return true;
+    if (scripts[name] && (SERVER_SCRIPT.test(scripts[name]) || runsServerFile(scripts[name]))) return true;
   const inUnit = (p: string) => (unitPath === '.' || p.startsWith(`${unitPath}/`)) && owns(p);
   for (const f of files.files) {
     if (!inUnit(f.path)) continue;
