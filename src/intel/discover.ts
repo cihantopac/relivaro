@@ -401,7 +401,7 @@ export function discover(files: FileSet): ProjectProfile {
     [/^Chart\.yaml$/, 'Helm'],
     [/\.tf$/, 'Terraform'],
     [/^ecosystem\.config\.[cm]?js$/, 'PM2'],
-    [/^(?:nginx|default|site)\.conf$|\/nginx\/.+\.conf$/, 'nginx'],
+    [/^(?:nginx|default|site)\.conf(?:\.template)?$|\/nginx\/.+\.conf(?:\.template)?$/, 'nginx'],
     [/^Caddyfile(?:\.[\w-]+)?$/, 'Caddy'],
     [/\.service$/, 'systemd'],
     [/^supervisord?\.conf$|\/supervisor\/.+\.conf$/, 'Supervisor'],

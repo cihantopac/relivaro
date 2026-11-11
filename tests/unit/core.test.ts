@@ -373,6 +373,17 @@ describe('1.3.0 review minors', () => {
     expect(classify('deploy/nginx.conf.template').kind).toBe('webserver');
     expect(classify('templates/email.conf.template').kind).not.toBe('webserver');
   });
+  it('discover lists an nginx .conf.template as an nginx deploy target', async () => {
+    const { discover } = await import('../../src/intel/discover.js');
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-tpl-'));
+    try {
+      mkdirSync(join(dir, 'nginx'));
+      writeFileSync(join(dir, 'nginx/default.conf.template'), 'server {\n  listen 80;\n}\n');
+      expect(discover(new FileSet(dir, { useGit: false })).deploy.map((d) => d.kind)).toContain('nginx');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
   it('only a .sarif written by Relivaro, Jourilo or Searvex is a tool report', () => {
     const sarif = (name: string) =>
       JSON.stringify({ version: '2.1.0', runs: [{ tool: { driver: { name } }, results: [] }] });
