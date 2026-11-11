@@ -1609,6 +1609,8 @@ const sensitiveLogging: AstRule = {
   verification:
     'Exercise the code path and inspect the emitted log line; it must not contain the secret value.',
   check(ctx) {
+    // Tests assert redaction by logging fake secrets on purpose.
+    if (ctx.file.isTest) return [];
     const out: Hit[] = [];
     const lang = ctx.lang;
     const LOGGER = isJs(lang)

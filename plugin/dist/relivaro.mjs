@@ -1889,6 +1889,20 @@ function phpQueryInLoop(c) {
   }
   return null;
 }
+function overShortLiteralList(loop, lang) {
+  let iter = null;
+  if (loop.type === "for_in_statement" || lang === "python" && loop.type === "for_statement")
+    iter = loop.childForFieldName("right");
+  else if (loop.type === "call_expression") {
+    const fn = loop.childForFieldName("function");
+    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "forEach")
+      iter = fn.childForFieldName("object");
+  }
+  while (iter?.type === "parenthesized_expression") iter = iter.namedChildren[0] ?? null;
+  if (!iter || !/^(?:array|list|tuple)$/.test(iter.type)) return false;
+  const els = iter.namedChildren.filter((e) => !!e && e.type !== "comment");
+  return els.length <= SHORT_LITERAL_LIST && els.every((e) => isConstantExpression(e, lang));
+}
 function isRequestHandler(fn, lang, source) {
   const params = parameterNames(fn, lang);
   if (params.some((p) => /^(?:req|request|res|response|reply)$/.test(p))) return true;
@@ -2078,7 +2092,7 @@ function redosRisk(pattern) {
   }
   return false;
 }
-var JS_DB_ROOT, JS_DB_METHOD, ORM_FIND, PHP_FACADES, PHP_QUERY_TERMINAL, NOT_RELATIONSHIP, queryInLoop, inefficientCount, unboundedQuery, ROUTE_EXPORT, syncIo, pos, range, DIGIT, WORD, SPACE, redos, missingFkIndex, performanceRules;
+var JS_DB_ROOT, JS_DB_METHOD, ORM_FIND, PHP_FACADES, PHP_QUERY_TERMINAL, NOT_RELATIONSHIP, SHORT_LITERAL_LIST, queryInLoop, inefficientCount, unboundedQuery, ROUTE_EXPORT, syncIo, pos, range, DIGIT, WORD, SPACE, redos, missingFkIndex, performanceRules;
 var init_performance = __esm({
   "src/rules/performance.ts"() {
     "use strict";
@@ -2091,6 +2105,7 @@ var init_performance = __esm({
     PHP_FACADES = /^(?:Str|Arr|Carbon|CarbonImmutable|Cache|Log|Config|Http|Storage|Collection|Validator|Auth|Gate|Hash|Crypt|Session|Lang|URL|Route|View|Event|Queue|Mail|Notification|Response|Request|File|Date|Number|Js|App|Artisan|Bus|Cookie|Process|RateLimiter|Redirect|Schema|Blade|Broadcast|Password|Vite|Sleep|Context|Concurrency|Pipeline|Illuminate|parent|self|static|Inertia|Livewire|Filament|Notification|Exception|DateTime|DateTimeImmutable|Uuid|Ulid|Money|Carbon\\\w+)$/;
     PHP_QUERY_TERMINAL = /^(?:get|first|firstOrFail|firstWhere|find|findOrFail|findMany|count|exists|doesntExist|sum|avg|max|min|pluck|paginate|simplePaginate|cursorPaginate|value|sole|update|delete|increment|decrement|insert|create|firstOrCreate|updateOrCreate)$/;
     NOT_RELATIONSHIP = /^(?:toArray|get|all|values|keys|collect|fresh|refresh|errors|messages|getMessages|failed|items|toBase|getCollection|lazy|cursor|sortBy|filter|map|unique|flatten|reverse|session|user|attributes|getAttributes|getChanges|getDirty|jsonSerialize|toJson)$/;
+    SHORT_LITERAL_LIST = 10;
     queryInLoop = {
       kind: "ast",
       id: "perf/query-in-loop",
@@ -2106,12 +2121,13 @@ var init_performance = __esm({
       recommendation: "Load related data in one query (eager loading `with()`, `include`, `select_related`/`prefetch_related`, `WHERE id IN (...)`), batch writes (`createMany`, `insert`, `bulk_create`), or run independent calls concurrently with a bounded pool.",
       verification: "Count queries for the code path in a test (query log, `DB::getQueryLog`, `assertNumQueries`, Prisma query events) with 1 vs. 50 items; the count must stay constant.",
       check(ctx) {
+        if (ctx.file.isTest) return [];
         const out2 = [];
         const lang = ctx.lang;
         const reported = /* @__PURE__ */ new Set();
         for (const c of ctx.calls) {
           const loop = enclosingLoop(c.node, lang);
-          if (!loop) continue;
+          if (!loop || overShortLiteralList(loop, lang)) continue;
           let what = null;
           if (isJs(lang)) {
             const awaited = c.node.parent?.type === "await_expression";
@@ -4377,6 +4393,7 @@ var init_code = __esm({
       recommendation: "Log identifiers, not secrets. Redact sensitive fields centrally (logger redaction paths, Monolog processors) and avoid logging entire request bodies.",
       verification: "Exercise the code path and inspect the emitted log line; it must not contain the secret value.",
       check(ctx) {
+        if (ctx.file.isTest) return [];
         const out2 = [];
         const lang = ctx.lang;
         const LOGGER = isJs(lang) ? /^(?:console\.(?:log|info|warn|error|debug)|(?:logger|log|this\.logger|fastify\.log|req\.log)\.(?:info|warn|error|debug|trace|fatal|log))$/ : lang === "php" ? /^(?:Log::(?:info|debug|warning|error|critical|notice|alert|emergency)|logger|error_log|\$this->logger->\w+|\$logger->\w+|info)$/ : /^(?:print|logging\.(?:info|debug|warning|error|exception|critical)|(?:logger|log|self\.logger|app\.logger)\.(?:info|debug|warning|error|exception|critical))$/;

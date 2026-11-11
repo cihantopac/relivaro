@@ -1,3 +1,4 @@
+import type { Language } from '../core/types.js';
 import {
   type CallInfo,
   callInfo,
@@ -12,7 +13,7 @@ import {
   walk,
 } from '../parse/ast.js';
 import type { Node } from '../parse/treesitter.js';
-import { API } from './helpers.js';
+import { API, isConstantExpression } from './helpers.js';
 import { ALL_LANGS, type AstRule, type Hit, JS_LANGS } from './types.js';
 
 const JS_DB_ROOT =
@@ -78,6 +79,25 @@ function phpQueryInLoop(c: CallInfo): string | null {
   return null;
 }
 
+/** At most this many literal elements make a bounded loop; a longer literal list is a data table. */
+const SHORT_LITERAL_LIST = 10;
+
+/** `for (const k of ['a', 'b'])`, `['a', 'b'].forEach(…)`, `for k in ('a', 'b'):` over at most 10 constants. */
+function overShortLiteralList(loop: Node, lang: Language): boolean {
+  let iter: Node | null = null;
+  if (loop.type === 'for_in_statement' || (lang === 'python' && loop.type === 'for_statement'))
+    iter = loop.childForFieldName('right');
+  else if (loop.type === 'call_expression') {
+    const fn = loop.childForFieldName('function');
+    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'forEach')
+      iter = fn.childForFieldName('object');
+  }
+  while (iter?.type === 'parenthesized_expression') iter = iter.namedChildren[0] ?? null;
+  if (!iter || !/^(?:array|list|tuple)$/.test(iter.type)) return false;
+  const els = iter.namedChildren.filter((e): e is Node => !!e && e.type !== 'comment');
+  return els.length <= SHORT_LITERAL_LIST && els.every((e) => isConstantExpression(e, lang));
+}
+
 const queryInLoop: AstRule = {
   kind: 'ast',
   id: 'perf/query-in-loop',
@@ -96,12 +116,14 @@ const queryInLoop: AstRule = {
   verification:
     'Count queries for the code path in a test (query log, `DB::getQueryLog`, `assertNumQueries`, Prisma query events) with 1 vs. 50 items; the count must stay constant.',
   check(ctx) {
+    // Tests run a handful of fixed iterations against a test database: not a production N+1.
+    if (ctx.file.isTest) return [];
     const out: Hit[] = [];
     const lang = ctx.lang;
     const reported = new Set<number>();
     for (const c of ctx.calls) {
       const loop = enclosingLoop(c.node, lang);
-      if (!loop) continue;
+      if (!loop || overShortLiteralList(loop, lang)) continue;
       let what: string | null = null;
       if (isJs(lang)) {
         const awaited = c.node.parent?.type === 'await_expression';
