@@ -11,6 +11,7 @@ import { configureProcess, lockdownForbids } from '../core/lockdown.js';
 import { CATEGORIES, type Category, SEVERITIES, SEVERITY_RANK, type Severity } from '../core/types.js';
 import { VERSION } from '../core/version.js';
 import { atomicWrite, Workspace } from '../core/workspace.js';
+import { osvApiBase } from '../deps/osv.js';
 import { whichSync } from '../exec/runner.js';
 import { resolveActionRef } from '../fix/actions.js';
 import { FIXERS, findFixer } from '../fix/fixers.js';
@@ -102,6 +103,25 @@ const ANALYSIS_OPTS: OptSpec[] = [
   },
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
+  {
+    name: 'osv-cache',
+    type: 'string',
+    value: '<file>',
+    description:
+      'OSV cache file to use (shared between runs; a read-only file is used without being written).',
+  },
+  {
+    name: 'osv-api',
+    type: 'string',
+    value: '<url>',
+    description: 'HTTPS mirror of the OSV API, used with --online.',
+  },
+  {
+    name: 'offline-osv',
+    type: 'boolean',
+    description:
+      'Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified.',
+  },
   {
     name: 'root-label',
     type: 'string',
@@ -377,6 +397,9 @@ async function analysisCommand(
     inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
     ignoreRepoConfig: p.opts['ignore-repo-config'] ? true : undefined,
     rootLabel: p.opts['root-label'] as string | undefined,
+    osvCache: p.opts['osv-cache'] !== undefined ? resolve(String(p.opts['osv-cache'])) : undefined,
+    osvApi: p.opts['osv-api'] !== undefined ? osvApiBase(String(p.opts['osv-api'])) : undefined,
+    offlineOsv: p.opts['offline-osv'] ? true : undefined,
     snippetLines: p.opts['no-snippets'] ? 0 : snippetLinesOpt(p.opts['snippet-lines']),
     respectGitignore: p.opts['no-gitignore'] ? false : undefined,
     assumeTracked: p.opts['assume-tracked'] ? true : undefined,

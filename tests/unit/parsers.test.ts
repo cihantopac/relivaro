@@ -1,4 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
 import { parsePhpstan, parseTestSummary, parseTsc } from '../../src/checks/exec.js';
 import { parseLockfile, pinnedRequirements } from '../../src/deps/lockfiles.js';
 import { parseManifest } from '../../src/deps/manifests.js';
@@ -384,5 +387,139 @@ describe('web server headers', () => {
     const c = cspOf("default-src 'self'; Script-Src 'self' 'unsafe-inline' ;");
     expect(c.get('script-src')).toEqual(["'self'", "'unsafe-inline'"]);
     expect(c.get('default-src')).toEqual(["'self'"]);
+  });
+});
+
+describe('osv cache', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const lock = [
+    {
+      file: 'package-lock.json',
+      ecosystem: 'npm',
+      packages: [
+        { ecosystem: 'npm', name: 'fresh', version: '1.0.0' },
+        { ecosystem: 'npm', name: 'stale', version: '1.0.0' },
+      ],
+    },
+  ] as never;
+  const cacheWith = (entries: Record<string, number>) => {
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-osv-'));
+    made.push(dir);
+    const file = join(dir, 'osv.json');
+    const packages: Record<string, { at: number; ids: string[] }> = {};
+    for (const [name, at] of Object.entries(entries))
+      packages[`npm\u0000${name}\u00001.0.0`] = { at, ids: [] };
+    writeFileSync(file, JSON.stringify({ version: 2, packages, vulns: {} }));
+    return file;
+  };
+  const stub = (seen: string[][]) =>
+    (async (url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/querybatch')) {
+        const names = JSON.parse(String(init!.body)).queries.map(
+          (q: { package: { name: string } }) => q.package.name,
+        );
+        seen.push(names);
+        return new Response(JSON.stringify({ results: names.map(() => ({})) }));
+      }
+      return new Response('{}', { status: 404 });
+    }) as typeof fetch;
+
+  it('each cache entry expires 24 h after its own time', async () => {
+    const { queryOsv } = await import('../../src/deps/osv.js');
+    const file = cacheWith({ fresh: Date.now(), stale: Date.now() - 25 * 3600_000 });
+    const seen: string[][] = [];
+    const r = await queryOsv(lock, { cacheFile: file, fetchImpl: stub(seen) });
+    expect(seen).toEqual([['stale']]);
+    expect(r.queried).toBe(2);
+    expect(r.errors).toEqual([]);
+  });
+
+  it('a read-only cache file is used and not written', async () => {
+    const { queryOsv } = await import('../../src/deps/osv.js');
+    const file = cacheWith({ fresh: Date.now() });
+    const before = readFileSync(file, 'utf8');
+    const mtime = statSync(file).mtimeMs;
+    chmodSync(file, 0o444);
+    try {
+      const seen: string[][] = [];
+      await queryOsv(lock, { cacheFile: file, fetchImpl: stub(seen) });
+      expect(seen).toEqual([['stale']]);
+      expect(readFileSync(file, 'utf8')).toBe(before);
+      expect(statSync(file).mtimeMs).toBe(mtime);
+    } finally {
+      chmodSync(file, 0o644);
+    }
+  });
+
+  it('offline mode answers from the cache only and counts what it could not verify', async () => {
+    const { queryOsv } = await import('../../src/deps/osv.js');
+    const file = cacheWith({ fresh: Date.now() });
+    let calls = 0;
+    const r = await queryOsv(lock, {
+      cacheFile: file,
+      offline: true,
+      fetchImpl: (async () => {
+        calls++;
+        return new Response('{}');
+      }) as typeof fetch,
+    });
+    expect(calls).toBe(0);
+    expect(r.unverified).toBe(1);
+  });
+
+  it('--offline-osv in an audit sends nothing and names the uncached packages', async () => {
+    const { runAudit } = await import('../../src/audit.js');
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-osv-audit-'));
+    made.push(dir);
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({ name: 'x', private: true, dependencies: { a: '1.0.0' } }),
+    );
+    writeFileSync(
+      join(dir, 'package-lock.json'),
+      JSON.stringify({
+        name: 'x',
+        lockfileVersion: 3,
+        packages: { '': { name: 'x' }, 'node_modules/a': { version: '1.0.0' } },
+      }),
+    );
+    let calls = 0;
+    const { run } = await runAudit({
+      root: dir,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      offlineOsv: true,
+      osvCache: join(dir, 'missing-cache.json'),
+      fetchImpl: (async () => {
+        calls++;
+        return new Response('{}');
+      }) as typeof fetch,
+    });
+    expect(calls).toBe(0);
+    expect(run.limitations).toContain(
+      'Known vulnerabilities were looked up in the OSV cache only (--offline-osv); 1 package(s) without a fresh cache entry are unverified.',
+    );
+  });
+
+  it('a mirror URL must be HTTPS', async () => {
+    const { osvApiBase } = await import('../../src/deps/osv.js');
+    expect(osvApiBase('https://osv.internal.example/v1/')).toBe('https://osv.internal.example/v1');
+    expect(() => osvApiBase('http://osv.internal.example/v1')).toThrow(/--osv-api must be an https:/);
+  });
+
+  it('reads the 1.4 cache format (vulnerability details keyed by id)', async () => {
+    const { queryOsv } = await import('../../src/deps/osv.js');
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-osv-'));
+    made.push(dir);
+    const file = join(dir, 'osv.json');
+    writeFileSync(file, JSON.stringify({ 'GHSA-1': { at: Date.now(), vuln: { id: 'GHSA-1' } } }));
+    const seen: string[][] = [];
+    const r = await queryOsv(lock, { cacheFile: file, fetchImpl: stub(seen) });
+    expect(r.errors).toEqual([]);
+    expect(seen).toEqual([['fresh', 'stale']]);
   });
 });

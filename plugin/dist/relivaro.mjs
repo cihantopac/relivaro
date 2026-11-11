@@ -14168,12 +14168,13 @@ __export(osv_exports, {
   OSV_RULE: () => OSV_RULE,
   cvss3Score: () => cvss3Score,
   fixedVersions: () => fixedVersions,
+  osvApiBase: () => osvApiBase,
   packageKey: () => packageKey,
   queryOsv: () => queryOsv,
   severityOf: () => severityOf,
   uniquePackageCount: () => uniquePackageCount
 });
-import { existsSync as existsSync8, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
+import { accessSync, constants, existsSync as existsSync8, readFileSync as readFileSync7 } from "node:fs";
 async function postJson(fetchImpl, url, body2) {
   const res = await fetchImpl(url, {
     method: "POST",
@@ -14241,8 +14242,46 @@ function packageKey(p) {
 function uniquePackageCount(lockfiles) {
   return new Set(lockfiles.flatMap((l) => l.packages.map(packageKey))).size;
 }
+function osvApiBase(url) {
+  if (!url) return API2;
+  let u;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new RelivaroError("USAGE", `--osv-api must be an https:// URL, got "${url}".`);
+  }
+  if (u.protocol !== "https:")
+    throw new RelivaroError("USAGE", `--osv-api must be an https:// URL, got "${url}".`);
+  return u.href.replace(/\/+$/, "");
+}
+function readCache(file) {
+  const empty2 = { version: 2, packages: {}, vulns: {} };
+  if (!file || !existsSync8(file)) return empty2;
+  try {
+    const raw = JSON.parse(readFileSync7(file, "utf8"));
+    if (raw.version === 2)
+      return {
+        version: 2,
+        packages: raw.packages ?? {},
+        vulns: raw.vulns ?? {}
+      };
+    return { ...empty2, vulns: raw };
+  } catch {
+    return empty2;
+  }
+}
+function cacheWritable(file) {
+  try {
+    if (!existsSync8(file)) return true;
+    accessSync(file, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
 async function queryOsv(lockfiles, opts = {}) {
-  assertNotLockedDown("network access (OSV.dev)");
+  if (!opts.offline) assertNotLockedDown("network access (OSV.dev)");
+  const api = osvApiBase(opts.apiBase);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = /* @__PURE__ */ new Map();
   for (const l of lockfiles)
@@ -14254,60 +14293,70 @@ async function queryOsv(lockfiles, opts = {}) {
       unique.set(key, e);
     }
   const entries = [...unique.values()];
-  const result2 = { queried: entries.length, vulnerable: 0, hits: [], errors: [] };
+  const result2 = { queried: entries.length, vulnerable: 0, hits: [], errors: [], unverified: 0 };
   if (!entries.length) return result2;
-  let cache3 = {};
-  if (opts.cacheFile && existsSync8(opts.cacheFile)) {
-    try {
-      if (Date.now() - statSync4(opts.cacheFile).mtimeMs < 24 * 36e5)
-        cache3 = JSON.parse(readFileSync7(opts.cacheFile, "utf8"));
-    } catch {
-      cache3 = {};
+  const now = Date.now();
+  const fresh = (at) => at !== void 0 && now - at < TTL_MS;
+  const cache3 = readCache(opts.cacheFile);
+  let cacheChanged = false;
+  const idsPer = entries.map((e) => {
+    const c = cache3.packages[packageKey(e.pkg)];
+    return c && fresh(c.at) ? c.ids : null;
+  });
+  const missing = entries.map((_e, i2) => i2).filter((i2) => idsPer[i2] === null);
+  if (!opts.offline)
+    for (let b = 0; b < missing.length; b += BATCH) {
+      const slice = missing.slice(b, b + BATCH);
+      opts.onProgress?.(`OSV: querying ${b + slice.length}/${missing.length} packages`);
+      const body2 = {
+        queries: slice.map((i2) => {
+          const pkg = entries[i2].pkg;
+          return {
+            package: { name: pkg.name, ecosystem: pkg.ecosystem },
+            version: pkg.version.replace(/^v(?=\d)/, pkg.ecosystem === "Go" ? "v" : "")
+          };
+        })
+      };
+      try {
+        const res = await postJson(fetchImpl, `${api}/querybatch`, body2);
+        slice.forEach((i2, j) => {
+          const ids2 = (res.results?.[j]?.vulns ?? []).map((v) => v.id);
+          idsPer[i2] = ids2;
+          cache3.packages[packageKey(entries[i2].pkg)] = { at: now, ids: ids2 };
+          cacheChanged = true;
+        });
+      } catch (e) {
+        result2.errors.push(e.message);
+        return result2;
+      }
     }
-  }
-  const idsPer = new Array(entries.length).fill(null).map(() => []);
-  for (let i2 = 0; i2 < entries.length; i2 += BATCH) {
-    const slice = entries.slice(i2, i2 + BATCH);
-    opts.onProgress?.(`OSV: querying ${i2 + slice.length}/${entries.length} packages`);
-    const body2 = {
-      queries: slice.map((e) => ({
-        package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem },
-        version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === "Go" ? "v" : "")
-      }))
-    };
-    try {
-      const res = await postJson(fetchImpl, `${API2}/querybatch`, body2);
-      (res.results ?? []).forEach((r, j) => {
-        idsPer[i2 + j] = (r.vulns ?? []).map((v) => v.id);
-      });
-    } catch (e) {
-      result2.errors.push(e.message);
-      return result2;
-    }
-  }
-  const allIds = [...new Set(idsPer.flat())];
+  const allIds = [...new Set(idsPer.flatMap((ids2) => ids2 ?? []))];
   const details = /* @__PURE__ */ new Map();
   const todo = allIds.filter((id) => {
-    const c = cache3[id];
-    if (c) details.set(id, c.vuln);
-    return !c;
+    const c = cache3.vulns[id];
+    if (c && fresh(c.at)) details.set(id, c.vuln);
+    return !details.has(id);
   });
   let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(8, todo.length) }, async () => {
-      while (next < todo.length) {
-        const id = todo[next++];
-        try {
-          const v = await getJson(fetchImpl, `${API2}/vulns/${encodeURIComponent(id)}`);
-          details.set(id, v);
-          cache3[id] = { at: Date.now(), vuln: v };
-        } catch (e) {
-          result2.errors.push(`${id}: ${e.message}`);
+  if (!opts.offline)
+    await Promise.all(
+      Array.from({ length: Math.min(8, todo.length) }, async () => {
+        while (next < todo.length) {
+          const id = todo[next++];
+          try {
+            const v = await getJson(fetchImpl, `${api}/vulns/${encodeURIComponent(id)}`);
+            details.set(id, v);
+            cache3.vulns[id] = { at: now, vuln: v };
+            cacheChanged = true;
+          } catch (e) {
+            result2.errors.push(`${id}: ${e.message}`);
+          }
         }
-      }
-    })
-  );
-  if (opts.cacheFile && todo.length) {
+      })
+    );
+  if (opts.offline)
+    result2.unverified = idsPer.filter((ids2) => ids2 === null || ids2.some((id) => !details.has(id))).length;
+  if (opts.cacheFile && cacheChanged && !opts.readOnlyCache && cacheWritable(opts.cacheFile)) {
     try {
       atomicWrite(opts.cacheFile, JSON.stringify(cache3));
     } catch {
@@ -14344,7 +14393,7 @@ async function queryOsv(lockfiles, opts = {}) {
   });
   return result2;
 }
-var OSV_RULE, API2, BATCH;
+var OSV_RULE, API2, BATCH, TTL_MS;
 var init_osv = __esm({
   "src/deps/osv.ts"() {
     "use strict";
@@ -14368,6 +14417,7 @@ var init_osv = __esm({
     });
     API2 = "https://api.osv.dev/v1";
     BATCH = 500;
+    TTL_MS = 24 * 36e5;
   }
 });
 
@@ -23634,15 +23684,24 @@ async function runAudit(opts) {
   const wantsSupplyChain = categories.includes("supply-chain");
   if (wantsSupplyChain) {
     limitations.push(...parseErrorLimitations(profile));
-    if (opts.online && !stopNow()) {
-      progress("querying OSV.dev for known vulnerabilities");
+    if ((opts.online || opts.offlineOsv) && !stopNow()) {
+      progress(
+        opts.offlineOsv ? "looking up known vulnerabilities in the OSV cache" : "querying OSV.dev for known vulnerabilities"
+      );
       stage("osv", "start");
       const osv = await queryOsv(profile.lockfiles, {
-        cacheFile: opts.noWrite ? void 0 : workspace.path("cache", "osv.json"),
+        cacheFile: opts.osvCache ?? (opts.noWrite ? void 0 : workspace.path("cache", "osv.json")),
+        readOnlyCache: opts.noWrite,
         fetchImpl: opts.fetchImpl,
-        onProgress: progress
+        onProgress: progress,
+        apiBase: opts.osvApi,
+        offline: opts.offlineOsv
       });
       stage("osv", "end");
+      if (osv.unverified)
+        limitations.push(
+          `Known vulnerabilities were looked up in the OSV cache only (--offline-osv); ${osv.unverified} package(s) without a fresh cache entry are unverified.`
+        );
       osvQueried = osv.queried;
       networkErrors.push(...osv.errors);
       const { OSV_RULE: OSV_RULE2 } = await Promise.resolve().then(() => (init_osv(), osv_exports));
@@ -24198,6 +24257,7 @@ function diffSpecs(oldDoc, newDoc) {
 init_errors();
 init_lockdown();
 init_workspace();
+init_osv();
 
 // src/fix/actions.ts
 init_errors();
@@ -24250,7 +24310,7 @@ import {
   readdirSync as readdirSync3,
   readFileSync as readFileSync8,
   rmSync,
-  statSync as statSync5,
+  statSync as statSync4,
   symlinkSync,
   writeFileSync as writeFileSync2
 } from "node:fs";
@@ -24462,7 +24522,7 @@ function latestOf(ws, marker) {
   const dir = ws.path("fixes");
   if (!existsSync9(dir)) throw new RelivaroError("NOT_FOUND", "No fix plans or applies exist yet.");
   const ids2 = readdirSync3(dir).filter((d) => existsSync9(join9(dir, d, marker))).sort(
-    (a, b) => statSync5(join9(dir, a, marker)).mtimeMs - statSync5(join9(dir, b, marker)).mtimeMs || a.localeCompare(b)
+    (a, b) => statSync4(join9(dir, a, marker)).mtimeMs - statSync4(join9(dir, b, marker)).mtimeMs || a.localeCompare(b)
   );
   if (!ids2.length)
     throw new RelivaroError(
@@ -24508,7 +24568,7 @@ function treeSnapshot(files) {
   const snap = /* @__PURE__ */ new Map();
   for (const { path } of files.files) {
     try {
-      const st = statSync5(join9(files.root, path));
+      const st = statSync4(join9(files.root, path));
       snap.set(path, `${st.size}:${st.mtimeMs}`);
     } catch {
       snap.set(path, "missing");
@@ -24601,7 +24661,7 @@ async function applyPlan(ws, plan, opts) {
     const abs = safeResolve(root, path);
     let mode;
     if (c.existed) {
-      mode = statSync5(abs).mode;
+      mode = statSync4(abs).mode;
       ws.writeText(["fixes", applyId, "backup", ...path.split("/")], c.before);
     }
     files.push({ path, beforeHash: sha256(c.before), afterHash: sha256(c.after), existed: c.existed, mode });
@@ -27379,7 +27439,7 @@ function toMarkdown(run2, opts = {}) {
 // src/review/review.ts
 init_errors();
 init_secrets();
-import { closeSync as closeSync2, openSync as openSync2, rmSync as rmSync2, statSync as statSync6 } from "node:fs";
+import { closeSync as closeSync2, openSync as openSync2, rmSync as rmSync2, statSync as statSync5 } from "node:fs";
 var REVIEW_SCHEMA_VERSION = 1;
 var VERDICTS = ["confirmed", "false-positive", "needs-runtime", "accepted"];
 var MAX_JUSTIFICATION = 1e3;
@@ -27518,7 +27578,7 @@ function withLock(lock, fn) {
     } catch (e) {
       if (e.code !== "EEXIST") throw e;
       try {
-        if (Date.now() - statSync6(lock).mtimeMs > 3e4) rmSync2(lock, { force: true });
+        if (Date.now() - statSync5(lock).mtimeMs > 3e4) rmSync2(lock, { force: true });
       } catch {
       }
       if (Date.now() > deadline)
@@ -27743,6 +27803,23 @@ var ANALYSIS_OPTS = [
   },
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
+  {
+    name: "osv-cache",
+    type: "string",
+    value: "<file>",
+    description: "OSV cache file to use (shared between runs; a read-only file is used without being written)."
+  },
+  {
+    name: "osv-api",
+    type: "string",
+    value: "<url>",
+    description: "HTTPS mirror of the OSV API, used with --online."
+  },
+  {
+    name: "offline-osv",
+    type: "boolean",
+    description: "Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified."
+  },
   {
     name: "root-label",
     type: "string",
@@ -27972,6 +28049,9 @@ async function analysisCommand(p, out2, cfg) {
     inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
     ignoreRepoConfig: p.opts["ignore-repo-config"] ? true : void 0,
     rootLabel: p.opts["root-label"],
+    osvCache: p.opts["osv-cache"] !== void 0 ? resolve4(String(p.opts["osv-cache"])) : void 0,
+    osvApi: p.opts["osv-api"] !== void 0 ? osvApiBase(String(p.opts["osv-api"])) : void 0,
+    offlineOsv: p.opts["offline-osv"] ? true : void 0,
     snippetLines: p.opts["no-snippets"] ? 0 : snippetLinesOpt(p.opts["snippet-lines"]),
     respectGitignore: p.opts["no-gitignore"] ? false : void 0,
     assumeTracked: p.opts["assume-tracked"] ? true : void 0,

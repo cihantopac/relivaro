@@ -44,6 +44,12 @@ export interface AuditOptions {
   respectGitignore?: boolean;
   /** Without git, treat listed files as tracked so sensitive files are reported by path. */
   assumeTracked?: boolean;
+  /** OSV cache file (shared; a read-only file is used without being written). Default: the workspace cache. */
+  osvCache?: string;
+  /** HTTPS mirror of the OSV API (`--osv-api`); used only with `online`. */
+  osvApi?: string;
+  /** Answer known-vulnerability lookups from the OSV cache only, without network access. */
+  offlineOsv?: boolean;
   /** Replaces the absolute root in every output (run record, messages, snippets, limitations). */
   rootLabel?: string;
   /** Source lines per finding snippet (default 3); 0 drops snippets. */
@@ -310,15 +316,26 @@ export async function runAudit(
   const wantsSupplyChain = categories.includes('supply-chain');
   if (wantsSupplyChain) {
     limitations.push(...parseErrorLimitations(profile));
-    if (opts.online && !stopNow()) {
-      progress('querying OSV.dev for known vulnerabilities');
+    if ((opts.online || opts.offlineOsv) && !stopNow()) {
+      progress(
+        opts.offlineOsv
+          ? 'looking up known vulnerabilities in the OSV cache'
+          : 'querying OSV.dev for known vulnerabilities',
+      );
       stage('osv', 'start');
       const osv = await queryOsv(profile.lockfiles, {
-        cacheFile: opts.noWrite ? undefined : workspace.path('cache', 'osv.json'),
+        cacheFile: opts.osvCache ?? (opts.noWrite ? undefined : workspace.path('cache', 'osv.json')),
+        readOnlyCache: opts.noWrite,
         fetchImpl: opts.fetchImpl,
         onProgress: progress,
+        apiBase: opts.osvApi,
+        offline: opts.offlineOsv,
       });
       stage('osv', 'end');
+      if (osv.unverified)
+        limitations.push(
+          `Known vulnerabilities were looked up in the OSV cache only (--offline-osv); ${osv.unverified} package(s) without a fresh cache entry are unverified.`,
+        );
       osvQueried = osv.queried;
       networkErrors.push(...osv.errors);
       const { OSV_RULE } = await import('./deps/osv.js');

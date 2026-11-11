@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { accessSync, constants, existsSync, readFileSync } from 'node:fs';
 import { RelivaroError } from '../core/errors.js';
 import { assertNotLockedDown } from '../core/lockdown.js';
 import type { Severity } from '../core/types.js';
@@ -12,7 +12,7 @@ import type { LockfileInfo, ResolvedPackage } from './lockfiles.js';
  * GitHub Advisories, PyPA, Go, RustSec, Packagist (FriendsOfPHP) and others.
  *
  * Only runs with `--online`. Data sent: ecosystem, package name and version of each resolved dependency — no source
- * code, no file paths. Responses are cached for 24 hours in the workspace.
+ * code, no file paths. Each response is cached for 24 hours from when it was fetched (workspace or `--osv-cache`).
  */
 
 export const OSV_RULE = registerExternalRule({
@@ -56,6 +56,8 @@ export interface OsvResult {
   vulnerable: number;
   hits: Hit[];
   errors: string[];
+  /** Offline mode: packages whose advisories could not be answered from a fresh cache entry. */
+  unverified: number;
 }
 
 type FetchLike = typeof fetch;
@@ -144,11 +146,75 @@ export function uniquePackageCount(lockfiles: LockfileInfo[]): number {
   return new Set(lockfiles.flatMap((l) => l.packages.map(packageKey))).size;
 }
 
+const TTL_MS = 24 * 3600_000;
+
+/** The OSV API base for `--osv-api`: HTTPS only, without a trailing slash. */
+export function osvApiBase(url: string | undefined): string {
+  if (!url) return API;
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    throw new RelivaroError('USAGE', `--osv-api must be an https:// URL, got "${url}".`);
+  }
+  if (u.protocol !== 'https:')
+    throw new RelivaroError('USAGE', `--osv-api must be an https:// URL, got "${url}".`);
+  return u.href.replace(/\/+$/, '');
+}
+
+interface OsvCache {
+  version: 2;
+  /** Per package (`ecosystem\0name\0version`): the advisory ids OSV returned and when. */
+  packages: Record<string, { at: number; ids: string[] }>;
+  /** Per advisory id: its details and when they were fetched. */
+  vulns: Record<string, { at: number; vuln: OsvVuln }>;
+}
+
+function readCache(file: string | undefined): OsvCache {
+  const empty: OsvCache = { version: 2, packages: {}, vulns: {} };
+  if (!file || !existsSync(file)) return empty;
+  try {
+    const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    if (raw.version === 2)
+      return {
+        version: 2,
+        packages: (raw.packages ?? {}) as OsvCache['packages'],
+        vulns: (raw.vulns ?? {}) as OsvCache['vulns'],
+      };
+    // 1.4 and earlier: advisory details keyed by id.
+    return { ...empty, vulns: raw as OsvCache['vulns'] };
+  } catch {
+    return empty;
+  }
+}
+
+/** True when the cache file may be written: it does not exist yet, or it is writable by this process. */
+function cacheWritable(file: string): boolean {
+  try {
+    if (!existsSync(file)) return true;
+    accessSync(file, constants.W_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function queryOsv(
   lockfiles: LockfileInfo[],
-  opts: { cacheFile?: string; fetchImpl?: FetchLike; onProgress?: (m: string) => void } = {},
+  opts: {
+    cacheFile?: string;
+    fetchImpl?: FetchLike;
+    onProgress?: (m: string) => void;
+    /** `--osv-api`: an HTTPS mirror of the OSV API. */
+    apiBase?: string;
+    /** `--offline-osv`: answer only from the cache; nothing is sent. */
+    offline?: boolean;
+    /** Use the cache file but never write it (e.g. `--no-write`). */
+    readOnlyCache?: boolean;
+  } = {},
 ): Promise<OsvResult> {
-  assertNotLockedDown('network access (OSV.dev)');
+  if (!opts.offline) assertNotLockedDown('network access (OSV.dev)');
+  const api = osvApiBase(opts.apiBase);
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = new Map<string, { pkg: ResolvedPackage; files: Set<string> }>();
   for (const l of lockfiles)
@@ -160,65 +226,78 @@ export async function queryOsv(
       unique.set(key, e);
     }
   const entries = [...unique.values()];
-  const result: OsvResult = { queried: entries.length, vulnerable: 0, hits: [], errors: [] };
+  const result: OsvResult = { queried: entries.length, vulnerable: 0, hits: [], errors: [], unverified: 0 };
   if (!entries.length) return result;
 
-  let cache: Record<string, { at: number; vuln: OsvVuln }> = {};
-  if (opts.cacheFile && existsSync(opts.cacheFile)) {
-    try {
-      if (Date.now() - statSync(opts.cacheFile).mtimeMs < 24 * 3600_000)
-        cache = JSON.parse(readFileSync(opts.cacheFile, 'utf8'));
-    } catch {
-      cache = {};
-    }
-  }
+  const now = Date.now();
+  const fresh = (at: number | undefined) => at !== undefined && now - at < TTL_MS;
+  const cache = readCache(opts.cacheFile);
+  let cacheChanged = false;
 
-  const idsPer: string[][] = new Array(entries.length).fill(null).map(() => []);
-  for (let i = 0; i < entries.length; i += BATCH) {
-    const slice = entries.slice(i, i + BATCH);
-    opts.onProgress?.(`OSV: querying ${i + slice.length}/${entries.length} packages`);
-    const body = {
-      queries: slice.map((e) => ({
-        package: { name: e.pkg.name, ecosystem: e.pkg.ecosystem },
-        version: e.pkg.version.replace(/^v(?=\d)/, e.pkg.ecosystem === 'Go' ? 'v' : ''),
-      })),
-    };
-    try {
-      const res = (await postJson(fetchImpl, `${API}/querybatch`, body)) as {
-        results?: { vulns?: { id: string }[] }[];
+  // Advisory ids per package: from a fresh cache entry, otherwise from a batch query (never in offline mode).
+  const idsPer: (string[] | null)[] = entries.map((e) => {
+    const c = cache.packages[packageKey(e.pkg)];
+    return c && fresh(c.at) ? c.ids : null;
+  });
+  const missing = entries.map((_e, i) => i).filter((i) => idsPer[i] === null);
+  if (!opts.offline)
+    for (let b = 0; b < missing.length; b += BATCH) {
+      const slice = missing.slice(b, b + BATCH);
+      opts.onProgress?.(`OSV: querying ${b + slice.length}/${missing.length} packages`);
+      const body = {
+        queries: slice.map((i) => {
+          const pkg = entries[i]!.pkg;
+          return {
+            package: { name: pkg.name, ecosystem: pkg.ecosystem },
+            version: pkg.version.replace(/^v(?=\d)/, pkg.ecosystem === 'Go' ? 'v' : ''),
+          };
+        }),
       };
-      (res.results ?? []).forEach((r, j) => {
-        idsPer[i + j] = (r.vulns ?? []).map((v) => v.id);
-      });
-    } catch (e) {
-      result.errors.push((e as Error).message);
-      return result;
+      try {
+        const res = (await postJson(fetchImpl, `${api}/querybatch`, body)) as {
+          results?: { vulns?: { id: string }[] }[];
+        };
+        slice.forEach((i, j) => {
+          const ids = (res.results?.[j]?.vulns ?? []).map((v) => v.id);
+          idsPer[i] = ids;
+          cache.packages[packageKey(entries[i]!.pkg)] = { at: now, ids };
+          cacheChanged = true;
+        });
+      } catch (e) {
+        result.errors.push((e as Error).message);
+        return result;
+      }
     }
-  }
 
-  const allIds = [...new Set(idsPer.flat())];
+  const allIds = [...new Set(idsPer.flatMap((ids) => ids ?? []))];
   const details = new Map<string, OsvVuln>();
   const todo = allIds.filter((id) => {
-    const c = cache[id];
-    if (c) details.set(id, c.vuln);
-    return !c;
+    const c = cache.vulns[id];
+    if (c && fresh(c.at)) details.set(id, c.vuln);
+    return !details.has(id);
   });
   let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(8, todo.length) }, async () => {
-      while (next < todo.length) {
-        const id = todo[next++]!;
-        try {
-          const v = (await getJson(fetchImpl, `${API}/vulns/${encodeURIComponent(id)}`)) as OsvVuln;
-          details.set(id, v);
-          cache[id] = { at: Date.now(), vuln: v };
-        } catch (e) {
-          result.errors.push(`${id}: ${(e as Error).message}`);
+  if (!opts.offline)
+    await Promise.all(
+      Array.from({ length: Math.min(8, todo.length) }, async () => {
+        while (next < todo.length) {
+          const id = todo[next++]!;
+          try {
+            const v = (await getJson(fetchImpl, `${api}/vulns/${encodeURIComponent(id)}`)) as OsvVuln;
+            details.set(id, v);
+            cache.vulns[id] = { at: now, vuln: v };
+            cacheChanged = true;
+          } catch (e) {
+            result.errors.push(`${id}: ${(e as Error).message}`);
+          }
         }
-      }
-    }),
-  );
-  if (opts.cacheFile && todo.length) {
+      }),
+    );
+  // In offline mode a package is unverified when its ids, or the details of one of its advisories, are not cached.
+  if (opts.offline)
+    result.unverified = idsPer.filter((ids) => ids === null || ids.some((id) => !details.has(id))).length;
+  // A read-only (shared) cache is used but never written.
+  if (opts.cacheFile && cacheChanged && !opts.readOnlyCache && cacheWritable(opts.cacheFile)) {
     try {
       atomicWrite(opts.cacheFile, JSON.stringify(cache));
     } catch {
