@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.3.0",
-  "measuredAt": "2026-11-03T07:49:20.116Z",
+  "relivaro": "1.4.0",
+  "measuredAt": "2026-11-11T16:58:18.591Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 107
+        "ms": 108
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 84
+        "ms": 86
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,23 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 82
+        "ms": 74
+      },
+      "monorepo-docker": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 64
+      },
+      "monorepo-lib": {
+        "tp": 1,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 68
       },
       "next-app": {
         "tp": 12,
@@ -41,23 +57,23 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 108
+        "ms": 96
       },
       "node-api": {
-        "tp": 54,
+        "tp": 62,
         "fp": 0,
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 94
+        "ms": 105
       },
       "python-app": {
-        "tp": 30,
+        "tp": 32,
         "fp": 0,
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 76
+        "ms": 80
       },
       "regressions": {
         "tp": 5,
@@ -65,7 +81,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 96
+        "ms": 97
       },
       "static-site": {
         "tp": 3,
@@ -73,7 +89,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 49
+        "ms": 48
       }
     },
     "byRule": {
@@ -88,7 +104,7 @@
         "fn": 0
       },
       "sec/sql-injection": {
-        "tp": 4,
+        "tp": 5,
         "fp": 0,
         "fn": 0
       },
@@ -103,7 +119,7 @@
         "fn": 0
       },
       "perf/query-in-loop": {
-        "tp": 5,
+        "tp": 6,
         "fp": 0,
         "fn": 0
       },
@@ -118,7 +134,7 @@
         "fn": 0
       },
       "sec/path-traversal": {
-        "tp": 3,
+        "tp": 5,
         "fp": 0,
         "fn": 0
       },
@@ -128,7 +144,7 @@
         "fn": 0
       },
       "sec/command-injection": {
-        "tp": 3,
+        "tp": 5,
         "fp": 0,
         "fn": 0
       },
@@ -183,7 +199,7 @@
         "fn": 0
       },
       "sec/cors-misconfiguration": {
-        "tp": 2,
+        "tp": 4,
         "fp": 0,
         "fn": 0
       },
@@ -208,7 +224,7 @@
         "fn": 0
       },
       "sec/xss": {
-        "tp": 3,
+        "tp": 4,
         "fp": 0,
         "fn": 0
       },
@@ -233,7 +249,7 @@
         "fn": 0
       },
       "rel/no-error-monitoring": {
-        "tp": 5,
+        "tp": 6,
         "fp": 0,
         "fn": 0
       },
@@ -282,6 +298,11 @@
         "fp": 0,
         "fn": 0
       },
+      "sec/docker-context-leak": {
+        "tp": 2,
+        "fp": 0,
+        "fn": 0
+      },
       "test/focused-test": {
         "tp": 1,
         "fp": 0,
@@ -317,17 +338,17 @@
         "fp": 0,
         "fn": 0
       },
+      "sec/hardcoded-signing-secret": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
       "perf/sync-io-in-request-handler": {
         "tp": 2,
         "fp": 0,
         "fn": 0
       },
       "sec/code-injection": {
-        "tp": 3,
-        "fp": 0,
-        "fn": 0
-      },
-      "sec/hardcoded-signing-secret": {
         "tp": 3,
         "fp": 0,
         "fn": 0
@@ -412,11 +433,6 @@
         "fp": 0,
         "fn": 0
       },
-      "sec/docker-context-leak": {
-        "tp": 1,
-        "fp": 0,
-        "fn": 0
-      },
       "sec/compose-insecure-service": {
         "tp": 2,
         "fp": 0,
@@ -484,7 +500,7 @@
       }
     },
     "total": {
-      "tp": 158,
+      "tp": 170,
       "fp": 0,
       "fn": 0,
       "precision": 1,
@@ -498,13 +514,13 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 83,
-      "medianMs": 1565,
-      "minMs": 1478,
-      "maxMs": 1572,
-      "filesPerSecond": 1955,
-      "linesPerSecond": 31055,
-      "peakRssMb": 130,
-      "openFindings": 180
+      "medianMs": 1483,
+      "minMs": 1453,
+      "maxMs": 1489,
+      "filesPerSecond": 2063,
+      "linesPerSecond": 32760,
+      "peakRssMb": 129,
+      "openFindings": 60
     },
     "repositories": []
   }

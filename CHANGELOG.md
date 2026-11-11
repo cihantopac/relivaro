@@ -3,6 +3,77 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.4.0] — 2026-11-11
+
+Correctness release: every false positive and silent blind spot from the Frameva field reports on 1.3.0, the false
+negatives that fall inside existing rules, and the deferred minors of the 1.3.0 review. No new rule ids.
+
+### Fixed (false positives)
+
+- **Docker stages inherit `USER`.** A final stage `FROM <earlier stage>` now inherits that stage's `USER` through any
+  chain of aliases (case-insensitive), so `sec/docker-runs-as-root` no longer fires on multi-stage images that drop
+  root in a base stage. A parent stage that ends as root is still reported and named.
+- **`sec/docker-context-leak` finds the real build context.** The context comes from a compose `build.context`, a CI
+  `docker build -f … <ctx>` step or `docker/build-push-action` (`context:`/`file:`). An unknown context checks the
+  Dockerfile's directory, its parents and the workspace root's `.dockerignore`; when nothing is found the finding says
+  the context is not determined and has low confidence.
+- **Constant SQL fragments.** `sec/sql-injection` treats a ternary whose two branches are literals
+  (`${lock ? 'FOR UPDATE' : ''}`), number arithmetic over `.length`/`.size`/`.count` (`$${params.length + 1}`) and a
+  `.map(…).join(…)` over a constant array whose callback only formats its own parameter as constant. A branch with
+  user input is still reported.
+- **Tests and short literal lists.** `perf/query-in-loop` and `sec/sensitive-data-in-logs` no longer report in test
+  files, and `perf/query-in-loop` skips a loop over a literal array of at most 10 constants.
+- **Libraries are not services.** A backend framework among a package's dependencies no longer makes it a service:
+  it needs a server entry (`.listen(`, `createServer(`, `serve(`, `uvicorn.run(`, `app.run(`, `Deno.serve(`, a
+  `start`/`dev` script that runs a file or framework server, or a `Dockerfile`/`Procfile`/`main.py`/`manage.py`/
+  `artisan`). `rel/no-health-check` recognises versioned routes such as `/v1/health` and `/api/v2/healthz`.
+- **Workspace packages audited alone.** Relivaro reads a fixed allowlist of metadata files (`package.json`,
+  `pnpm-workspace.yaml`, lockfiles, `.dockerignore`) above the audit root, and only from an ancestor whose workspace
+  globs include the audit root. `sc/missing-lockfile` then sees the workspace root's lockfile, and the "no
+  typecheck/test commands" limitation names the root's scripts.
+- **Large lockfiles.** Lockfiles have their own size limit (`maxLockfileSizeKb`, default 51200), so an 8.9 MB
+  `package-lock.json` is analysed. A lockfile over the limit is named in a limitation and still counts as present.
+- **Symlinks.** A symlink to an in-tree file is analysed once, and a link to an in-tree directory (including a loop
+  such as `loop -> .`) is no longer counted as pointing outside the root.
+- **1.3.0 review minors.** A commented-out `output: 'export'` is not a static export; `nginx/*.conf.template` is an
+  nginx config; an unterminated Caddy backtick value stops at the end of its block; a Caddy `@matcher { header … }`
+  is not a response header; only a SARIF file written by Relivaro, Jourilo or Searvex is skipped as a tool report; the
+  `Generated … · Relivaro` marker counts only in the first 5 lines; the `Next:` hint quotes paths with `&`, `;`, `|`
+  and other shell metacharacters; the HTML report's open-findings KPI shows the accepted count.
+
+### Fixed (false negatives)
+
+- `sec/docker-context-leak` no longer stays silent for every Dockerfile when the audit root has a `.dockerignore`
+  that is not the Dockerfile's build context.
+- `sec/command-injection`: Python subscript sources (`request.args["cmd"]`) passed to `subprocess` with
+  `shell=True`, and `spawn('sh', ['-c', input])`.
+- `sec/xss`: Express `res.send`/`write`/`end` with HTML concatenated with request data.
+- `sec/cors-misconfiguration`: `require('cors')({…})` and an options object held in a `const`.
+- `sec/hardcoded-signing-secret`: a JS JWT secret held in a `const`.
+- `sec/path-traversal`: archive entry names (`entry.path`, `header.name`, `member.name`, `namelist()` elements)
+  flowing into file-system calls in a file that imports an archive library (zip slip), and Python `tarfile`
+  `extractall()` without `filter=`.
+- Without git (walk mode), files hidden by `.gitignore` are counted and named in a limitation instead of
+  disappearing silently.
+
+### Added
+
+- **`relivaro-accept` comments.** `// relivaro-accept-next-line perf/query-in-loop: sequential row locks, bounded`
+  records an accepted risk in the code. The finding stays in every report (*Accepted in code: …*; SARIF `inSource`
+  suppression with status `accepted`), counts as accepted, and does not fail `--fail-on` or release gates. A rule id
+  and a reason are required; a comment without them accepts nothing and is listed in `errors.rules`.
+- **`--no-inline-suppressions`** ignores `relivaro-ignore*` and `relivaro-accept*` comments in code you do not trust.
+- **`--no-gitignore`** analyses files matched by `.gitignore` when there is no git metadata.
+- **`--assume-tracked`** treats every file as committed when there is no git metadata (archives, exports), so
+  `sec/env-file-committed` reports `.env` files and key material by path; their content is never read.
+- **`maxLockfileSizeKb`** config key (1–204800 KB).
+
+### Changed
+
+- `metrics.dependencies` counts unique `ecosystem/name@version`, the same unit as the OSV query count;
+  `metrics.dependencyEntries` keeps the raw sum of lockfile entries.
+- The "files larger than … were skipped" limitation names up to 5 of the files.
+
 ## [1.3.0] — 2026-11-03
 
 Fixes and blind spots found by auditing two real projects (a static Next.js site behind Caddy, and a pnpm 12 +

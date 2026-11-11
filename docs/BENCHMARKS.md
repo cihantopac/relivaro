@@ -11,14 +11,16 @@ The corpus annotates every expected finding inline; anything else Relivaro repor
 | clean-service | 0 | 0 | 0 | 100% | 100% |
 | laravel-app | 40 | 0 | 0 | 100% | 100% |
 | misc-rules | 14 | 0 | 0 | 100% | 100% |
+| monorepo-docker | 1 | 0 | 0 | 100% | 100% |
+| monorepo-lib | 1 | 0 | 0 | 100% | 100% |
 | next-app | 12 | 0 | 0 | 100% | 100% |
-| node-api | 54 | 0 | 0 | 100% | 100% |
-| python-app | 30 | 0 | 0 | 100% | 100% |
+| node-api | 62 | 0 | 0 | 100% | 100% |
+| python-app | 32 | 0 | 0 | 100% | 100% |
 | regressions | 5 | 0 | 0 | 100% | 100% |
 | static-site | 3 | 0 | 0 | 100% | 100% |
-| **total** | **158** | **0** | **0** | **100.0%** | **100.0%** |
+| **total** | **170** | **0** | **0** | **100.0%** | **100.0%** |
 
-Detection accuracy re-measured 2026-11-03 with Relivaro 1.3.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
+Detection accuracy re-measured 2026-11-11 with Relivaro 1.4.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
 
 ## Analysis performance
 

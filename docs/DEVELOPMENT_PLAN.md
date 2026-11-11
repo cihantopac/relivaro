@@ -2,13 +2,15 @@
 
 Persistent record of scope, decisions, verified progress and open issues. Update it with every significant change.
 
-## Status (2026-11-03)
+## Status (2026-11-11)
 
-v1.3.0 prepared from two field reports: pnpm 12 lockfiles, dependency parse errors surfaced as limitations,
-generated tool reports skipped, `accepted` review verdict, web server security header rules (Caddy, nginx,
-`_headers`), Next.js static export detection, workspace package-manager inheritance, a separate rule id for
-GitHub-owned actions and clearer CLI guidance. 89 rules; 8 fixture projects with 158 expected findings at 100%
-precision/recall. All acceptance criteria in [ACCEPTANCE.md](ACCEPTANCE.md) are met.
+v1.4.0 prepared as a correctness release from the Frameva field reports (RELIVARO-013 to 022) and the deferred minors
+of the 1.3.0 review: Docker stage and build-context resolution, constant SQL fragments, test-file and short-loop
+scope, inline relivaro-accept annotations and --no-inline-suppressions, library vs. service detection, workspace-root
+metadata (lockfiles, scripts, .dockerignore) for packages audited alone, a lockfile size class, unique dependency
+counts, walk-mode visibility (--no-gitignore, --assume-tracked, symlink dedupe) and false negatives inside existing
+rules. 89 rules; 10 fixture projects with 170 expected findings at 100% precision/recall. Next: 1.5.0 (integration
+and hosted scanning), then 1.6.0 (new rule families).
 
 ## Milestones (internal)
 
