@@ -17,9 +17,10 @@ import {
 import { VERSION } from './core/version.js';
 import { Workspace } from './core/workspace.js';
 import { queryOsv, uniquePackageCount } from './deps/osv.js';
-import { classify, FileSet } from './fs/files.js';
+import { classify, FileSet, runGit } from './fs/files.js';
 import { discover, type ProjectProfile } from './intel/discover.js';
 import { assessRelease, type ReleaseAssessment } from './release/readiness.js';
+import { credentialFreeUrl } from './report/sarif.js';
 import { analyze, FindingBuilder } from './rules/engine.js';
 import { RULES } from './rules/index.js';
 import type { ProjectContext } from './rules/types.js';
@@ -252,6 +253,18 @@ export async function runAudit(
   progress(`discovering project (${files.files.length} files)`);
   stage('discover', 'start');
   const profile = discover(files);
+  if (files.gitRepo) {
+    const revisionId = runGit(files.root, ['rev-parse', 'HEAD'])?.trim();
+    if (revisionId && /^[0-9a-f]{7,64}$/.test(revisionId)) {
+      const branch = runGit(files.root, ['rev-parse', '--abbrev-ref', 'HEAD'])?.trim();
+      const remote = runGit(files.root, ['remote', 'get-url', 'origin'])?.trim();
+      profile.vcs = {
+        revisionId,
+        ...(branch && branch !== 'HEAD' ? { branch } : {}),
+        ...(remote ? { repositoryUri: credentialFreeUrl(remote) } : {}),
+      };
+    }
+  }
   stage('discover', 'end');
   const ctx: ProjectContext = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);

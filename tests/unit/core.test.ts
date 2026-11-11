@@ -498,3 +498,68 @@ describe('run budget limits', () => {
     expect(() => parseSize('ten')).toThrow(/--max-bytes/);
   });
 });
+
+describe('sarif enrichment', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const gitRepo = () => {
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-sarif-'));
+    made.push(dir);
+    const g = (...a: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', '-c', 'commit.gpgsign=false', ...a],
+        {
+          cwd: dir,
+          stdio: 'pipe',
+        },
+      )
+        .toString()
+        .trim();
+    g('init', '-q', '-b', 'main');
+    writeFileSync(join(dir, 'app.js'), 'eval(process.argv[2]);\n');
+    g('add', '-A');
+    g('commit', '-qm', 'x');
+    g('remote', 'add', 'origin', 'https://user:tok@github.com/x/y.git');
+    return { dir, sha: g('rev-parse', 'HEAD') };
+  };
+
+  it('strips credentials from a remote URL', async () => {
+    const { credentialFreeUrl } = await import('../../src/report/sarif.js');
+    expect(credentialFreeUrl('https://user:tok@github.com/x/y')).toBe('https://github.com/x/y');
+    expect(credentialFreeUrl('https://github.com/x/y.git')).toBe('https://github.com/x/y.git');
+    expect(credentialFreeUrl('git@github.com:x/y.git')).toBe('git@github.com:x/y.git');
+  });
+
+  it('carries base ids, provenance, a ruleset hash and a truthful invocation', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const { dir, sha } = gitRepo();
+    const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true });
+    const sarif = toSarif(run, { exitCode: 1 }) as any;
+    const r = sarif.runs[0];
+    expect(r.originalUriBaseIds['%SRCROOT%'].uri).toMatch(/^file:\/\/\/.+\/$/);
+    expect(r.versionControlProvenance).toEqual([
+      { repositoryUri: 'https://github.com/x/y.git', revisionId: sha, branch: 'main' },
+    ]);
+    expect(r.tool.driver.properties.rulesetHash).toMatch(/^[0-9a-f]{64}$/);
+    expect((toSarif(run) as any).runs[0].tool.driver.properties.rulesetHash).toBe(
+      r.tool.driver.properties.rulesetHash,
+    );
+    expect(r.invocations[0]).toMatchObject({ exitCode: 1, executionSuccessful: true });
+    expect(typeof r.invocations[0].endTimeUtc).toBe('string');
+    expect((toSarif(run, { exitCode: 2 }) as any).runs[0].invocations[0].executionSuccessful).toBe(false);
+    const partial = { ...run, partial: { reason: 'files' as const, at: run.startedAt } };
+    expect((toSarif(partial, { exitCode: 4 }) as any).runs[0].invocations[0].executionSuccessful).toBe(false);
+  });
+
+  it('a labelled run uses the label as the base URI', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const { dir } = gitRepo();
+    const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true, rootLabel: 'repo' });
+    const text = JSON.stringify(toSarif(run));
+    expect(text).not.toContain(dir);
+    expect((toSarif(run) as any).runs[0].originalUriBaseIds['%SRCROOT%'].uri).toBe('file:///repo/');
+  });
+});

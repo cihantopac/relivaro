@@ -326,6 +326,7 @@ function writeReports(
   run: RunRecord,
   formats: string[],
   outDir?: string,
+  exitCode?: number,
 ): Record<string, string> {
   const files: Record<string, string> = {};
   ws.writeJson(['runs', run.runId, 'run.json'], run);
@@ -334,7 +335,7 @@ function writeReports(
     json: () => ['report.json', `${JSON.stringify(run, null, 2)}\n`],
     md: () => ['report.md', toMarkdown(run, { review })],
     html: () => ['report.html', toHtml(run, htmlExtras(ws, run, review))],
-    sarif: () => ['report.sarif', `${JSON.stringify(toSarif(run), null, 2)}\n`],
+    sarif: () => ['report.sarif', `${JSON.stringify(toSarif(run, { exitCode }), null, 2)}\n`],
   };
   for (const f of formats) {
     const r = render[f];
@@ -391,6 +392,8 @@ async function analysisCommand(
   });
   if (cfg.release) run.release = assessRelease(run, config, benchSnapshots(workspace));
   clearProgress();
+  // Decided before the reports are written, so the SARIF invocation records the real exit code.
+  const exitCode = analysisExitCode(run, p, cfg.release, config.failOn);
   const formats = (p.opts.format as string[] | undefined) ?? ['json', 'md', 'html'];
   const reportStart = performance.now();
   const elapsed = () => Math.round(run.durationMs + performance.now() - reportStart);
@@ -403,6 +406,7 @@ async function analysisCommand(
         run,
         Array.isArray(formats) ? formats : String(formats).split(','),
         p.opts.out as string | undefined,
+        exitCode,
       );
   if (!p.opts['no-write']) out.event({ type: 'stage', stage: 'report', state: 'end', elapsedMs: elapsed() });
   if (out.json)
@@ -424,10 +428,19 @@ async function analysisCommand(
       p.positionals[0] ?? '.',
     );
   if (p.opts.open && files.html) openFile(files.html);
-  const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? config.failOn;
+  return exitCode;
+}
+
+function analysisExitCode(
+  run: RunRecord,
+  p: Parsed,
+  release: boolean | undefined,
+  configFailOn: Severity | 'none',
+): number {
+  const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? configFailOn;
   // A partial run is reported as partial, whatever its findings say: it never passes as complete.
   if (run.partial) return EXIT.PARTIAL;
-  if (cfg.release && run.release) {
+  if (release && run.release) {
     if (run.release.status === 'not-ready') return EXIT.GATE_FAILED;
     if (p.opts.strict && run.release.status !== 'ready' && run.release.status !== 'ready-with-warnings')
       return EXIT.GATE_FAILED;

@@ -22955,13 +22955,170 @@ function summarizeRules(fs2) {
   return [...counts.entries()].map(([t2, n]) => `${t2} \xD7${n}`).join(", ");
 }
 
+// src/report/sarif.ts
+init_rules();
+import { createHash } from "node:crypto";
+import { isAbsolute as isAbsolute2 } from "node:path";
+import { pathToFileURL } from "node:url";
+var LEVEL = {
+  critical: "error",
+  high: "error",
+  medium: "warning",
+  low: "note",
+  info: "note"
+};
+var SECURITY_SEVERITY = {
+  critical: "9.5",
+  high: "8.0",
+  medium: "5.5",
+  low: "3.0",
+  info: "0.0"
+};
+function regionText(snippet, start2, end) {
+  if (!snippet) return void 0;
+  const picked = [];
+  for (const l of snippet.split("\n")) {
+    const m = /^\s*(\d+) \| (.*)$/.exec(l);
+    if (m && Number(m[1]) >= start2 && Number(m[1]) <= end) picked.push(m[2]);
+  }
+  return picked.length ? picked.join("\n") : void 0;
+}
+function credentialFreeUrl(url) {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, "$1");
+}
+function rulesetHash() {
+  const text = allRuleMeta().map((r) => `${r.id}:${r.severity}`).sort().join("\n");
+  return createHash("sha256").update(text).digest("hex");
+}
+function baseUri(root) {
+  if (isAbsolute2(root)) {
+    const href = pathToFileURL(root).href;
+    return href.endsWith("/") ? href : `${href}/`;
+  }
+  return `file:///${encodeURI(root.replace(/^\/+|\/+$/g, ""))}/`;
+}
+function toSarif(run2, opts = {}) {
+  const exitCode = opts.exitCode ?? (run2.partial ? 4 : 0);
+  const vcs = run2.profile.vcs;
+  const used = new Set(run2.findings.map((f) => f.ruleId));
+  const rules = allRuleMeta().filter((r) => used.has(r.id));
+  const index = new Map(rules.map((r, i2) => [r.id, i2]));
+  const fallbackUri = run2.profile.manifests.find((m) => !m.file.includes("/"))?.file ?? run2.profile.docs.readme ?? ".gitignore";
+  return {
+    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
+    version: "2.1.0",
+    runs: [
+      {
+        tool: {
+          driver: {
+            name: "Relivaro",
+            version: run2.tool.version,
+            semanticVersion: run2.tool.version,
+            informationUri: "https://github.com/cihantopac/relivaro",
+            properties: { rulesetHash: rulesetHash() },
+            rules: rules.map((r) => ({
+              id: r.id,
+              name: r.id.replace(
+                /[^A-Za-z0-9]+(.)?/g,
+                (_m, c) => c ? c.toUpperCase() : ""
+              ),
+              shortDescription: { text: r.title },
+              fullDescription: { text: r.description },
+              help: {
+                text: `${r.recommendation}
+
+Verification: ${r.verification}`,
+                markdown: `**Impact:** ${r.impact}
+
+**Fix:** ${r.recommendation}
+
+**Verify:** ${r.verification}`
+              },
+              defaultConfiguration: { level: LEVEL[r.severity] },
+              properties: {
+                tags: [
+                  r.category,
+                  ...(r.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`),
+                  ...r.tags ?? []
+                ],
+                precision: r.confidence === "high" ? "high" : r.confidence === "medium" ? "medium" : "low",
+                ...r.category === "security" || r.category === "supply-chain" ? { "security-severity": SECURITY_SEVERITY[r.severity] } : {}
+              }
+            }))
+          }
+        },
+        automationDetails: { id: `relivaro/${run2.command}/` },
+        originalUriBaseIds: { "%SRCROOT%": { uri: baseUri(run2.root) } },
+        ...vcs ? {
+          versionControlProvenance: [
+            {
+              ...vcs.repositoryUri ? { repositoryUri: vcs.repositoryUri } : {},
+              revisionId: vcs.revisionId,
+              ...vcs.branch ? { branch: vcs.branch } : {}
+            }
+          ]
+        } : {},
+        invocations: [
+          {
+            exitCode,
+            // A usage error or a partial run did not complete the analysis it was asked for.
+            executionSuccessful: exitCode !== 2 && !run2.partial,
+            startTimeUtc: run2.startedAt,
+            endTimeUtc: new Date(Date.parse(run2.startedAt) + run2.durationMs).toISOString()
+          }
+        ],
+        results: run2.findings.filter((f) => f.status !== "baseline").map((f) => result(f, index.get(f.ruleId), fallbackUri))
+      }
+    ]
+  };
+}
+function result(f, ruleIndex, fallbackUri) {
+  const r = {
+    ruleId: f.ruleId,
+    level: LEVEL[f.severity],
+    message: { text: `${f.message} ${f.recommendation}`.trim() },
+    partialFingerprints: { "relivaro/v1": f.fingerprint },
+    properties: {
+      severity: f.severity,
+      confidence: f.confidence,
+      category: f.category,
+      provenance: f.provenance,
+      findingId: f.id
+    }
+  };
+  if (ruleIndex !== void 0) r.ruleIndex = ruleIndex;
+  const factPath = typeof f.evidence.facts?.path === "string" ? f.evidence.facts.path : void 0;
+  const loc2 = f.location ?? { file: factPath ?? fallbackUri, line: 1 };
+  const region = {};
+  if (loc2.line) region.startLine = loc2.line;
+  if (loc2.column) region.startColumn = loc2.column;
+  if (loc2.endLine && loc2.endLine >= (loc2.line ?? 0)) region.endLine = loc2.endLine;
+  const snippet = loc2.line ? regionText(f.evidence.snippet, loc2.line, loc2.endLine ?? loc2.line) : void 0;
+  if (snippet !== void 0) region.snippet = { text: snippet };
+  r.locations = [
+    {
+      physicalLocation: {
+        artifactLocation: { uri: encodeURI(loc2.file), uriBaseId: "%SRCROOT%" },
+        ...Object.keys(region).length ? { region } : {}
+      }
+    }
+  ];
+  if (f.status === "suppressed")
+    r.suppressions = [{ kind: "inSource", justification: f.suppression?.reason ?? "" }];
+  else if (f.accepted)
+    r.suppressions = [
+      { kind: "inSource", status: "accepted", justification: `Accepted in code: ${f.accepted.reason}` }
+    ];
+  return r;
+}
+
 // src/rules/engine.ts
 init_glob();
 
 // src/core/hash.ts
-import { createHash } from "node:crypto";
+import { createHash as createHash2 } from "node:crypto";
 function sha256(data) {
-  return createHash("sha256").update(data).digest("hex");
+  return createHash2("sha256").update(data).digest("hex");
 }
 function normalizeCode(text) {
   return text.replace(/\s+/g, " ").trim();
@@ -23422,6 +23579,18 @@ async function runAudit(opts) {
   progress(`discovering project (${files.files.length} files)`);
   stage("discover", "start");
   const profile = discover(files);
+  if (files.gitRepo) {
+    const revisionId = runGit(files.root, ["rev-parse", "HEAD"])?.trim();
+    if (revisionId && /^[0-9a-f]{7,64}$/.test(revisionId)) {
+      const branch = runGit(files.root, ["rev-parse", "--abbrev-ref", "HEAD"])?.trim();
+      const remote = runGit(files.root, ["remote", "get-url", "origin"])?.trim();
+      profile.vcs = {
+        revisionId,
+        ...branch && branch !== "HEAD" ? { branch } : {},
+        ...remote ? { repositoryUri: credentialFreeUrl(remote) } : {}
+      };
+    }
+  }
   stage("discover", "end");
   const ctx = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
@@ -27207,125 +27376,6 @@ function toMarkdown(run2, opts = {}) {
 `;
 }
 
-// src/report/sarif.ts
-init_rules();
-var LEVEL = {
-  critical: "error",
-  high: "error",
-  medium: "warning",
-  low: "note",
-  info: "note"
-};
-var SECURITY_SEVERITY = {
-  critical: "9.5",
-  high: "8.0",
-  medium: "5.5",
-  low: "3.0",
-  info: "0.0"
-};
-function regionText(snippet, start2, end) {
-  if (!snippet) return void 0;
-  const picked = [];
-  for (const l of snippet.split("\n")) {
-    const m = /^\s*(\d+) \| (.*)$/.exec(l);
-    if (m && Number(m[1]) >= start2 && Number(m[1]) <= end) picked.push(m[2]);
-  }
-  return picked.length ? picked.join("\n") : void 0;
-}
-function toSarif(run2) {
-  const used = new Set(run2.findings.map((f) => f.ruleId));
-  const rules = allRuleMeta().filter((r) => used.has(r.id));
-  const index = new Map(rules.map((r, i2) => [r.id, i2]));
-  const fallbackUri = run2.profile.manifests.find((m) => !m.file.includes("/"))?.file ?? run2.profile.docs.readme ?? ".gitignore";
-  return {
-    $schema: "https://json.schemastore.org/sarif-2.1.0.json",
-    version: "2.1.0",
-    runs: [
-      {
-        tool: {
-          driver: {
-            name: "Relivaro",
-            version: run2.tool.version,
-            semanticVersion: run2.tool.version,
-            informationUri: "https://github.com/cihantopac/relivaro",
-            rules: rules.map((r) => ({
-              id: r.id,
-              name: r.id.replace(
-                /[^A-Za-z0-9]+(.)?/g,
-                (_m, c) => c ? c.toUpperCase() : ""
-              ),
-              shortDescription: { text: r.title },
-              fullDescription: { text: r.description },
-              help: {
-                text: `${r.recommendation}
-
-Verification: ${r.verification}`,
-                markdown: `**Impact:** ${r.impact}
-
-**Fix:** ${r.recommendation}
-
-**Verify:** ${r.verification}`
-              },
-              defaultConfiguration: { level: LEVEL[r.severity] },
-              properties: {
-                tags: [
-                  r.category,
-                  ...(r.cwe ?? []).map((c) => `external/cwe/${c.toLowerCase()}`),
-                  ...r.tags ?? []
-                ],
-                precision: r.confidence === "high" ? "high" : r.confidence === "medium" ? "medium" : "low",
-                ...r.category === "security" || r.category === "supply-chain" ? { "security-severity": SECURITY_SEVERITY[r.severity] } : {}
-              }
-            }))
-          }
-        },
-        automationDetails: { id: `relivaro/${run2.command}/` },
-        invocations: [{ executionSuccessful: true, startTimeUtc: run2.startedAt }],
-        results: run2.findings.filter((f) => f.status !== "baseline").map((f) => result(f, index.get(f.ruleId), fallbackUri))
-      }
-    ]
-  };
-}
-function result(f, ruleIndex, fallbackUri) {
-  const r = {
-    ruleId: f.ruleId,
-    level: LEVEL[f.severity],
-    message: { text: `${f.message} ${f.recommendation}`.trim() },
-    partialFingerprints: { "relivaro/v1": f.fingerprint },
-    properties: {
-      severity: f.severity,
-      confidence: f.confidence,
-      category: f.category,
-      provenance: f.provenance,
-      findingId: f.id
-    }
-  };
-  if (ruleIndex !== void 0) r.ruleIndex = ruleIndex;
-  const factPath = typeof f.evidence.facts?.path === "string" ? f.evidence.facts.path : void 0;
-  const loc2 = f.location ?? { file: factPath ?? fallbackUri, line: 1 };
-  const region = {};
-  if (loc2.line) region.startLine = loc2.line;
-  if (loc2.column) region.startColumn = loc2.column;
-  if (loc2.endLine && loc2.endLine >= (loc2.line ?? 0)) region.endLine = loc2.endLine;
-  const snippet = loc2.line ? regionText(f.evidence.snippet, loc2.line, loc2.endLine ?? loc2.line) : void 0;
-  if (snippet !== void 0) region.snippet = { text: snippet };
-  r.locations = [
-    {
-      physicalLocation: {
-        artifactLocation: { uri: encodeURI(loc2.file), uriBaseId: "%SRCROOT%" },
-        ...Object.keys(region).length ? { region } : {}
-      }
-    }
-  ];
-  if (f.status === "suppressed")
-    r.suppressions = [{ kind: "inSource", justification: f.suppression?.reason ?? "" }];
-  else if (f.accepted)
-    r.suppressions = [
-      { kind: "inSource", status: "accepted", justification: `Accepted in code: ${f.accepted.reason}` }
-    ];
-  return r;
-}
-
 // src/review/review.ts
 init_errors();
 init_secrets();
@@ -27877,7 +27927,7 @@ function htmlExtras(ws, run2, review) {
     } : void 0
   };
 }
-function writeReports(ws, run2, formats, outDir) {
+function writeReports(ws, run2, formats, outDir, exitCode) {
   const files = {};
   ws.writeJson(["runs", run2.runId, "run.json"], run2);
   const review = effectiveReview(ws, run2);
@@ -27886,7 +27936,7 @@ function writeReports(ws, run2, formats, outDir) {
 `],
     md: () => ["report.md", toMarkdown(run2, { review })],
     html: () => ["report.html", toHtml(run2, htmlExtras(ws, run2, review))],
-    sarif: () => ["report.sarif", `${JSON.stringify(toSarif(run2), null, 2)}
+    sarif: () => ["report.sarif", `${JSON.stringify(toSarif(run2, { exitCode }), null, 2)}
 `]
   };
   for (const f of formats) {
@@ -27937,6 +27987,7 @@ async function analysisCommand(p, out2, cfg) {
   });
   if (cfg.release) run2.release = assessRelease(run2, config, benchSnapshots(workspace));
   clearProgress();
+  const exitCode = analysisExitCode(run2, p, cfg.release, config.failOn);
   const formats = p.opts.format ?? ["json", "md", "html"];
   const reportStart = performance.now();
   const elapsed = () => Math.round(run2.durationMs + performance.now() - reportStart);
@@ -27946,7 +27997,8 @@ async function analysisCommand(p, out2, cfg) {
     workspace,
     run2,
     Array.isArray(formats) ? formats : String(formats).split(","),
-    p.opts.out
+    p.opts.out,
+    exitCode
   );
   if (!p.opts["no-write"]) out2.event({ type: "stage", stage: "report", state: "end", elapsedMs: elapsed() });
   if (out2.json)
@@ -27966,9 +28018,12 @@ async function analysisCommand(p, out2, cfg) {
       p.positionals[0] ?? "."
     );
   if (p.opts.open && files.html) openFile(files.html);
-  const failOn = p.opts["fail-on"] ?? config.failOn;
+  return exitCode;
+}
+function analysisExitCode(run2, p, release, configFailOn) {
+  const failOn = p.opts["fail-on"] ?? configFailOn;
   if (run2.partial) return EXIT.PARTIAL;
-  if (cfg.release && run2.release) {
+  if (release && run2.release) {
     if (run2.release.status === "not-ready") return EXIT.GATE_FAILED;
     if (p.opts.strict && run2.release.status !== "ready" && run2.release.status !== "ready-with-warnings")
       return EXIT.GATE_FAILED;

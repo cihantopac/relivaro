@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { isAbsolute } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { RunRecord } from '../audit.js';
 import type { Finding, Severity } from '../core/types.js';
 import { allRuleMeta } from '../rules/index.js';
@@ -33,7 +36,31 @@ function regionText(snippet: string | undefined, start: number, end: number): st
   return picked.length ? picked.join('\n') : undefined;
 }
 
-export function toSarif(run: RunRecord): object {
+/** A remote URL without user name, password or token (`https://user:tok@host/x` → `https://host/x`). */
+export function credentialFreeUrl(url: string): string {
+  return url.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]*@/i, '$1');
+}
+
+/** sha256 of every rule id with its default severity, so two runs with different rule sets are distinguishable. */
+export function rulesetHash(): string {
+  const text = allRuleMeta()
+    .map((r) => `${r.id}:${r.severity}`)
+    .sort()
+    .join('\n');
+  return createHash('sha256').update(text).digest('hex');
+}
+
+function baseUri(root: string): string {
+  if (isAbsolute(root)) {
+    const href = pathToFileURL(root).href;
+    return href.endsWith('/') ? href : `${href}/`;
+  }
+  return `file:///${encodeURI(root.replace(/^\/+|\/+$/g, ''))}/`;
+}
+
+export function toSarif(run: RunRecord, opts: { exitCode?: number } = {}): object {
+  const exitCode = opts.exitCode ?? (run.partial ? 4 : 0);
+  const vcs = run.profile.vcs;
   const used = new Set(run.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
   const index = new Map(rules.map((r, i) => [r.id, i]));
@@ -51,6 +78,7 @@ export function toSarif(run: RunRecord): object {
             version: run.tool.version,
             semanticVersion: run.tool.version,
             informationUri: 'https://github.com/cihantopac/relivaro',
+            properties: { rulesetHash: rulesetHash() },
             rules: rules.map((r) => ({
               id: r.id,
               name: r.id.replace(/[^A-Za-z0-9]+(.)?/g, (_m, c: string | undefined) =>
@@ -78,7 +106,27 @@ export function toSarif(run: RunRecord): object {
           },
         },
         automationDetails: { id: `relivaro/${run.command}/` },
-        invocations: [{ executionSuccessful: true, startTimeUtc: run.startedAt }],
+        originalUriBaseIds: { '%SRCROOT%': { uri: baseUri(run.root) } },
+        ...(vcs
+          ? {
+              versionControlProvenance: [
+                {
+                  ...(vcs.repositoryUri ? { repositoryUri: vcs.repositoryUri } : {}),
+                  revisionId: vcs.revisionId,
+                  ...(vcs.branch ? { branch: vcs.branch } : {}),
+                },
+              ],
+            }
+          : {}),
+        invocations: [
+          {
+            exitCode,
+            // A usage error or a partial run did not complete the analysis it was asked for.
+            executionSuccessful: exitCode !== 2 && !run.partial,
+            startTimeUtc: run.startedAt,
+            endTimeUtc: new Date(Date.parse(run.startedAt) + run.durationMs).toISOString(),
+          },
+        ],
         results: run.findings
           .filter((f) => f.status !== 'baseline')
           .map((f) => result(f, index.get(f.ruleId), fallbackUri)),

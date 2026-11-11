@@ -553,6 +553,16 @@
           "required": ["files", "bytes"],
           "properties": { "files": { "type": "integer" }, "bytes": { "type": "integer" } }
         },
+        "vcs": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["revisionId"],
+          "properties": {
+            "revisionId": { "type": "string" },
+            "branch": { "type": "string" },
+            "repositoryUri": { "type": "string" }
+          }
+        },
         "workspaceRoot": {
           "type": "object",
           "additionalProperties": false,
