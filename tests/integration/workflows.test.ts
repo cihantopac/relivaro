@@ -379,8 +379,11 @@ describe('fix workflow: failure recovery', () => {
       const fx = materialize('python-app');
       try {
         const ws = new Workspace(fx.dir);
-        // app.py becomes an absolute symlink to a file inside the project.
+        // app.py becomes an absolute symlink to a file inside the project that is not analysed under its own path
+        // (git-ignored), so the link itself carries the findings.
         const real = join(fx.dir, 'src_real_app.py');
+        const { appendFileSync } = await import('node:fs');
+        appendFileSync(join(fx.dir, '.gitignore'), '\nsrc_real_app.py\n');
         writeFileSync(real, readFileSync(join(fx.dir, 'app.py')));
         const original = readFileSync(real, 'utf8');
         const { rmSync } = await import('node:fs');

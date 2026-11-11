@@ -408,7 +408,7 @@ import {
   realpathSync,
   statSync
 } from "node:fs";
-import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 function isEnvTemplate(path) {
   return ENV_TEMPLATE.test(basename(path));
 }
@@ -594,12 +594,18 @@ function gitIgnoredSensitive(root) {
   if (!out2) return [];
   return out2.split("\0").filter((p) => p && !p.endsWith("/") && isSensitivePath(p) && !isExcludedPath(p)).slice(0, 200);
 }
-function walk(root) {
+function walk(root, respectGitignore = true) {
   const out2 = [];
-  const ignore = readRootGitignore(root);
-  const stack = [""];
+  const ignore = respectGitignore ? readRootGitignore(root) : [];
+  const gitignored = [];
+  let gitignoredCount = 0;
+  const note = (entry) => {
+    if (gitignored.length < 20) gitignored.push(entry);
+  };
+  const stack = [{ dir: "", ignored: false }];
+  let visited = 0;
   while (stack.length) {
-    const dir = stack.pop();
+    const { dir, ignored } = stack.pop();
     let entries;
     try {
       entries = readdirSync(join(root, dir), { withFileTypes: true });
@@ -608,17 +614,25 @@ function walk(root) {
     }
     for (const e of entries) {
       const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (++visited > 4e5) return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
       if (e.isDirectory()) {
-        if (DEFAULT_EXCLUDED_DIRS.has(e.name) || ignore.length && matchesAny(`${rel}/`, ignore)) continue;
-        stack.push(rel);
+        if (DEFAULT_EXCLUDED_DIRS.has(e.name)) continue;
+        const ign = ignored || ignore.length > 0 && matchesAny(`${rel}/`, ignore);
+        if (ign && !ignored) note(`${rel}/`);
+        stack.push({ dir: rel, ignored: ign });
       } else if (e.isFile() || e.isSymbolicLink()) {
-        if (ignore.length && matchesAny(rel, ignore) && !isSensitivePath(rel)) continue;
+        const ign = ignored || ignore.length > 0 && matchesAny(rel, ignore);
+        if (ign && (ignored || !isSensitivePath(rel))) {
+          gitignoredCount++;
+          if (!ignored) note(rel);
+          continue;
+        }
         out2.push({ path: rel, tracked: void 0 });
       }
-      if (out2.length > 2e5) return out2;
+      if (out2.length > 2e5) return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
     }
   }
-  return out2;
+  return { entries: out2, gitignored: gitignored.sort(), gitignoredCount };
 }
 function readRootGitignore(root) {
   try {
@@ -881,15 +895,20 @@ var init_files = __esm({
         sensitive: 0,
         symlinkOutside: 0,
         generated: 0,
-        reports: 0
+        reports: 0,
+        gitignored: 0,
+        symlinkDuplicate: 0,
+        symlinkDir: 0
       };
       /** Sensitive files present on disk that were not read (path only). */
       sensitiveUnread = [];
       /** Paths behind some of the `skipped` counts, so reports can name them. */
-      skippedPaths = { tooLarge: [] };
+      skippedPaths = { tooLarge: [], gitignored: [] };
       /** Size in bytes of each file in `skippedPaths.tooLarge`. */
       skippedSizes = /* @__PURE__ */ new Map();
       cache = /* @__PURE__ */ new Map();
+      /** Sensitive files listed because of `assumeTracked`: reported by path, never read. */
+      unreadable = /* @__PURE__ */ new Set();
       byPath = /* @__PURE__ */ new Map();
       maxBytes;
       maxLockfileBytes;
@@ -902,10 +921,21 @@ var init_files = __esm({
         this.maxLockfileBytes = (opts.maxLockfileSizeKb ?? 51200) * 1024;
         const listed = opts.useGit === false ? null : gitListFiles(this.root);
         this.gitRepo = listed !== null;
-        const candidates = listed ?? walk(this.root);
+        let candidates;
+        if (listed) candidates = listed;
+        else {
+          const w = walk(this.root, opts.respectGitignore !== false);
+          candidates = w.entries;
+          this.skipped.gitignored = w.gitignoredCount;
+          this.skippedPaths.gitignored = w.gitignored;
+        }
+        const assumeTracked = !listed && opts.assumeTracked === true;
         const ignoredSensitive = listed ? gitIgnoredSensitive(this.root) : [];
+        const listedPaths = new Set(candidates.map((c) => c.path));
+        const linkTargets = /* @__PURE__ */ new Set();
         const files = [];
-        for (const { path, tracked } of candidates) {
+        for (const { path, tracked: listedTracked } of candidates) {
+          const tracked = assumeTracked ? true : listedTracked;
           if (isExcludedPath(path) || opts.exclude?.length && matchesAny(path, opts.exclude)) {
             this.skipped.excluded++;
             continue;
@@ -933,23 +963,43 @@ var init_files = __esm({
           if (st.isSymbolicLink()) {
             try {
               const target = realpathSync.native(abs);
-              if (!isInside(this.realRoot, target) || !statSync(target).isFile()) {
+              if (!isInside(this.realRoot, target)) {
                 this.skipped.symlinkOutside++;
                 continue;
               }
-              st = statSync(target);
+              const tst = statSync(target);
+              if (tst.isDirectory()) {
+                this.skipped.symlinkDir++;
+                continue;
+              }
+              if (!tst.isFile()) {
+                this.skipped.symlinkOutside++;
+                continue;
+              }
+              const rel = relative(this.realRoot, target).split(sep).join("/");
+              if (rel !== path && listedPaths.has(rel) || linkTargets.has(target)) {
+                this.skipped.symlinkDuplicate++;
+                continue;
+              }
+              linkTargets.add(target);
+              st = tst;
             } catch {
               this.skipped.symlinkOutside++;
               continue;
             }
           } else if (!st.isFile()) continue;
-          if (isSensitivePath(path) && tracked !== true) {
+          const sensitive = isSensitivePath(path);
+          if (sensitive && tracked !== true) {
             this.skipped.sensitive++;
             this.sensitiveUnread.push({ path, ignored: listed ? false : void 0 });
             continue;
           }
           const { kind, language: language2 } = classify(path);
           const pf = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
+          if (sensitive && assumeTracked) {
+            pf.assumedTracked = true;
+            this.unreadable.add(path);
+          }
           if (language2) pf.language = language2;
           if (st.size > (kind === "lockfile" ? this.maxLockfileBytes : this.maxBytes)) {
             this.skipped.tooLarge++;
@@ -982,7 +1032,7 @@ var init_files = __esm({
       read(path) {
         if (this.cache.has(path)) return this.cache.get(path) ?? void 0;
         const pf = this.byPath.get(path);
-        if (!pf) return void 0;
+        if (!pf || this.unreadable.has(path)) return void 0;
         let text = null;
         try {
           const abs = safeResolve(this.realRoot, path);
@@ -2057,7 +2107,7 @@ function redosRisk(pattern) {
       const frame = stack.length > 1 ? stack.pop() : top;
       const parent = stack[stack.length - 1];
       const outerUnbounded = isUnboundedAt(i2 + 1);
-      const unambiguous = !frame.alternation && frame.separators.some((sep2) => disjoint(sep2, frame.repeated));
+      const unambiguous = !frame.alternation && frame.separators.some((sep3) => disjoint(sep3, frame.repeated));
       if (outerUnbounded && frame.unbounded && !unambiguous) return true;
       if (outerUnbounded && frame.alternation) {
         const firsts = frame.altFirst;
@@ -8550,10 +8600,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep2, value } = collItem;
+        const { start: start2, key, sep: sep3, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -8567,7 +8617,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep2) {
+          if (!keyProps.anchor && !keyProps.tag && !sep3) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -8591,7 +8641,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -8607,7 +8657,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -8698,7 +8748,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep2 = "";
+        let sep3 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -8712,13 +8762,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep2 + cb;
-              sep2 = "";
+                comment += sep3 + cb;
+              sep3 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep2 += source;
+                sep3 += source;
               hasSpace = true;
               break;
             default:
@@ -8761,18 +8811,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i2 = 0; i2 < fc.items.length; ++i2) {
         const collItem = fc.items[i2];
-        const { start: start2, key, sep: sep2, value } = collItem;
+        const { start: start2, key, sep: sep3, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep2?.[0],
+          next: key ?? sep3?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep2 && !value) {
+          if (!props.anchor && !props.tag && !sep3 && !value) {
             if (i2 === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i2 < fc.items.length - 1)
@@ -8826,8 +8876,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap2 && !sep2 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
+        if (!isMap2 && !sep3 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -8839,7 +8889,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -8850,8 +8900,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap2 && !props.found && ctx.options.strict) {
-              if (sep2)
-                for (const st of sep2) {
+              if (sep3)
+                for (const st of sep3) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -8868,7 +8918,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -9048,7 +9098,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i2 + 1;
       }
       let value = "";
-      let sep2 = "";
+      let sep3 = "";
       let prevMoreIndented = false;
       for (let i2 = 0; i2 < contentStart; ++i2)
         value += lines[i2][0].slice(trimIndent) + "\n";
@@ -9065,24 +9115,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep2 === " ")
-            sep2 = "\n";
-          else if (!prevMoreIndented && sep2 === "\n")
-            sep2 = "\n\n";
-          value += sep2 + indent.slice(trimIndent) + content;
-          sep2 = "\n";
+          if (sep3 === " ")
+            sep3 = "\n";
+          else if (!prevMoreIndented && sep3 === "\n")
+            sep3 = "\n\n";
+          value += sep3 + indent.slice(trimIndent) + content;
+          sep3 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep2 === "\n")
+          if (sep3 === "\n")
             value += "\n";
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          value += sep2 + content;
-          sep2 = " ";
+          value += sep3 + content;
+          sep3 = " ";
           prevMoreIndented = false;
         }
       }
@@ -9265,25 +9315,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match[1].replace(trimEnd, "");
-      let sep2 = " ";
+      let sep3 = " ";
       let pos2 = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep2 === "\n")
-            res += sep2;
+          if (sep3 === "\n")
+            res += sep3;
           else
-            sep2 = "\n";
+            sep3 = "\n";
         } else {
-          res += sep2 + lm;
-          sep2 = " ";
+          res += sep3 + lm;
+          sep3 = " ";
         }
         pos2 = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos2;
       match = last.exec(source);
-      return res + sep2 + (match?.[1] ?? "");
+      return res + sep3 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -10093,14 +10143,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep2, value }) {
+    function stringifyItem({ start: start2, key, sep: sep3, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep2)
-        for (const st of sep2)
+      if (sep3)
+        for (const st of sep3)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -11267,18 +11317,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep2;
+          let sep3;
           if (scalar.end) {
-            sep2 = scalar.end;
-            sep2.push(this.sourceToken);
+            sep3 = scalar.end;
+            sep3.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep2 = [this.sourceToken];
+            sep3 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep2 }]
+            items: [{ start: start2, key: scalar, sep: sep3 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -11431,15 +11481,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep2 = it.sep;
-                  sep2.push(this.sourceToken);
+                  const sep3 = it.sep;
+                  sep3.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep2 }]
+                    items: [{ start: start3, key, sep: sep3 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -11633,13 +11683,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep2 = fc.end.splice(1, fc.end.length);
-            sep2.push(this.sourceToken);
+            const sep3 = fc.end.splice(1, fc.end.length);
+            sep3.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep2 }]
+              items: [{ start: start2, key: fc, sep: sep3 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -11919,7 +11969,7 @@ var require_dist = __commonJS({
 
 // src/fs/ancestors.ts
 import { lstatSync as lstatSync2, readFileSync as readFileSync2, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname2, join as join3, relative as relative2, resolve as resolve2, sep } from "node:path";
+import { dirname as dirname2, join as join3, relative as relative2, resolve as resolve2, sep as sep2 } from "node:path";
 function readMeta(dir, name2) {
   if (!ANCESTOR_META.includes(name2)) throw new Error(`not an ancestor metadata file: ${name2}`);
   try {
@@ -11993,7 +12043,7 @@ function findWorkspaceRoot(auditRoot, opts = {}) {
     dir = parent;
     const globs = workspaceGlobs(dir);
     if (!globs.length) continue;
-    const rel = relative2(dir, start2).split(sep).join("/");
+    const rel = relative2(dir, start2).split(sep2).join("/");
     if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
     const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
     const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
@@ -12831,11 +12881,15 @@ var init_files2 = __esm({
           if (f.tracked !== true) continue;
           const b = f.path.split("/").pop();
           if (/^\.env(?:\.[\w.-]+)?$/i.test(b) && !isEnvTemplate(f.path) && !/\.(?:test|testing|ci)$/i.test(b))
-            out2.push({ file: f.path, message: `\`${f.path}\` is tracked by git.`, anchor: f.path });
+            out2.push({
+              file: f.path,
+              message: f.assumedTracked ? `\`${f.path}\` is part of the audited tree (no git metadata; reported because --assume-tracked was set)` : `\`${f.path}\` is tracked by git.`,
+              anchor: f.path
+            });
           else if (/\.(?:p12|pfx|jks|keystore|ppk)$|^id_(?:rsa|dsa|ecdsa|ed25519)$/i.test(b))
             out2.push({
               file: f.path,
-              message: `Key material \`${f.path}\` is tracked by git.`,
+              message: f.assumedTracked ? `Key material \`${f.path}\` is part of the audited tree (no git metadata; reported because --assume-tracked was set)` : `Key material \`${f.path}\` is tracked by git.`,
               anchor: f.path,
               confidence: "medium"
             });
@@ -20887,8 +20941,8 @@ ${out2}`;
       const has = (p) => text.split(/\r?\n/).some((l) => l.trim() === p || l.trim() === `/${p}`);
       const add = [".env", ".env.*", "!.env.example"].filter((p) => !has(p));
       if (!add.length || has(".env") && has(".env.*")) return null;
-      const sep2 = text === "" || text.endsWith("\n") ? "" : "\n";
-      return `${text}${sep2}${text ? "\n" : ""}# Local environment files (added by Relivaro)
+      const sep3 = text === "" || text.endsWith("\n") ? "" : "\n";
+      return `${text}${sep3}${text ? "\n" : ""}# Local environment files (added by Relivaro)
 ${add.join("\n")}
 `;
     }
@@ -23021,7 +23075,9 @@ async function runAudit(opts) {
     exclude: config.exclude,
     maxFileSizeKb: config.maxFileSizeKb,
     maxLockfileSizeKb: config.maxLockfileSizeKb,
-    useGit: opts.useGit
+    useGit: opts.useGit,
+    respectGitignore: opts.respectGitignore,
+    assumeTracked: opts.assumeTracked
   });
   progress(`discovering project (${files.files.length} files)`);
   const profile = discover(files);
@@ -23135,6 +23191,12 @@ async function runAudit(opts) {
   if (bigFiles.length)
     limitations.push(
       `${bigFiles.length} file(s) larger than ${config.maxFileSizeKb} KB were skipped (${bigFiles.slice(0, 5).map((p) => `\`${p}\``).join(", ")}${bigFiles.length > 5 ? ", \u2026" : ""}).`
+    );
+  if (files.skipped.gitignored)
+    limitations.push(
+      `${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored.slice(0, 5).join(
+        ", "
+      )}${files.skippedPaths.gitignored.length > 5 ? ", \u2026" : ""}); use --no-gitignore to include them.`
     );
   if (files.skipped.reports)
     limitations.push(
@@ -27202,6 +27264,16 @@ var ANALYSIS_OPTS = [
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
   {
+    name: "no-gitignore",
+    type: "boolean",
+    description: "Without git, also analyse files matched by .gitignore (they are counted and named otherwise)."
+  },
+  {
+    name: "assume-tracked",
+    type: "boolean",
+    description: "Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read)."
+  },
+  {
     name: "no-inline-suppressions",
     type: "boolean",
     description: "Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust)."
@@ -27372,6 +27444,8 @@ async function analysisCommand(p, out2, cfg) {
     release: cfg.release,
     useGit: p.opts["no-git"] ? false : void 0,
     inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
+    respectGitignore: p.opts["no-gitignore"] ? false : void 0,
+    assumeTracked: p.opts["assume-tracked"] ? true : void 0,
     noWrite: !!p.opts["no-write"],
     onProgress: out2.progress
   });

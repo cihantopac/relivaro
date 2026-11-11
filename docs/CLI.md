@@ -37,6 +37,8 @@ Runs every rule category. With --allow-exec it also runs the project's type chec
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -74,6 +76,8 @@ Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, COR
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -111,6 +115,8 @@ N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handl
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -148,6 +154,8 @@ Timeouts, error handling, idempotency, race conditions, migrations, retries, gra
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -185,6 +193,8 @@ Debug leftovers, complexity, disabled type checking; with --allow-exec the type 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -222,6 +232,8 @@ Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |
@@ -259,6 +271,8 @@ Runs all analyses plus build, tests, type check and lint (with --allow-exec), de
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--no-gitignore` | Without git, also analyse files matched by .gitignore (they are counted and named otherwise). |
+| `--assume-tracked` | Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read). |
 | `--no-inline-suppressions` | Ignore relivaro-ignore/relivaro-accept comments in the audited code (for code you do not trust). |
 | `--no-write` | Do not write run data or reports (stdout only). |
 | `--max-findings <n>` | Findings printed to the terminal. Default: `15`. |

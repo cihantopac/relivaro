@@ -37,6 +37,10 @@ export interface AuditOptions {
   baseline?: string | false;
   release?: boolean;
   useGit?: boolean;
+  /** Without git, skip files matched by `.gitignore` (default true). */
+  respectGitignore?: boolean;
+  /** Without git, treat listed files as tracked so sensitive files are reported by path. */
+  assumeTracked?: boolean;
   /** Honour `relivaro-ignore*` / `relivaro-accept*` comments in the audited code. Default true. */
   inlineSuppressions?: boolean;
   /** Do not write anything to disk. */
@@ -213,6 +217,8 @@ export async function runAudit(
     maxFileSizeKb: config.maxFileSizeKb,
     maxLockfileSizeKb: config.maxLockfileSizeKb,
     useGit: opts.useGit,
+    respectGitignore: opts.respectGitignore,
+    assumeTracked: opts.assumeTracked,
   });
   progress(`discovering project (${files.files.length} files)`);
   const profile = discover(files);
@@ -338,6 +344,14 @@ export async function runAudit(
         .slice(0, 5)
         .map((p) => `\`${p}\``)
         .join(', ')}${bigFiles.length > 5 ? ', …' : ''}).`,
+    );
+  if (files.skipped.gitignored)
+    limitations.push(
+      `${files.skipped.gitignored} file(s) ignored by .gitignore were not analysed (top entries: ${files.skippedPaths.gitignored
+        .slice(0, 5)
+        .join(
+          ', ',
+        )}${files.skippedPaths.gitignored.length > 5 ? ', …' : ''}); use --no-gitignore to include them.`,
     );
   if (files.skipped.reports)
     limitations.push(

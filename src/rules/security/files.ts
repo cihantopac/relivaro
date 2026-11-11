@@ -974,11 +974,19 @@ const envCommitted: ProjectRule = {
       if (f.tracked !== true) continue;
       const b = f.path.split('/').pop()!;
       if (/^\.env(?:\.[\w.-]+)?$/i.test(b) && !isEnvTemplate(f.path) && !/\.(?:test|testing|ci)$/i.test(b))
-        out.push({ file: f.path, message: `\`${f.path}\` is tracked by git.`, anchor: f.path });
+        out.push({
+          file: f.path,
+          message: f.assumedTracked
+            ? `\`${f.path}\` is part of the audited tree (no git metadata; reported because --assume-tracked was set)`
+            : `\`${f.path}\` is tracked by git.`,
+          anchor: f.path,
+        });
       else if (/\.(?:p12|pfx|jks|keystore|ppk)$|^id_(?:rsa|dsa|ecdsa|ed25519)$/i.test(b))
         out.push({
           file: f.path,
-          message: `Key material \`${f.path}\` is tracked by git.`,
+          message: f.assumedTracked
+            ? `Key material \`${f.path}\` is part of the audited tree (no git metadata; reported because --assume-tracked was set)`
+            : `Key material \`${f.path}\` is tracked by git.`,
           anchor: f.path,
           confidence: 'medium',
         });

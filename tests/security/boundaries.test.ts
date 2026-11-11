@@ -80,6 +80,29 @@ describe('secret handling', () => {
 });
 
 describe('filesystem boundaries', () => {
+  it('--assume-tracked reports a sensitive file by path and never reads it', async () => {
+    const dir = tmp();
+    cleanups.push(dir);
+    const value = ['sk', '_live_', 'Zx81Qm4Lp0Wn7Rt2Yv5Bc9Df'].join('');
+    writeFileSync(join(dir, '.env'), `STRIPE_KEY=${value}\nDB_PASSWORD=hunter2-but-longer\n`);
+    writeFileSync(join(dir, 'app.js'), 'console.log(1);\n');
+    const plain = await runAudit({ root: dir, command: 'audit', noWrite: true, useGit: false });
+    expect(plain.run.findings.some((f) => f.ruleId === 'sec/env-file-committed')).toBe(false);
+    const { run } = await runAudit({
+      root: dir,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      assumeTracked: true,
+    });
+    const hit = run.findings.find((f) => f.ruleId === 'sec/env-file-committed');
+    expect(hit?.message).toMatch(/\(no git metadata; reported because --assume-tracked was set\)$/);
+    const json = JSON.stringify(run);
+    expect(json).not.toContain(value);
+    expect(json).not.toContain('hunter2');
+    expect(run.findings.some((f) => f.ruleId === 'sec/hardcoded-secret')).toBe(false);
+  });
+
   it('refuses traversal and absolute paths', () => {
     const dir = tmp();
     cleanups.push(dir);

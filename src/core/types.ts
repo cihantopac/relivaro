@@ -90,6 +90,8 @@ export interface ProjectFile {
   isTest: boolean;
   /** True when git reports the file as tracked (undefined outside git). */
   tracked?: boolean;
+  /** A sensitive file listed only because `--assume-tracked` was set: reported by path, never read. */
+  assumedTracked?: boolean;
 }
 
 export type FileKind =

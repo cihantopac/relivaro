@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -303,5 +303,66 @@ describe('inline annotations', () => {
     expect(parseArgs(['.', '--no-inline-suppressions'], audit.spec).opts['no-inline-suppressions']).toBe(
       true,
     );
+  });
+});
+
+describe('FileSet walk mode', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) rmSync(d, { recursive: true, force: true });
+  });
+  const tree = (files: Record<string, string>) => {
+    const root = mkdtempSync(join(tmpdir(), 'rlv-walk-'));
+    made.push(root);
+    for (const [p, c] of Object.entries(files)) {
+      mkdirSync(join(root, p, '..'), { recursive: true });
+      writeFileSync(join(root, p), c);
+    }
+    return root;
+  };
+
+  it('counts and names files hidden by .gitignore, and --no-gitignore lists them', async () => {
+    const root = tree({
+      '.gitignore': 'web/\n',
+      'a.ts': 'export const a = 1;\n',
+      'web/x.ts': '1;\n',
+      'web/y.ts': '2;\n',
+    });
+    const files = new FileSet(root, { useGit: false });
+    expect(files.files.map((f) => f.path)).not.toContain('web/x.ts');
+    expect(files.skipped.gitignored).toBe(2);
+    expect(files.skippedPaths.gitignored).toEqual(['web/']);
+    const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
+    expect(run.limitations).toContain(
+      '2 file(s) ignored by .gitignore were not analysed (top entries: web/); use --no-gitignore to include them.',
+    );
+    const all = new FileSet(root, { useGit: false, respectGitignore: false });
+    expect(all.files.map((f) => f.path)).toEqual(expect.arrayContaining(['web/x.ts', 'web/y.ts']));
+    expect(all.skipped.gitignored).toBe(0);
+  });
+
+  it('analyses an in-tree file symlink once', () => {
+    const root = tree({ 'a.ts': 'export const a = 1;\n' });
+    symlinkSync('a.ts', join(root, 'b.ts'));
+    const files = new FileSet(root, { useGit: false });
+    expect(files.files.map((f) => f.path)).toEqual(['a.ts']);
+    expect(files.skipped.symlinkDuplicate).toBe(1);
+  });
+
+  it('does not count an in-tree directory symlink as outside', () => {
+    const root = tree({ 'src/a.ts': 'export const a = 1;\n' });
+    symlinkSync('src', join(root, 'lib'));
+    const files = new FileSet(root, { useGit: false });
+    expect(files.files.map((f) => f.path)).toEqual(['src/a.ts']);
+    expect(files.skipped.symlinkDir).toBe(1);
+    expect(files.skipped.symlinkOutside).toBe(0);
+  });
+
+  it('survives a symlink loop', () => {
+    const root = tree({ 'a.ts': 'export const a = 1;\n' });
+    symlinkSync('.', join(root, 'loop'));
+    const files = new FileSet(root, { useGit: false });
+    expect(files.files.map((f) => f.path)).toEqual(['a.ts']);
+    expect(files.skipped.symlinkDir).toBe(1);
   });
 });

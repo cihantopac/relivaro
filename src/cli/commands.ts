@@ -101,6 +101,18 @@ const ANALYSIS_OPTS: OptSpec[] = [
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
   {
+    name: 'no-gitignore',
+    type: 'boolean',
+    description:
+      'Without git, also analyse files matched by .gitignore (they are counted and named otherwise).',
+  },
+  {
+    name: 'assume-tracked',
+    type: 'boolean',
+    description:
+      'Without git (archives, exports), treat every file as committed so sensitive files such as .env are reported (by path, never read).',
+  },
+  {
     name: 'no-inline-suppressions',
     type: 'boolean',
     description:
@@ -312,6 +324,8 @@ async function analysisCommand(
     release: cfg.release,
     useGit: p.opts['no-git'] ? false : undefined,
     inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
+    respectGitignore: p.opts['no-gitignore'] ? false : undefined,
+    assumeTracked: p.opts['assume-tracked'] ? true : undefined,
     noWrite: !!p.opts['no-write'],
     onProgress: out.progress,
   });

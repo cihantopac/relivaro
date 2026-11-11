@@ -10,7 +10,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
 import { matchesAny } from '../core/glob.js';
 import type { FileKind, Language, ProjectFile } from '../core/types.js';
@@ -365,6 +365,13 @@ export interface FileSetOptions {
   maxLockfileSizeKb?: number;
   /** Use git to list files (respecting .gitignore). Default true. */
   useGit?: boolean;
+  /** Without git, skip files matched by the root `.gitignore`. Default true; `--no-gitignore` sets false. */
+  respectGitignore?: boolean;
+  /**
+   * Without git, treat every listed file as tracked (archives, exports). Sensitive files then reach
+   * `sec/env-file-committed`, by path only: their content is never read.
+   */
+  assumeTracked?: boolean;
 }
 
 export interface SkipStats {
@@ -376,6 +383,12 @@ export interface SkipStats {
   generated: number;
   /** Reports written by Relivaro, Jourilo or Searvex (e.g. with `--out`), which describe the project but are not it. */
   reports: number;
+  /** Files matched by the root `.gitignore` in walk mode (no git). */
+  gitignored: number;
+  /** Symlinks to a file that is already analysed under its own path (or through an earlier link). */
+  symlinkDuplicate: number;
+  /** Symlinks to a directory inside the root; the directory is analysed under its own path, never followed. */
+  symlinkDir: number;
 }
 
 /**
@@ -396,14 +409,19 @@ export class FileSet {
     symlinkOutside: 0,
     generated: 0,
     reports: 0,
+    gitignored: 0,
+    symlinkDuplicate: 0,
+    symlinkDir: 0,
   };
   /** Sensitive files present on disk that were not read (path only). */
   readonly sensitiveUnread: { path: string; ignored: boolean | undefined }[] = [];
   /** Paths behind some of the `skipped` counts, so reports can name them. */
-  readonly skippedPaths: { tooLarge: string[] } = { tooLarge: [] };
+  readonly skippedPaths: { tooLarge: string[]; gitignored: string[] } = { tooLarge: [], gitignored: [] };
   /** Size in bytes of each file in `skippedPaths.tooLarge`. */
   readonly skippedSizes = new Map<string, number>();
   private readonly cache = new Map<string, string | null>();
+  /** Sensitive files listed because of `assumeTracked`: reported by path, never read. */
+  private readonly unreadable = new Set<string>();
   private readonly byPath = new Map<string, ProjectFile>();
   private readonly maxBytes: number;
   private readonly maxLockfileBytes: number;
@@ -417,10 +435,21 @@ export class FileSet {
     this.maxLockfileBytes = (opts.maxLockfileSizeKb ?? 51200) * 1024;
     const listed = opts.useGit === false ? null : gitListFiles(this.root);
     this.gitRepo = listed !== null;
-    const candidates = listed ?? walk(this.root);
+    let candidates: { path: string; tracked: boolean | undefined }[];
+    if (listed) candidates = listed;
+    else {
+      const w = walk(this.root, opts.respectGitignore !== false);
+      candidates = w.entries;
+      this.skipped.gitignored = w.gitignoredCount;
+      this.skippedPaths.gitignored = w.gitignored;
+    }
+    const assumeTracked = !listed && opts.assumeTracked === true;
     const ignoredSensitive = listed ? gitIgnoredSensitive(this.root) : [];
+    const listedPaths = new Set(candidates.map((c) => c.path));
+    const linkTargets = new Set<string>();
     const files: ProjectFile[] = [];
-    for (const { path, tracked } of candidates) {
+    for (const { path, tracked: listedTracked } of candidates) {
+      const tracked = assumeTracked ? true : listedTracked;
       if (isExcludedPath(path) || (opts.exclude?.length && matchesAny(path, opts.exclude))) {
         this.skipped.excluded++;
         continue;
@@ -448,23 +477,43 @@ export class FileSet {
       if (st.isSymbolicLink()) {
         try {
           const target = realpathSync.native(abs);
-          if (!isInside(this.realRoot, target) || !statSync(target).isFile()) {
+          if (!isInside(this.realRoot, target)) {
             this.skipped.symlinkOutside++;
             continue;
           }
-          st = statSync(target);
+          const tst = statSync(target);
+          if (tst.isDirectory()) {
+            this.skipped.symlinkDir++;
+            continue;
+          }
+          if (!tst.isFile()) {
+            this.skipped.symlinkOutside++;
+            continue;
+          }
+          const rel = relative(this.realRoot, target).split(sep).join('/');
+          if ((rel !== path && listedPaths.has(rel)) || linkTargets.has(target)) {
+            this.skipped.symlinkDuplicate++;
+            continue;
+          }
+          linkTargets.add(target);
+          st = tst;
         } catch {
           this.skipped.symlinkOutside++;
           continue;
         }
       } else if (!st.isFile()) continue;
-      if (isSensitivePath(path) && tracked !== true) {
+      const sensitive = isSensitivePath(path);
+      if (sensitive && tracked !== true) {
         this.skipped.sensitive++;
         this.sensitiveUnread.push({ path, ignored: listed ? false : undefined });
         continue;
       }
       const { kind, language } = classify(path);
       const pf: ProjectFile = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
+      if (sensitive && assumeTracked) {
+        pf.assumedTracked = true;
+        this.unreadable.add(path);
+      }
       if (language) pf.language = language;
       if (st.size > (kind === 'lockfile' ? this.maxLockfileBytes : this.maxBytes)) {
         this.skipped.tooLarge++;
@@ -501,7 +550,7 @@ export class FileSet {
   read(path: string): string | undefined {
     if (this.cache.has(path)) return this.cache.get(path) ?? undefined;
     const pf = this.byPath.get(path);
-    if (!pf) return undefined;
+    if (!pf || this.unreadable.has(path)) return undefined;
     let text: string | null = null;
     try {
       const abs = safeResolve(this.realRoot, path);
@@ -688,13 +737,26 @@ function gitIgnoredSensitive(root: string): string[] {
     .slice(0, 200);
 }
 
-/** Fallback enumeration when git is unavailable: walks the tree without following directory symlinks. */
-function walk(root: string): { path: string; tracked: undefined }[] {
+/**
+ * Fallback enumeration when git is unavailable: walks the tree without following directory symlinks. Files matched by
+ * the root `.gitignore` are counted (and the ignored entries named, at most 20) but not listed, unless they are
+ * sensitive files, which stay listed so they are reported as unread.
+ */
+function walk(
+  root: string,
+  respectGitignore = true,
+): { entries: { path: string; tracked: undefined }[]; gitignored: string[]; gitignoredCount: number } {
   const out: { path: string; tracked: undefined }[] = [];
-  const ignore = readRootGitignore(root);
-  const stack: string[] = [''];
+  const ignore = respectGitignore ? readRootGitignore(root) : [];
+  const gitignored: string[] = [];
+  let gitignoredCount = 0;
+  const note = (entry: string) => {
+    if (gitignored.length < 20) gitignored.push(entry);
+  };
+  const stack: { dir: string; ignored: boolean }[] = [{ dir: '', ignored: false }];
+  let visited = 0;
   while (stack.length) {
-    const dir = stack.pop()!;
+    const { dir, ignored } = stack.pop()!;
     let entries: import('node:fs').Dirent[];
     try {
       entries = readdirSync(join(root, dir), { withFileTypes: true });
@@ -703,17 +765,26 @@ function walk(root: string): { path: string; tracked: undefined }[] {
     }
     for (const e of entries) {
       const rel = dir ? `${dir}/${e.name}` : e.name;
+      if (++visited > 400_000) return { entries: out, gitignored: gitignored.sort(), gitignoredCount };
       if (e.isDirectory()) {
-        if (DEFAULT_EXCLUDED_DIRS.has(e.name) || (ignore.length && matchesAny(`${rel}/`, ignore))) continue;
-        stack.push(rel);
+        if (DEFAULT_EXCLUDED_DIRS.has(e.name)) continue;
+        const ign = ignored || (ignore.length > 0 && matchesAny(`${rel}/`, ignore));
+        if (ign && !ignored) note(`${rel}/`);
+        stack.push({ dir: rel, ignored: ign });
       } else if (e.isFile() || e.isSymbolicLink()) {
-        if (ignore.length && matchesAny(rel, ignore) && !isSensitivePath(rel)) continue;
+        const ign = ignored || (ignore.length > 0 && matchesAny(rel, ignore));
+        // A sensitive file matched directly stays listed (reported unread); inside an ignored directory it is only counted.
+        if (ign && (ignored || !isSensitivePath(rel))) {
+          gitignoredCount++;
+          if (!ignored) note(rel);
+          continue;
+        }
         out.push({ path: rel, tracked: undefined });
       }
-      if (out.length > 200_000) return out;
+      if (out.length > 200_000) return { entries: out, gitignored: gitignored.sort(), gitignoredCount };
     }
   }
-  return out;
+  return { entries: out, gitignored: gitignored.sort(), gitignoredCount };
 }
 
 function readRootGitignore(root: string): string[] {
