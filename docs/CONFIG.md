@@ -11,6 +11,7 @@ JSON Schema: [`schemas/config.schema.json`](../schemas/config.schema.json). `rel
   "include": [],
   "failOn": "high",
   "maxFileSizeKb": 1024,
+  "maxLockfileSizeKb": 51200,
   "rules": {
     "perf/unbounded-query": "off",
     "sec/sensitive-data-in-logs": { "severity": "medium", "exclude": ["scripts/**"] }
@@ -27,7 +28,8 @@ JSON Schema: [`schemas/config.schema.json`](../schemas/config.schema.json). `rel
 | --- | --- |
 | `exclude` / `include` | Glob patterns relative to the root (`**`, `*`, `?`, `{a,b}`). Dependency, build and cache directories are always excluded. |
 | `failOn` | Default for `--fail-on`: exit 1 when an open finding with medium/high confidence is at or above this severity. `none` disables. |
-| `maxFileSizeKb` | Larger files are skipped (reported as a limitation). |
+| `maxFileSizeKb` | Larger files are skipped (reported as a limitation that names up to 5 of them). |
+| `maxLockfileSizeKb` | Size limit for lockfiles (default 51200 KB, at most 204800). A larger lockfile is not analysed, is named in a limitation, and still counts as present for `sc/missing-lockfile`. |
 | `rules` | Per rule: `"off"`, or `{ "severity": …, "exclude": [globs] }`. Rule ids: `relivaro rules`. |
 | `commands` | Override detected `build`, `test`, `typecheck`, `lint` commands (run without a shell; use a script for pipelines). |
 | `timeouts.commandSeconds` | Per-command timeout for execution checks, benchmarks and fix verification. |

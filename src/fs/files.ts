@@ -361,6 +361,8 @@ export interface FileSetOptions {
   include?: string[];
   exclude?: string[];
   maxFileSizeKb?: number;
+  /** Size limit for lockfiles (default 51200 KB). */
+  maxLockfileSizeKb?: number;
   /** Use git to list files (respecting .gitignore). Default true. */
   useGit?: boolean;
 }
@@ -397,9 +399,14 @@ export class FileSet {
   };
   /** Sensitive files present on disk that were not read (path only). */
   readonly sensitiveUnread: { path: string; ignored: boolean | undefined }[] = [];
+  /** Paths behind some of the `skipped` counts, so reports can name them. */
+  readonly skippedPaths: { tooLarge: string[] } = { tooLarge: [] };
+  /** Size in bytes of each file in `skippedPaths.tooLarge`. */
+  readonly skippedSizes = new Map<string, number>();
   private readonly cache = new Map<string, string | null>();
   private readonly byPath = new Map<string, ProjectFile>();
   private readonly maxBytes: number;
+  private readonly maxLockfileBytes: number;
 
   constructor(root: string, opts: FileSetOptions = {}) {
     this.root = resolve(root);
@@ -407,6 +414,7 @@ export class FileSet {
       throw new RelivaroError('NOT_FOUND', `Not a directory: ${root}`);
     this.realRoot = realpathSync.native(this.root);
     this.maxBytes = (opts.maxFileSizeKb ?? 1024) * 1024;
+    this.maxLockfileBytes = (opts.maxLockfileSizeKb ?? 51200) * 1024;
     const listed = opts.useGit === false ? null : gitListFiles(this.root);
     this.gitRepo = listed !== null;
     const candidates = listed ?? walk(this.root);
@@ -458,8 +466,10 @@ export class FileSet {
       const { kind, language } = classify(path);
       const pf: ProjectFile = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
       if (language) pf.language = language;
-      if (st.size > this.maxBytes) {
+      if (st.size > (kind === 'lockfile' ? this.maxLockfileBytes : this.maxBytes)) {
         this.skipped.tooLarge++;
+        this.skippedPaths.tooLarge.push(path);
+        this.skippedSizes.set(path, st.size);
         continue;
       }
       if (REPORT_EXT.has(ext) && isToolReport(path, readHead(abs))) {

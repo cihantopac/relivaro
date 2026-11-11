@@ -14,8 +14,8 @@ import {
 } from './core/types.js';
 import { VERSION } from './core/version.js';
 import { Workspace } from './core/workspace.js';
-import { queryOsv } from './deps/osv.js';
-import { FileSet } from './fs/files.js';
+import { queryOsv, uniquePackageCount } from './deps/osv.js';
+import { classify, FileSet } from './fs/files.js';
 import { discover, type ProjectProfile } from './intel/discover.js';
 import { assessRelease, type ReleaseAssessment } from './release/readiness.js';
 import { analyze, FindingBuilder } from './rules/engine.js';
@@ -94,7 +94,10 @@ export interface RunRecord {
     functions: number;
     rulesRun: number;
     analysisMs: number;
+    /** Unique resolved packages (`ecosystem/name@version`), the same unit as `osvQueried`. */
     dependencies: number;
+    /** Raw lockfile entries summed over all lockfiles (a package locked twice counts twice). */
+    dependencyEntries?: number;
     osvQueried?: number;
     filesSkipped: Record<string, number>;
   };
@@ -208,6 +211,7 @@ export async function runAudit(
     include: config.include,
     exclude: config.exclude,
     maxFileSizeKb: config.maxFileSizeKb,
+    maxLockfileSizeKb: config.maxLockfileSizeKb,
     useGit: opts.useGit,
   });
   progress(`discovering project (${files.files.length} files)`);
@@ -246,7 +250,7 @@ export async function runAudit(
         );
     } else if (profile.lockfiles.length) {
       limitations.push(
-        `Known vulnerabilities in ${profile.lockfiles.reduce((s, l) => s + l.packages.length, 0)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
+        `Known vulnerabilities in ${uniquePackageCount(profile.lockfiles)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev — no source code.`,
       );
     }
   }
@@ -270,7 +274,7 @@ export async function runAudit(
     for (const c of checks)
       if (c.status === 'skipped' && opts.allowExec)
         limitations.push(`${c.kind} for \`${c.unit}\` was skipped: ${c.reason}.`);
-    if (!planned.length) limitations.push(`No ${checkKinds.join('/')} commands were detected.`);
+    if (!planned.length) limitations.push(noCommandsLimitation(checkKinds, profile.workspaceRoot));
   }
 
   // Baseline: known findings accepted earlier are reported but do not fail gates.
@@ -322,9 +326,18 @@ export async function runAudit(
     limitations.push(
       `${analysis.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`,
     );
-  if (files.skipped.tooLarge)
+  const bigLockfiles = files.skippedPaths.tooLarge.filter((p) => classify(p).kind === 'lockfile');
+  for (const p of bigLockfiles)
     limitations.push(
-      `${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`,
+      `Lockfile \`${p}\` (${((files.skippedSizes.get(p) ?? 0) / 1024 / 1024).toFixed(1)} MB) exceeds maxLockfileSizeKb; its dependencies were not analysed.`,
+    );
+  const bigFiles = files.skippedPaths.tooLarge.filter((p) => !bigLockfiles.includes(p));
+  if (bigFiles.length)
+    limitations.push(
+      `${bigFiles.length} file(s) larger than ${config.maxFileSizeKb} KB were skipped (${bigFiles
+        .slice(0, 5)
+        .map((p) => `\`${p}\``)
+        .join(', ')}${bigFiles.length > 5 ? ', …' : ''}).`,
     );
   if (files.skipped.reports)
     limitations.push(
@@ -405,7 +418,8 @@ export async function runAudit(
       functions: analysis.functions,
       rulesRun: analysis.rulesRun.length,
       analysisMs: analysis.durationMs,
-      dependencies: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
+      dependencies: uniquePackageCount(profile.lockfiles),
+      dependencyEntries: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
       osvQueried,
       filesSkipped: { ...files.skipped },
     },
@@ -419,6 +433,28 @@ export async function runAudit(
   if (opts.release) run.release = assessRelease(run, config);
   run.durationMs = Math.round(performance.now() - started);
   return { run, config, workspace };
+}
+
+const CHECK_SCRIPT: Record<CheckKind, RegExp> = {
+  build: /^build(?::|$)/,
+  test: /^test(?::|$)/,
+  typecheck: /^(?:typecheck|type-check|check-types|types|tsc)(?::|$)/,
+  lint: /^lint(?::|$)/,
+};
+
+/** "No build/test commands were detected", naming the workspace root's scripts when a package is audited alone. */
+export function noCommandsLimitation(kinds: CheckKind[], ws: ProjectProfile['workspaceRoot']): string {
+  const defined = ws
+    ? Object.keys(ws.scripts)
+        .filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n)))
+        .sort()
+    : [];
+  if (!ws || !defined.length) return `No ${kinds.join('/')} commands were detected.`;
+  const up = ws.rel
+    .split('/')
+    .map(() => '..')
+    .join('/');
+  return `No ${kinds.join('/')} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(', ')}. Run the audit from the workspace root to include them.`;
 }
 
 export function gateFailed(run: RunRecord, failOn: Severity | 'none'): boolean {

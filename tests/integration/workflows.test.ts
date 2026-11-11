@@ -1,6 +1,138 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync as mkTemp,
+  readFileSync,
+  rmSync as removeTree,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir as osTmp } from 'node:os';
+import { dirname as dirOfPath, join } from 'node:path';
+import { afterAll, describe, expect, it } from 'vitest';
+
+describe('lockfile edge cases', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) removeTree(d, { recursive: true, force: true });
+  });
+  const tree = (files: Record<string, string>) => {
+    const root = mkTemp(join(osTmp(), 'rlv-lock-'));
+    made.push(root);
+    for (const [p, c] of Object.entries(files)) {
+      mkdirSync(dirOfPath(join(root, p)), { recursive: true });
+      writeFileSync(join(root, p), c);
+    }
+    return root;
+  };
+  const bigLock = () => {
+    const packages: Record<string, unknown> = { '': { name: 'big', dependencies: { 'pkg-0': '1.0.0' } } };
+    for (let i = 0; i < 52000; i++)
+      packages[`node_modules/pkg-${i}`] = {
+        version: '1.0.0',
+        resolved: `https://registry.npmjs.org/pkg-${i}/-/pkg-${i}-1.0.0.tgz`,
+        integrity: `sha512-${'A'.repeat(86)}==`,
+      };
+    return JSON.stringify({ name: 'big', lockfileVersion: 3, requires: true, packages }, null, 2);
+  };
+  const pkg = JSON.stringify({ name: 'big', private: true, dependencies: { 'pkg-0': '1.0.0' } });
+
+  it('an 8.9 MB package-lock.json is parsed', async () => {
+    const root = tree({ 'package.json': pkg, 'package-lock.json': bigLock() });
+    expect(statSync(join(root, 'package-lock.json')).size).toBeGreaterThan(8.5 * 1024 * 1024);
+    const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
+    expect(run.metrics.dependencies).toBe(52000);
+    expect(run.findings.some((f) => f.ruleId === 'sc/missing-lockfile')).toBe(false);
+    expect(run.limitations.join('\n')).not.toMatch(/larger than|exceeds maxLockfileSizeKb/);
+  });
+
+  it('a lockfile over maxLockfileSizeKb is not reported missing', async () => {
+    const root = tree({
+      'package.json': pkg,
+      'package-lock.json': bigLock(),
+      'relivaro.config.json': JSON.stringify({ maxLockfileSizeKb: 5120 }),
+    });
+    const mb = (statSync(join(root, 'package-lock.json')).size / 1024 / 1024).toFixed(1);
+    const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
+    expect(run.findings.some((f) => f.ruleId === 'sc/missing-lockfile')).toBe(false);
+    expect(run.limitations).toContain(
+      `Lockfile \`package-lock.json\` (${mb} MB) exceeds maxLockfileSizeKb; its dependencies were not analysed.`,
+    );
+  });
+
+  it('a workspace package audited alone uses the root lockfile', async () => {
+    const root = tree({
+      'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n",
+      'pnpm-lock.yaml': "lockfileVersion: '9.0'\n",
+      'package.json': JSON.stringify({ name: 'mono', private: true }),
+      'packages/preflight/package.json': JSON.stringify({
+        name: 'preflight',
+        dependencies: { yaml: '^2.0.0' },
+      }),
+      'packages/preflight/index.js': 'export const x = 1;\n',
+    });
+    const { run } = await runAudit({
+      root: join(root, 'packages/preflight'),
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+    });
+    expect(run.findings.filter((f) => f.ruleId === 'sc/missing-lockfile')).toEqual([]);
+  });
+
+  it('no test commands, but the workspace root has them', async () => {
+    const root = tree({
+      'pnpm-workspace.yaml': "packages:\n  - 'packages/*'\n",
+      'package.json': JSON.stringify({
+        name: 'mono',
+        private: true,
+        scripts: { test: 'vitest', typecheck: 'tsc --noEmit', format: 'biome format' },
+      }),
+      'packages/preflight/package.json': JSON.stringify({ name: 'preflight' }),
+      'packages/preflight/index.js': 'export const x = 1;\n',
+    });
+    const { run } = await runAudit({
+      root: join(root, 'packages/preflight'),
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      checks: ['typecheck', 'test'],
+    });
+    expect(run.limitations).toContain(
+      'No typecheck/test commands were detected in the audited directory; the workspace root (`../..`) defines: test, typecheck. Run the audit from the workspace root to include them.',
+    );
+  });
+
+  it('dependency count is unique', async () => {
+    const lock = JSON.stringify({
+      name: 'x',
+      lockfileVersion: 3,
+      packages: { '': { name: 'x' }, 'node_modules/a': { version: '1.0.0' } },
+    });
+    const root = tree({
+      'package.json': JSON.stringify({ name: 'x', private: true, dependencies: { a: '1.0.0' } }),
+      'package-lock.json': lock,
+      'tools/package.json': JSON.stringify({ name: 'tools', private: true, dependencies: { a: '1.0.0' } }),
+      'tools/package-lock.json': lock,
+    });
+    const fetchImpl = (async () =>
+      new Response(JSON.stringify({ results: [{}] }))) as unknown as typeof fetch;
+    const { run } = await runAudit({
+      root,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      online: true,
+      fetchImpl,
+    });
+    expect(run.metrics.dependencies).toBe(1);
+    expect(run.metrics.dependencyEntries).toBe(2);
+    expect(run.metrics.osvQueried).toBe(1);
+  });
+});
+
 import { runAudit } from '../../src/audit.js';
 import { planChecks, runChecks } from '../../src/checks/exec.js';
 import { defaultConfig } from '../../src/core/config.js';

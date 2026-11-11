@@ -133,6 +133,16 @@ export function fixedVersions(v: OsvVuln, pkg: string): string[] {
   return [...out];
 }
 
+/** One key per resolved package: the unit of both `metrics.dependencies` and the OSV query count. */
+export function packageKey(p: { ecosystem: string; name: string; version: string }): string {
+  return `${p.ecosystem}\u0000${p.name}\u0000${p.version}`;
+}
+
+/** Number of unique `ecosystem/name@version` across lockfiles. */
+export function uniquePackageCount(lockfiles: LockfileInfo[]): number {
+  return new Set(lockfiles.flatMap((l) => l.packages.map(packageKey))).size;
+}
+
 export async function queryOsv(
   lockfiles: LockfileInfo[],
   opts: { cacheFile?: string; fetchImpl?: FetchLike; onProgress?: (m: string) => void } = {},
@@ -142,7 +152,7 @@ export async function queryOsv(
   for (const l of lockfiles)
     for (const p of l.packages) {
       if (!/^(?:npm|Packagist|PyPI|Go|crates\.io|RubyGems|Pub|Maven)$/.test(p.ecosystem)) continue;
-      const key = `${p.ecosystem}\u0000${p.name}\u0000${p.version}`;
+      const key = packageKey(p);
       const e = unique.get(key) ?? { pkg: p, files: new Set<string>() };
       e.files.add(l.file);
       unique.set(key, e);

@@ -14,6 +14,7 @@
     "include": { "$ref": "#/$defs/globs" },
     "failOn": { "anyOf": [{ "$ref": "#/$defs/severity" }, { "const": "none" }] },
     "maxFileSizeKb": { "type": "number", "minimum": 1, "maximum": 20480 },
+    "maxLockfileSizeKb": { "type": "number", "minimum": 1, "maximum": 204800 },
     "rules": {
       "type": "object",
       "additionalProperties": {

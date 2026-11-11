@@ -81,7 +81,12 @@ const missingLockfile: ProjectRule = {
         ctx.files.files.some(
           (f) => dirOf(f.path) === dir && lockRe.test(f.path.split('/').pop()!) && f.path !== m.file,
         );
-      if (hasLock || isWorkspaceMember(ctx, m)) continue;
+      // A lockfile skipped for its size still exists; a package audited alone uses its workspace root's lockfile.
+      const skippedLock = ctx.files.skippedPaths.tooLarge.some(
+        (p) => dirOf(p) === dir && lockRe.test(p.split('/').pop()!),
+      );
+      const rootLock = ctx.profile.workspaceRoot?.lockfiles.some((n) => lockRe.test(n));
+      if (hasLock || skippedLock || rootLock || isWorkspaceMember(ctx, m)) continue;
       // Libraries published to a registry conventionally do not commit lockfiles for consumers.
       if (
         b === 'package.json' &&

@@ -885,15 +885,21 @@ var init_files = __esm({
       };
       /** Sensitive files present on disk that were not read (path only). */
       sensitiveUnread = [];
+      /** Paths behind some of the `skipped` counts, so reports can name them. */
+      skippedPaths = { tooLarge: [] };
+      /** Size in bytes of each file in `skippedPaths.tooLarge`. */
+      skippedSizes = /* @__PURE__ */ new Map();
       cache = /* @__PURE__ */ new Map();
       byPath = /* @__PURE__ */ new Map();
       maxBytes;
+      maxLockfileBytes;
       constructor(root, opts = {}) {
         this.root = resolve(root);
         if (!existsSync(this.root) || !statSync(this.root).isDirectory())
           throw new RelivaroError("NOT_FOUND", `Not a directory: ${root}`);
         this.realRoot = realpathSync.native(this.root);
         this.maxBytes = (opts.maxFileSizeKb ?? 1024) * 1024;
+        this.maxLockfileBytes = (opts.maxLockfileSizeKb ?? 51200) * 1024;
         const listed = opts.useGit === false ? null : gitListFiles(this.root);
         this.gitRepo = listed !== null;
         const candidates = listed ?? walk(this.root);
@@ -945,8 +951,10 @@ var init_files = __esm({
           const { kind, language: language2 } = classify(path);
           const pf = { path, size: st.size, kind, isTest: isTestPath(path), tracked };
           if (language2) pf.language = language2;
-          if (st.size > this.maxBytes) {
+          if (st.size > (kind === "lockfile" ? this.maxLockfileBytes : this.maxBytes)) {
             this.skipped.tooLarge++;
+            this.skippedPaths.tooLarge.push(path);
+            this.skippedSizes.set(path, st.size);
             continue;
           }
           if (REPORT_EXT.has(ext) && isToolReport(path, readHead(abs))) {
@@ -13375,7 +13383,11 @@ var init_supply_chain = __esm({
           const hasLock = ctx.profile.lockfiles.some((l) => dirOf(l.file) === dir && lockRe.test(l.file.split("/").pop())) || ctx.files.files.some(
             (f) => dirOf(f.path) === dir && lockRe.test(f.path.split("/").pop()) && f.path !== m.file
           );
-          if (hasLock || isWorkspaceMember(ctx, m)) continue;
+          const skippedLock = ctx.files.skippedPaths.tooLarge.some(
+            (p) => dirOf(p) === dir && lockRe.test(p.split("/").pop())
+          );
+          const rootLock = ctx.profile.workspaceRoot?.lockfiles.some((n) => lockRe.test(n));
+          if (hasLock || skippedLock || rootLock || isWorkspaceMember(ctx, m)) continue;
           if (b === "package.json" && m.private !== true && m.version && (m.extra.main || m.extra.bin) && !ctx.profile.technologies.some(
             (t2) => t2.unit === dir && ["fullstack", "backend", "frontend"].includes(t2.kind)
           ))
@@ -13915,8 +13927,10 @@ __export(osv_exports, {
   OSV_RULE: () => OSV_RULE,
   cvss3Score: () => cvss3Score,
   fixedVersions: () => fixedVersions,
+  packageKey: () => packageKey,
   queryOsv: () => queryOsv,
-  severityOf: () => severityOf
+  severityOf: () => severityOf,
+  uniquePackageCount: () => uniquePackageCount
 });
 import { existsSync as existsSync8, readFileSync as readFileSync7, statSync as statSync4 } from "node:fs";
 async function postJson(fetchImpl, url, body2) {
@@ -13980,13 +13994,19 @@ function fixedVersions(v, pkg) {
   }
   return [...out2];
 }
+function packageKey(p) {
+  return `${p.ecosystem}\0${p.name}\0${p.version}`;
+}
+function uniquePackageCount(lockfiles) {
+  return new Set(lockfiles.flatMap((l) => l.packages.map(packageKey))).size;
+}
 async function queryOsv(lockfiles, opts = {}) {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = /* @__PURE__ */ new Map();
   for (const l of lockfiles)
     for (const p of l.packages) {
       if (!/^(?:npm|Packagist|PyPI|Go|crates\.io|RubyGems|Pub|Maven)$/.test(p.ecosystem)) continue;
-      const key = `${p.ecosystem}\0${p.name}\0${p.version}`;
+      const key = packageKey(p);
       const e = unique.get(key) ?? { pkg: p, files: /* @__PURE__ */ new Set() };
       e.files.add(l.file);
       unique.set(key, e);
@@ -22019,6 +22039,7 @@ function defaultConfig() {
     rules: {},
     failOn: "none",
     maxFileSizeKb: 1024,
+    maxLockfileSizeKb: 51200,
     commands: {},
     timeouts: { commandSeconds: 600 },
     release: { requireTests: true, requireCi: true, blockOn: "high" },
@@ -22060,6 +22081,7 @@ var KNOWN_KEYS = /* @__PURE__ */ new Set([
   "rules",
   "failOn",
   "maxFileSizeKb",
+  "maxLockfileSizeKb",
   "commands",
   "timeouts",
   "release",
@@ -22102,6 +22124,11 @@ function validateConfig(raw, file = "config") {
     if (typeof raw.maxFileSizeKb !== "number" || raw.maxFileSizeKb < 1 || raw.maxFileSizeKb > 20480)
       fail(file, '"maxFileSizeKb" must be a number between 1 and 20480');
     c.maxFileSizeKb = raw.maxFileSizeKb;
+  }
+  if (raw.maxLockfileSizeKb !== void 0) {
+    if (typeof raw.maxLockfileSizeKb !== "number" || raw.maxLockfileSizeKb < 1 || raw.maxLockfileSizeKb > 204800)
+      fail(file, '"maxLockfileSizeKb" must be a number between 1 and 204800');
+    c.maxLockfileSizeKb = raw.maxLockfileSizeKb;
   }
   if (raw.commands !== void 0) {
     if (!isObj(raw.commands)) fail(file, '"commands" must be an object');
@@ -22993,6 +23020,7 @@ async function runAudit(opts) {
     include: config.include,
     exclude: config.exclude,
     maxFileSizeKb: config.maxFileSizeKb,
+    maxLockfileSizeKb: config.maxLockfileSizeKb,
     useGit: opts.useGit
   });
   progress(`discovering project (${files.files.length} files)`);
@@ -23030,7 +23058,7 @@ async function runAudit(opts) {
         );
     } else if (profile.lockfiles.length) {
       limitations.push(
-        `Known vulnerabilities in ${profile.lockfiles.reduce((s, l) => s + l.packages.length, 0)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev \u2014 no source code.`
+        `Known vulnerabilities in ${uniquePackageCount(profile.lockfiles)} locked package(s) were not checked (offline). --online sends only ecosystem, package name and version to OSV.dev \u2014 no source code.`
       );
     }
   }
@@ -23053,7 +23081,7 @@ async function runAudit(opts) {
     for (const c of checks)
       if (c.status === "skipped" && opts.allowExec)
         limitations.push(`${c.kind} for \`${c.unit}\` was skipped: ${c.reason}.`);
-    if (!planned.length) limitations.push(`No ${checkKinds.join("/")} commands were detected.`);
+    if (!planned.length) limitations.push(noCommandsLimitation(checkKinds, profile.workspaceRoot));
   }
   let baselineFile;
   if (opts.baseline !== false) {
@@ -23098,9 +23126,15 @@ async function runAudit(opts) {
     limitations.push(
       `${analysis2.parseErrors.length} file(s) could not be parsed and were analysed only by text rules.`
     );
-  if (files.skipped.tooLarge)
+  const bigLockfiles = files.skippedPaths.tooLarge.filter((p) => classify(p).kind === "lockfile");
+  for (const p of bigLockfiles)
     limitations.push(
-      `${files.skipped.tooLarge} file(s) larger than ${config.maxFileSizeKb} KB were skipped.`
+      `Lockfile \`${p}\` (${((files.skippedSizes.get(p) ?? 0) / 1024 / 1024).toFixed(1)} MB) exceeds maxLockfileSizeKb; its dependencies were not analysed.`
+    );
+  const bigFiles = files.skippedPaths.tooLarge.filter((p) => !bigLockfiles.includes(p));
+  if (bigFiles.length)
+    limitations.push(
+      `${bigFiles.length} file(s) larger than ${config.maxFileSizeKb} KB were skipped (${bigFiles.slice(0, 5).map((p) => `\`${p}\``).join(", ")}${bigFiles.length > 5 ? ", \u2026" : ""}).`
     );
   if (files.skipped.reports)
     limitations.push(
@@ -23177,7 +23211,8 @@ async function runAudit(opts) {
       functions: analysis2.functions,
       rulesRun: analysis2.rulesRun.length,
       analysisMs: analysis2.durationMs,
-      dependencies: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
+      dependencies: uniquePackageCount(profile.lockfiles),
+      dependencyEntries: profile.lockfiles.reduce((s, l) => s + l.packages.length, 0),
       osvQueried,
       filesSkipped: { ...files.skipped }
     },
@@ -23191,6 +23226,18 @@ async function runAudit(opts) {
   if (opts.release) run2.release = assessRelease(run2, config);
   run2.durationMs = Math.round(performance.now() - started);
   return { run: run2, config, workspace };
+}
+var CHECK_SCRIPT = {
+  build: /^build(?::|$)/,
+  test: /^test(?::|$)/,
+  typecheck: /^(?:typecheck|type-check|check-types|types|tsc)(?::|$)/,
+  lint: /^lint(?::|$)/
+};
+function noCommandsLimitation(kinds, ws) {
+  const defined = ws ? Object.keys(ws.scripts).filter((n) => kinds.some((k) => CHECK_SCRIPT[k].test(n))).sort() : [];
+  if (!ws || !defined.length) return `No ${kinds.join("/")} commands were detected.`;
+  const up = ws.rel.split("/").map(() => "..").join("/");
+  return `No ${kinds.join("/")} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(", ")}. Run the audit from the workspace root to include them.`;
 }
 function gateFailed(run2, failOn) {
   if (failOn === "none") return false;

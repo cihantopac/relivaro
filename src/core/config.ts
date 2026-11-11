@@ -13,6 +13,8 @@ export interface RelivaroConfig {
   rules: Record<string, 'off' | { severity?: Severity; exclude?: string[] }>;
   failOn: Severity | 'none';
   maxFileSizeKb: number;
+  /** Size limit for lockfiles, which are often several megabytes. */
+  maxLockfileSizeKb: number;
   commands: Partial<Record<'build' | 'test' | 'typecheck' | 'lint', string>>;
   timeouts: { commandSeconds: number };
   release: {
@@ -39,6 +41,7 @@ export function defaultConfig(): RelivaroConfig {
     rules: {},
     failOn: 'none',
     maxFileSizeKb: 1024,
+    maxLockfileSizeKb: 51200,
     commands: {},
     timeouts: { commandSeconds: 600 },
     release: { requireTests: true, requireCi: true, blockOn: 'high' },
@@ -86,6 +89,7 @@ const KNOWN_KEYS = new Set([
   'rules',
   'failOn',
   'maxFileSizeKb',
+  'maxLockfileSizeKb',
   'commands',
   'timeouts',
   'release',
@@ -129,6 +133,15 @@ export function validateConfig(raw: unknown, file = 'config'): RelivaroConfig {
     if (typeof raw.maxFileSizeKb !== 'number' || raw.maxFileSizeKb < 1 || raw.maxFileSizeKb > 20480)
       fail(file, '"maxFileSizeKb" must be a number between 1 and 20480');
     c.maxFileSizeKb = raw.maxFileSizeKb;
+  }
+  if (raw.maxLockfileSizeKb !== undefined) {
+    if (
+      typeof raw.maxLockfileSizeKb !== 'number' ||
+      raw.maxLockfileSizeKb < 1 ||
+      raw.maxLockfileSizeKb > 204800
+    )
+      fail(file, '"maxLockfileSizeKb" must be a number between 1 and 204800');
+    c.maxLockfileSizeKb = raw.maxLockfileSizeKb;
   }
   if (raw.commands !== undefined) {
     if (!isObj(raw.commands)) fail(file, '"commands" must be an object');
