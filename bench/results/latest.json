@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.4.0",
-  "measuredAt": "2026-11-11T17:13:47.134Z",
+  "relivaro": "1.5.0",
+  "measuredAt": "2026-11-11T22:08:54.996Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 105
+        "ms": 155
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 83
+        "ms": 131
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 72
+        "ms": 113
       },
       "monorepo-docker": {
         "tp": 1,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 64
+        "ms": 104
       },
       "monorepo-lib": {
         "tp": 1,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 76
+        "ms": 115
       },
       "next-app": {
         "tp": 12,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 105
+        "ms": 149
       },
       "node-api": {
         "tp": 64,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 108
+        "ms": 162
       },
       "python-app": {
         "tp": 32,
@@ -73,7 +73,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 79
+        "ms": 118
       },
       "regressions": {
         "tp": 5,
@@ -81,7 +81,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 99
+        "ms": 146
       },
       "static-site": {
         "tp": 3,
@@ -89,7 +89,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 48
+        "ms": 88
       }
     },
     "byRule": {
@@ -514,12 +514,12 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 83,
-      "medianMs": 1440,
-      "minMs": 1419,
-      "maxMs": 1496,
-      "filesPerSecond": 2125,
-      "linesPerSecond": 33744,
-      "peakRssMb": 145,
+      "medianMs": 1638,
+      "minMs": 1590,
+      "maxMs": 1658,
+      "filesPerSecond": 1868,
+      "linesPerSecond": 29663,
+      "peakRssMb": 148,
       "openFindings": 60
     },
     "repositories": []

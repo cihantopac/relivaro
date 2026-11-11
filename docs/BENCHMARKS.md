@@ -20,7 +20,7 @@ The corpus annotates every expected finding inline; anything else Relivaro repor
 | static-site | 3 | 0 | 0 | 100% | 100% |
 | **total** | **172** | **0** | **0** | **100.0%** | **100.0%** |
 
-Detection accuracy re-measured 2026-11-11 with Relivaro 1.4.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
+Detection accuracy re-measured 2026-11-12 with Relivaro 1.5.0. 81 rule ids appear in the corpus. Corpus accuracy is a regression guard, not a claim about accuracy on arbitrary code; see [VALIDATION.md](VALIDATION.md) for real-world review.
 
 ## Analysis performance
 

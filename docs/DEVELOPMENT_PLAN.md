@@ -2,15 +2,15 @@
 
 Persistent record of scope, decisions, verified progress and open issues. Update it with every significant change.
 
-## Status (2026-11-11)
+## Status (2026-11-12)
 
-v1.4.0 prepared as a correctness release from the Frameva field reports (RELIVARO-013 to 022) and the deferred minors
-of the 1.3.0 review: Docker stage and build-context resolution, constant SQL fragments, test-file and short-loop
-scope, inline relivaro-accept annotations and --no-inline-suppressions, library vs. service detection, workspace-root
-metadata (lockfiles, scripts, .dockerignore) for packages audited alone, a lockfile size class, unique dependency
-counts, walk-mode visibility (--no-gitignore, --assume-tracked, symlink dedupe) and false negatives inside existing
-rules. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall. Next: 1.5.0 (integration
-and hosted scanning), then 1.6.0 (new rule families).
+v1.5.0 prepared for CI and hosted scanning (Frameva RELIVARO-001 to 010, 023): run record schema, structured
+progress, run limits with partial results (exit code 4) and graceful SIGTERM, `--lockdown`, `--root-label` and snippet
+controls, richer SARIF, a programmatic API, OSV cache/mirror/offline mode, a coverage line, `rules list --json`, a
+baseline hint and `--since`. Hosted dry run on a copy of frameva-engines with `--lockdown --root-label repo
+--max-duration 60 --format sarif,md`: exit 0, 8 findings, no absolute path in any output, SARIF base URI
+`file:///repo/`. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall; 326 tests.
+Next: 1.6.0 (new rule families).
 
 ## Milestones (internal)
 

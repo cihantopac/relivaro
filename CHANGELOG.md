@@ -3,6 +3,64 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.5.0] — 2026-11-12
+
+Integration and hosted scanning: bounded runs, a hard lockdown for untrusted code, documented contracts, privacy
+controls and richer SARIF, from the Frameva hosted-engine reports (RELIVARO-001 to 010 and 023). No rule finds
+anything new or different.
+
+### Added
+
+- **Run record schema.** `schemas/run.schema.json` ships in the package; every `run.json` names it in `$schema`, and a
+  test validates real records from every fixture against it. Version policy in `docs/REPORT.md`: an optional new field
+  keeps `schemaVersion`; removing or renaming a field or changing a type bumps it.
+- **Structured progress.** `--progress tty|plain|ndjson|off` (global). `ndjson` writes one JSON event per line on
+  stderr, also with `--json`: stage events (`index`, `discover`, `analyse`, `osv`, `checks`, `report`, each with
+  `start`/`end` and `elapsedMs`) and file counts every 200 files.
+- **Run limits and partial results.** `--max-duration <seconds>`, `--max-files <n>`, `--max-bytes <size>` (K/M/G) and
+  the config keys `limits.maxDuration`, `limits.maxFiles`, `limits.maxBytes`. A reached limit stops the analysis (root
+  manifests and lockfiles are analysed first), writes the record with `partial`, puts a limitation first, adds an
+  unverified gate so the release verdict is at best *needs verification*, prints `PARTIAL RUN` even with `--quiet`, and
+  exits with the new **exit code 4** (a gate the partial results already fail still exits 1). A parse slower than 5 s
+  is skipped and recorded on bounded runs only.
+- **Graceful SIGTERM/SIGINT** for analysis commands: OSV requests and build/test commands are cancelled and a partial
+  record is written atomically (exit code 4); a second signal exits at once. Other commands keep the default
+  behaviour.
+- **Lockdown for hosted scanning.** `--lockdown` or `RELIVARO_LOCKDOWN` (any value except empty, `0`, `false`, `no`,
+  `off`) refuses `--allow-exec`, `--online`, `--open`, `fix apply`/`rollback`, `baseline`, `init`, `load`, `bench`,
+  `review add`, and any workspace or `--out` inside the audited directory (exit 2). It ignores the repository config,
+  a committed baseline file and inline `relivaro-ignore`/`relivaro-accept` comments, applies `.gitignore` to nothing
+  and never starts git, so no child process is spawned and no socket is opened. `--ignore-repo-config` alone uses only
+  defaults or `--config`.
+- **Output privacy.** `--root-label <name>` replaces the absolute project path in the run record, messages, snippets,
+  limitations and every report. `--no-snippets` and `--snippet-lines <n>` (default 3) control source excerpts.
+- **SARIF enrichment.** `originalUriBaseIds`, `versionControlProvenance` (revision, branch, and the `origin` URL with
+  credentials removed), a `rulesetHash`, a source snippet in `region.snippet`, and a truthful invocation (`exitCode`,
+  `executionSuccessful` false for usage errors and partial runs, `endTimeUtc`).
+- **Programmatic API.** `import { runAudit, toSarif, compareRuns, assessRelease, gateFailed, VERSION } from 'relivaro'`
+  (ESM) with hand-written, compile-time-pinned type declarations. `package.json` gets `exports` and `types`, and
+  `relivaro/schemas/*` exports the schemas. The `--json --compact` shape is pinned by
+  `tests/fixtures/contract/compact.json`.
+- **OSV cache and mirror.** `--osv-cache <file>` (shared; a read-only file is used without being written; malformed
+  entries are ignored), `--osv-api <https-url>` (with `--online`), and `--offline-osv` (answers from the cache only,
+  works under lockdown, and names the uncached packages as unverified). Each cache entry expires 24 h after it was
+  fetched; the 1.4 cache format is still read.
+- **Coverage line.** Every run prints `Coverage: security N rules/M files · …`, and `metrics.coverage` records rules
+  run and files matched per category.
+- **`rules list --json`** exports every rule's id, category, severity, confidence, CWE, OWASP, fixer, title,
+  description, impact, recommendation and verification, with the same keys for every rule.
+- **Baseline hint.** After an audit with open findings and no baseline, the summary suggests
+  `relivaro baseline <path>`; with a baseline it says `N findings in baseline (not shown)`.
+- **`--since <git-ref>`** shows only findings on lines changed since the ref (new, renamed, copied, binary and
+  untracked files count in full) while still analysing the whole tree. Without git it is a usage error.
+
+### Changed
+
+- `--json --compact`: `reports` is the directory the reports were written to, or `null` with `--no-write`; `partial`
+  and `since` appear when set.
+- `rules list --json`: `cwe` and `owasp` are always arrays and `fixer` is `null` when there is none.
+- The OSV cache file format is version 2 (package lookups plus advisory details).
+
 ## [1.4.0] — 2026-11-11
 
 Correctness release: every false positive and silent blind spot from the Frameva field reports on 1.3.0, the false
