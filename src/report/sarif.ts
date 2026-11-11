@@ -19,6 +19,20 @@ const SECURITY_SEVERITY: Record<Severity, string> = {
   info: '0.0',
 };
 
+/**
+ * The source text of the reported lines, taken from the finding's numbered snippet (`  12 | code`); undefined when
+ * snippets are off or the reported line is not in it.
+ */
+function regionText(snippet: string | undefined, start: number, end: number): string | undefined {
+  if (!snippet) return undefined;
+  const picked: string[] = [];
+  for (const l of snippet.split('\n')) {
+    const m = /^\s*(\d+) \| (.*)$/.exec(l);
+    if (m && Number(m[1]) >= start && Number(m[1]) <= end) picked.push(m[2]!);
+  }
+  return picked.length ? picked.join('\n') : undefined;
+}
+
 export function toSarif(run: RunRecord): object {
   const used = new Set(run.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
@@ -90,10 +104,12 @@ function result(f: Finding, ruleIndex: number | undefined, fallbackUri: string):
   if (ruleIndex !== undefined) r.ruleIndex = ruleIndex;
   const factPath = typeof f.evidence.facts?.path === 'string' ? f.evidence.facts.path : undefined;
   const loc = f.location ?? { file: factPath ?? fallbackUri, line: 1 };
-  const region: Record<string, number> = {};
+  const region: Record<string, unknown> = {};
   if (loc.line) region.startLine = loc.line;
   if (loc.column) region.startColumn = loc.column;
   if (loc.endLine && loc.endLine >= (loc.line ?? 0)) region.endLine = loc.endLine;
+  const snippet = loc.line ? regionText(f.evidence.snippet, loc.line, loc.endLine ?? loc.line) : undefined;
+  if (snippet !== undefined) region.snippet = { text: snippet };
   r.locations = [
     {
       physicalLocation: {

@@ -43,6 +43,10 @@ export interface AuditOptions {
   respectGitignore?: boolean;
   /** Without git, treat listed files as tracked so sensitive files are reported by path. */
   assumeTracked?: boolean;
+  /** Replaces the absolute root in every output (run record, messages, snippets, limitations). */
+  rootLabel?: string;
+  /** Source lines per finding snippet (default 3); 0 drops snippets. */
+  snippetLines?: number;
   /** Use only defaults or `configPath`, never the audited repository's config file. */
   ignoreRepoConfig?: boolean;
   /** Honour `relivaro-ignore*` / `relivaro-accept*` comments in the audited code. Default true. */
@@ -252,7 +256,10 @@ export async function runAudit(
   const ctx: ProjectContext = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
-  const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
+  const builder = new FindingBuilder(ctx, {
+    inlineSuppressions: opts.inlineSuppressions,
+    snippetLines: opts.snippetLines,
+  });
   const limits: RunBudget = {
     maxDurationMs: config.limits.maxDuration !== undefined ? config.limits.maxDuration * 1000 : undefined,
     maxFiles: config.limits.maxFiles,
@@ -516,9 +523,10 @@ export async function runAudit(
       network: networkErrors.slice(0, 20),
     },
   };
-  if (opts.release) run.release = assessRelease(run, config);
-  run.durationMs = Math.round(performance.now() - started);
-  return { run, config, workspace };
+  const labelled = opts.rootLabel ? relabelRoot(run, [files.realRoot, files.root], opts.rootLabel) : run;
+  if (opts.release) labelled.release = assessRelease(labelled, config);
+  labelled.durationMs = Math.round(performance.now() - started);
+  return { run: labelled, config, workspace };
 }
 
 const CHECK_SCRIPT: Record<CheckKind, RegExp> = {
@@ -537,6 +545,22 @@ export function noCommandsLimitation(kinds: CheckKind[], ws: ProjectProfile['wor
     .map(() => '..')
     .join('/');
   return `No ${kinds.join('/')} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(', ')}. Run the audit from the workspace root to include them.`;
+}
+
+/**
+ * Rewrites every occurrence of the absolute root paths (longest first) in all strings of the record, including
+ * finding messages, snippets, limitations and errors, to `label`; `root` itself becomes the label.
+ */
+export function relabelRoot(run: RunRecord, roots: string[], label: string): RunRecord {
+  let json = JSON.stringify(run);
+  for (const r of [...new Set(roots)].sort((a, b) => b.length - a.length)) {
+    const needle = JSON.stringify(r).slice(1, -1);
+    if (needle) json = json.split(needle).join(JSON.stringify(label).slice(1, -1));
+  }
+  const out = JSON.parse(json) as RunRecord;
+  out.root = label;
+  out.profile.root = label;
+  return out;
 }
 
 export function gateFailed(run: RunRecord, failOn: Severity | 'none'): boolean {

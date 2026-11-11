@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { BASELINE_FILE, type BaselineFile, gateFailed, type RunRecord, runAudit } from '../audit.js';
 import type { CheckKind } from '../checks/exec.js';
 import { diffSpecs, loadSpec, validateSpec } from '../contract/openapi.js';
@@ -103,6 +103,19 @@ const ANALYSIS_OPTS: OptSpec[] = [
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
   {
+    name: 'root-label',
+    type: 'string',
+    value: '<name>',
+    description: 'Show this name instead of the absolute project path in every report, message and snippet.',
+  },
+  {
+    name: 'snippet-lines',
+    type: 'number',
+    value: '<n>',
+    description: 'Source lines per finding snippet (default 3); 0 is the same as --no-snippets.',
+  },
+  { name: 'no-snippets', type: 'boolean', description: 'Leave source snippets out of every report.' },
+  {
     name: 'max-duration',
     type: 'number',
     value: '<seconds>',
@@ -193,6 +206,22 @@ function groupBy<T>(items: T[], key: (x: T) => string): Map<string, T[]> {
 }
 
 /** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
+function snippetLinesOpt(v: unknown): number | undefined {
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 50)
+    throw new RelivaroError(
+      'USAGE',
+      `--snippet-lines must be a whole number from 0 to 50, got "${String(v)}".`,
+    );
+  return n;
+}
+
+function reportDir(files: Record<string, string>): string | null {
+  const any = files.json ?? files.html ?? files.md ?? files.sarif;
+  return any ? dirname(any) : null;
+}
+
 export function compactRun(
   run: RunRecord,
   maxFindings = 30,
@@ -264,7 +293,8 @@ export function compactRun(
     },
     review: reviewSummary(run, review),
     limitations: run.limitations,
-    reports: `.relivaro/runs/${run.runId}/ (rule details: relivaro rules show <rule>)`,
+    // The directory the reports were written to; null when nothing was written (--no-write).
+    reports: reportDir(files),
     ...(files.html
       ? { report: { html: files.html, open: openCommand(files.html), markdown: files.md } }
       : {}),
@@ -345,6 +375,8 @@ async function analysisCommand(
     useGit: p.opts['no-git'] ? false : undefined,
     inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
     ignoreRepoConfig: p.opts['ignore-repo-config'] ? true : undefined,
+    rootLabel: p.opts['root-label'] as string | undefined,
+    snippetLines: p.opts['no-snippets'] ? 0 : snippetLinesOpt(p.opts['snippet-lines']),
     respectGitignore: p.opts['no-gitignore'] ? false : undefined,
     assumeTracked: p.opts['assume-tracked'] ? true : undefined,
     noWrite: !!p.opts['no-write'],

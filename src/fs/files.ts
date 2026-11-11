@@ -10,7 +10,7 @@ import {
   realpathSync,
   statSync,
 } from 'node:fs';
-import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, extname, isAbsolute, join, relative, resolve } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
 import { matchesAny } from '../core/glob.js';
 import { isLockedDown } from '../core/lockdown.js';

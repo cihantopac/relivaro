@@ -24,11 +24,19 @@ vi.mock('node:child_process', async (importOriginal) => {
 
 const { main } = await import('../../src/cli/main.js');
 
-const PROCESS_FNS = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'] as const;
-const processCalls = () =>
-  PROCESS_FNS.reduce((n, f) => n + (cp[f] as unknown as { mock: { calls: unknown[] } }).mock.calls.length, 0);
+type Spy = { mock: { calls: unknown[] }; mockClear(): void };
+const PROCESS_SPIES = [
+  cp.spawn,
+  cp.spawnSync,
+  cp.exec,
+  cp.execSync,
+  cp.execFile,
+  cp.execFileSync,
+  cp.fork,
+].map((f) => f as unknown as Spy);
+const processCalls = () => PROCESS_SPIES.reduce((n, f) => n + f.mock.calls.length, 0);
 const resetProcessSpies = () => {
-  for (const f of PROCESS_FNS) (cp[f] as unknown as { mockClear(): void }).mockClear();
+  for (const f of PROCESS_SPIES) f.mockClear();
 };
 
 let stderr = '';

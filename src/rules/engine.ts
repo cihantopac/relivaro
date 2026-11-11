@@ -202,9 +202,12 @@ function suppressedBy(
   return null;
 }
 
-export function snippetAround(lines: string[], line: number, context = 1): string {
-  const from = Math.max(1, line - context);
-  const to = Math.min(lines.length, line + context);
+/** `count` source lines around `line` (default 3: the line and one on each side), numbered and redacted. */
+export function snippetAround(lines: string[], line: number, count = 3): string {
+  const before = Math.floor((Math.max(1, count) - 1) / 2);
+  const after = Math.max(1, count) - 1 - before;
+  const from = Math.max(1, line - before);
+  const to = Math.min(lines.length, line + after);
   const out: string[] = [];
   for (let i = from; i <= to; i++) {
     let l = lines[i - 1] ?? '';
@@ -230,7 +233,7 @@ export class FindingBuilder {
 
   constructor(
     private readonly project: ProjectContext,
-    private readonly opts: { inlineSuppressions?: boolean } = {},
+    private readonly opts: { inlineSuppressions?: boolean; snippetLines?: number } = {},
   ) {}
 
   /** Parses (once) the inline annotations of a file; malformed acceptances are recorded as errors. */
@@ -316,11 +319,13 @@ export class FindingBuilder {
       provenance,
       evidence: {
         snippet:
-          hit.snippet !== undefined
-            ? redact(hit.snippet)
-            : lines && line
-              ? snippetAround(lines, line)
-              : undefined,
+          this.opts.snippetLines === 0
+            ? undefined
+            : hit.snippet !== undefined
+              ? redact(hit.snippet)
+              : lines && line
+                ? snippetAround(lines, line, this.opts.snippetLines ?? 3)
+                : undefined,
         facts: hit.facts,
       },
       impact: rule.impact,

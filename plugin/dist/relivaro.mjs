@@ -2207,7 +2207,7 @@ function redosRisk(pattern) {
       const frame = stack.length > 1 ? stack.pop() : top;
       const parent = stack[stack.length - 1];
       const outerUnbounded = isUnboundedAt(i2 + 1);
-      const unambiguous = !frame.alternation && frame.separators.some((sep3) => disjoint(sep3, frame.repeated));
+      const unambiguous = !frame.alternation && frame.separators.some((sep2) => disjoint(sep2, frame.repeated));
       if (outerUnbounded && frame.unbounded && !unambiguous) return true;
       if (outerUnbounded && frame.alternation) {
         const firsts = frame.altFirst;
@@ -8774,10 +8774,10 @@ var require_resolve_block_map = __commonJS({
       let offset = bm.offset;
       let commentEnd = null;
       for (const collItem of bm.items) {
-        const { start: start2, key, sep: sep3, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const keyProps = resolveProps.resolveProps(start2, {
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: bm.indent,
@@ -8791,7 +8791,7 @@ var require_resolve_block_map = __commonJS({
             else if ("indent" in key && key.indent !== bm.indent)
               onError(offset, "BAD_INDENT", startColMsg);
           }
-          if (!keyProps.anchor && !keyProps.tag && !sep3) {
+          if (!keyProps.anchor && !keyProps.tag && !sep2) {
             commentEnd = keyProps.end;
             if (keyProps.comment) {
               if (map.comment)
@@ -8815,7 +8815,7 @@ var require_resolve_block_map = __commonJS({
         ctx.atKey = false;
         if (utilMapIncludes.mapIncludes(ctx, map.items, keyNode))
           onError(keyStart, "DUPLICATE_KEY", "Map keys must be unique");
-        const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+        const valueProps = resolveProps.resolveProps(sep2 ?? [], {
           indicator: "map-value-ind",
           next: value,
           offset: keyNode.range[2],
@@ -8831,7 +8831,7 @@ var require_resolve_block_map = __commonJS({
             if (ctx.options.strict && keyProps.start < valueProps.found.offset - 1024)
               onError(keyNode.range, "KEY_OVER_1024_CHARS", "The : indicator must be at most 1024 chars after the start of an implicit block mapping key");
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep3, null, valueProps, onError);
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : composeEmptyNode(ctx, offset, sep2, null, valueProps, onError);
           if (ctx.schema.compat)
             utilFlowIndentCheck.flowIndentCheck(bm.indent, value, onError);
           offset = valueNode.range[2];
@@ -8922,7 +8922,7 @@ var require_resolve_end = __commonJS({
       let comment = "";
       if (end) {
         let hasSpace = false;
-        let sep3 = "";
+        let sep2 = "";
         for (const token of end) {
           const { source, type } = token;
           switch (type) {
@@ -8936,13 +8936,13 @@ var require_resolve_end = __commonJS({
               if (!comment)
                 comment = cb;
               else
-                comment += sep3 + cb;
-              sep3 = "";
+                comment += sep2 + cb;
+              sep2 = "";
               break;
             }
             case "newline":
               if (comment)
-                sep3 += source;
+                sep2 += source;
               hasSpace = true;
               break;
             default:
@@ -8985,18 +8985,18 @@ var require_resolve_flow_collection = __commonJS({
       let offset = fc.offset + fc.start.source.length;
       for (let i2 = 0; i2 < fc.items.length; ++i2) {
         const collItem = fc.items[i2];
-        const { start: start2, key, sep: sep3, value } = collItem;
+        const { start: start2, key, sep: sep2, value } = collItem;
         const props = resolveProps.resolveProps(start2, {
           flow: fcName,
           indicator: "explicit-key-ind",
-          next: key ?? sep3?.[0],
+          next: key ?? sep2?.[0],
           offset,
           onError,
           parentIndent: fc.indent,
           startOnNewline: false
         });
         if (!props.found) {
-          if (!props.anchor && !props.tag && !sep3 && !value) {
+          if (!props.anchor && !props.tag && !sep2 && !value) {
             if (i2 === 0 && props.comma)
               onError(props.comma, "UNEXPECTED_TOKEN", `Unexpected , in ${fcName}`);
             else if (i2 < fc.items.length - 1)
@@ -9050,8 +9050,8 @@ var require_resolve_flow_collection = __commonJS({
             }
           }
         }
-        if (!isMap2 && !sep3 && !props.found) {
-          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep3, null, props, onError);
+        if (!isMap2 && !sep2 && !props.found) {
+          const valueNode = value ? composeNode(ctx, value, props, onError) : composeEmptyNode(ctx, props.end, sep2, null, props, onError);
           coll.items.push(valueNode);
           offset = valueNode.range[2];
           if (isBlock(value))
@@ -9063,7 +9063,7 @@ var require_resolve_flow_collection = __commonJS({
           if (isBlock(key))
             onError(keyNode.range, "BLOCK_IN_FLOW", blockMsg);
           ctx.atKey = false;
-          const valueProps = resolveProps.resolveProps(sep3 ?? [], {
+          const valueProps = resolveProps.resolveProps(sep2 ?? [], {
             flow: fcName,
             indicator: "map-value-ind",
             next: value,
@@ -9074,8 +9074,8 @@ var require_resolve_flow_collection = __commonJS({
           });
           if (valueProps.found) {
             if (!isMap2 && !props.found && ctx.options.strict) {
-              if (sep3)
-                for (const st of sep3) {
+              if (sep2)
+                for (const st of sep2) {
                   if (st === valueProps.found)
                     break;
                   if (st.type === "newline") {
@@ -9092,7 +9092,7 @@ var require_resolve_flow_collection = __commonJS({
             else
               onError(valueProps.start, "MISSING_CHAR", `Missing , or : between ${fcName} items`);
           }
-          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep3, null, valueProps, onError) : null;
+          const valueNode = value ? composeNode(ctx, value, valueProps, onError) : valueProps.found ? composeEmptyNode(ctx, valueProps.end, sep2, null, valueProps, onError) : null;
           if (valueNode) {
             if (isBlock(value))
               onError(valueNode.range, "BLOCK_IN_FLOW", blockMsg);
@@ -9272,7 +9272,7 @@ var require_resolve_block_scalar = __commonJS({
           chompStart = i2 + 1;
       }
       let value = "";
-      let sep3 = "";
+      let sep2 = "";
       let prevMoreIndented = false;
       for (let i2 = 0; i2 < contentStart; ++i2)
         value += lines[i2][0].slice(trimIndent) + "\n";
@@ -9289,24 +9289,24 @@ var require_resolve_block_scalar = __commonJS({
           indent = "";
         }
         if (type === Scalar.Scalar.BLOCK_LITERAL) {
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
         } else if (indent.length > trimIndent || content[0] === "	") {
-          if (sep3 === " ")
-            sep3 = "\n";
-          else if (!prevMoreIndented && sep3 === "\n")
-            sep3 = "\n\n";
-          value += sep3 + indent.slice(trimIndent) + content;
-          sep3 = "\n";
+          if (sep2 === " ")
+            sep2 = "\n";
+          else if (!prevMoreIndented && sep2 === "\n")
+            sep2 = "\n\n";
+          value += sep2 + indent.slice(trimIndent) + content;
+          sep2 = "\n";
           prevMoreIndented = true;
         } else if (content === "") {
-          if (sep3 === "\n")
+          if (sep2 === "\n")
             value += "\n";
           else
-            sep3 = "\n";
+            sep2 = "\n";
         } else {
-          value += sep3 + content;
-          sep3 = " ";
+          value += sep2 + content;
+          sep2 = " ";
           prevMoreIndented = false;
         }
       }
@@ -9489,25 +9489,25 @@ var require_resolve_flow_scalar = __commonJS({
         trimBoth = /^[ \t]+|[ \t]+$/g;
       }
       let res = match[1].replace(trimEnd, "");
-      let sep3 = " ";
+      let sep2 = " ";
       let pos2 = line.lastIndex;
       while (match = line.exec(source)) {
         const lm = match[1].replace(trimBoth, "");
         if (lm === "") {
-          if (sep3 === "\n")
-            res += sep3;
+          if (sep2 === "\n")
+            res += sep2;
           else
-            sep3 = "\n";
+            sep2 = "\n";
         } else {
-          res += sep3 + lm;
-          sep3 = " ";
+          res += sep2 + lm;
+          sep2 = " ";
         }
         pos2 = line.lastIndex;
       }
       const last = /[ \t]*(.*)/sy;
       last.lastIndex = pos2;
       match = last.exec(source);
-      return res + sep3 + (match?.[1] ?? "");
+      return res + sep2 + (match?.[1] ?? "");
     }
     function doubleQuotedValue(source, onError) {
       let res = "";
@@ -10317,14 +10317,14 @@ var require_cst_stringify = __commonJS({
         }
       }
     }
-    function stringifyItem({ start: start2, key, sep: sep3, value }) {
+    function stringifyItem({ start: start2, key, sep: sep2, value }) {
       let res = "";
       for (const st of start2)
         res += st.source;
       if (key)
         res += stringifyToken(key);
-      if (sep3)
-        for (const st of sep3)
+      if (sep2)
+        for (const st of sep2)
           res += st.source;
       if (value)
         res += stringifyToken(value);
@@ -11491,18 +11491,18 @@ var require_parser = __commonJS({
         if (this.type === "map-value-ind") {
           const prev = getPrevProps(this.peek(2));
           const start2 = getFirstKeyStartProps(prev);
-          let sep3;
+          let sep2;
           if (scalar.end) {
-            sep3 = scalar.end;
-            sep3.push(this.sourceToken);
+            sep2 = scalar.end;
+            sep2.push(this.sourceToken);
             delete scalar.end;
           } else
-            sep3 = [this.sourceToken];
+            sep2 = [this.sourceToken];
           const map = {
             type: "block-map",
             offset: scalar.offset,
             indent: scalar.indent,
-            items: [{ start: start2, key: scalar, sep: sep3 }]
+            items: [{ start: start2, key: scalar, sep: sep2 }]
           };
           this.onKeyLine = true;
           this.stack[this.stack.length - 1] = map;
@@ -11655,15 +11655,15 @@ var require_parser = __commonJS({
                 } else if (isFlowToken(it.key) && !includesToken(it.sep, "newline")) {
                   const start3 = getFirstKeyStartProps(it.start);
                   const key = it.key;
-                  const sep3 = it.sep;
-                  sep3.push(this.sourceToken);
+                  const sep2 = it.sep;
+                  sep2.push(this.sourceToken);
                   delete it.key;
                   delete it.sep;
                   this.stack.push({
                     type: "block-map",
                     offset: this.offset,
                     indent: this.indent,
-                    items: [{ start: start3, key, sep: sep3 }]
+                    items: [{ start: start3, key, sep: sep2 }]
                   });
                 } else if (start2.length > 0) {
                   it.sep = it.sep.concat(start2, this.sourceToken);
@@ -11857,13 +11857,13 @@ var require_parser = __commonJS({
             const prev = getPrevProps(parent);
             const start2 = getFirstKeyStartProps(prev);
             fixFlowSeqItems(fc);
-            const sep3 = fc.end.splice(1, fc.end.length);
-            sep3.push(this.sourceToken);
+            const sep2 = fc.end.splice(1, fc.end.length);
+            sep2.push(this.sourceToken);
             const map = {
               type: "block-map",
               offset: fc.offset,
               indent: fc.indent,
-              items: [{ start: start2, key: fc, sep: sep3 }]
+              items: [{ start: start2, key: fc, sep: sep2 }]
             };
             this.onKeyLine = true;
             this.stack[this.stack.length - 1] = map;
@@ -12143,7 +12143,7 @@ var require_dist = __commonJS({
 
 // src/fs/ancestors.ts
 import { lstatSync as lstatSync2, readFileSync as readFileSync2, realpathSync as realpathSync2 } from "node:fs";
-import { dirname as dirname2, join as join3, relative as relative2, resolve as resolve2, sep as sep2 } from "node:path";
+import { dirname as dirname2, join as join3, relative as relative2, resolve as resolve2, sep } from "node:path";
 function readMeta(dir, name2) {
   if (!ANCESTOR_META.includes(name2)) throw new Error(`not an ancestor metadata file: ${name2}`);
   try {
@@ -12217,7 +12217,7 @@ function findWorkspaceRoot(auditRoot, opts = {}) {
     dir = parent;
     const globs = workspaceGlobs(dir);
     if (!globs.length) continue;
-    const rel = relative2(dir, start2).split(sep2).join("/");
+    const rel = relative2(dir, start2).split(sep).join("/");
     if (!(globs.includes(rel) || matchesAny(rel, globs))) continue;
     const lockfiles = LOCKFILES2.filter((n) => hasMeta(dir, n));
     const out2 = { dir, rel, lockfiles, scripts: scriptsOf(dir) };
@@ -21185,8 +21185,8 @@ ${out2}`;
       const has = (p) => text.split(/\r?\n/).some((l) => l.trim() === p || l.trim() === `/${p}`);
       const add = [".env", ".env.*", "!.env.example"].filter((p) => !has(p));
       if (!add.length || has(".env") && has(".env.*")) return null;
-      const sep3 = text === "" || text.endsWith("\n") ? "" : "\n";
-      return `${text}${sep3}${text ? "\n" : ""}# Local environment files (added by Relivaro)
+      const sep2 = text === "" || text.endsWith("\n") ? "" : "\n";
+      return `${text}${sep2}${text ? "\n" : ""}# Local environment files (added by Relivaro)
 ${add.join("\n")}
 `;
     }
@@ -21340,7 +21340,7 @@ function helpText(spec) {
 // src/cli/commands.ts
 import { spawn as spawn2 } from "node:child_process";
 import { existsSync as existsSync11, readFileSync as readFileSync9, realpathSync as realpathSync3 } from "node:fs";
-import { join as join10, resolve as resolve4 } from "node:path";
+import { dirname as dirname5, join as join10, resolve as resolve4 } from "node:path";
 
 // src/checks/coverage.ts
 import { existsSync as existsSync3, readFileSync as readFileSync3, statSync as statSync2 } from "node:fs";
@@ -23095,9 +23095,11 @@ function suppressedBy(s, ruleId, line) {
   if (e && (e.all || e.rules.has(ruleId))) return { reason: e.reason };
   return null;
 }
-function snippetAround(lines, line, context = 1) {
-  const from = Math.max(1, line - context);
-  const to = Math.min(lines.length, line + context);
+function snippetAround(lines, line, count = 3) {
+  const before = Math.floor((Math.max(1, count) - 1) / 2);
+  const after = Math.max(1, count) - 1 - before;
+  const from = Math.max(1, line - before);
+  const to = Math.min(lines.length, line + after);
   const out2 = [];
   for (let i2 = from; i2 <= to; i2++) {
     let l = lines[i2 - 1] ?? "";
@@ -23193,7 +23195,7 @@ var FindingBuilder = class {
       category: rule.category,
       provenance,
       evidence: {
-        snippet: hit.snippet !== void 0 ? redact(hit.snippet) : lines && line ? snippetAround(lines, line) : void 0,
+        snippet: this.opts.snippetLines === 0 ? void 0 : hit.snippet !== void 0 ? redact(hit.snippet) : lines && line ? snippetAround(lines, line, this.opts.snippetLines ?? 3) : void 0,
         facts: hit.facts
       },
       impact: rule.impact,
@@ -23424,7 +23426,10 @@ async function runAudit(opts) {
   const ctx = { files, profile, config };
   const workspace = new Workspace(files.root, opts.workspace);
   const categories = opts.categories?.length ? opts.categories : [...CATEGORIES];
-  const builder = new FindingBuilder(ctx, { inlineSuppressions: opts.inlineSuppressions });
+  const builder = new FindingBuilder(ctx, {
+    inlineSuppressions: opts.inlineSuppressions,
+    snippetLines: opts.snippetLines
+  });
   const limits = {
     maxDurationMs: config.limits.maxDuration !== void 0 ? config.limits.maxDuration * 1e3 : void 0,
     maxFiles: config.limits.maxFiles,
@@ -23667,9 +23672,10 @@ async function runAudit(opts) {
       network: networkErrors.slice(0, 20)
     }
   };
-  if (opts.release) run2.release = assessRelease(run2, config);
-  run2.durationMs = Math.round(performance.now() - started);
-  return { run: run2, config, workspace };
+  const labelled = opts.rootLabel ? relabelRoot(run2, [files.realRoot, files.root], opts.rootLabel) : run2;
+  if (opts.release) labelled.release = assessRelease(labelled, config);
+  labelled.durationMs = Math.round(performance.now() - started);
+  return { run: labelled, config, workspace };
 }
 var CHECK_SCRIPT = {
   build: /^build(?::|$)/,
@@ -23682,6 +23688,17 @@ function noCommandsLimitation(kinds, ws) {
   if (!ws || !defined.length) return `No ${kinds.join("/")} commands were detected.`;
   const up = ws.rel.split("/").map(() => "..").join("/");
   return `No ${kinds.join("/")} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(", ")}. Run the audit from the workspace root to include them.`;
+}
+function relabelRoot(run2, roots, label) {
+  let json = JSON.stringify(run2);
+  for (const r of [...new Set(roots)].sort((a, b) => b.length - a.length)) {
+    const needle = JSON.stringify(r).slice(1, -1);
+    if (needle) json = json.split(needle).join(JSON.stringify(label).slice(1, -1));
+  }
+  const out2 = JSON.parse(json);
+  out2.root = label;
+  out2.profile.root = label;
+  return out2;
 }
 function gateFailed(run2, failOn) {
   if (failOn === "none") return false;
@@ -27206,6 +27223,15 @@ var SECURITY_SEVERITY = {
   low: "3.0",
   info: "0.0"
 };
+function regionText(snippet, start2, end) {
+  if (!snippet) return void 0;
+  const picked = [];
+  for (const l of snippet.split("\n")) {
+    const m = /^\s*(\d+) \| (.*)$/.exec(l);
+    if (m && Number(m[1]) >= start2 && Number(m[1]) <= end) picked.push(m[2]);
+  }
+  return picked.length ? picked.join("\n") : void 0;
+}
 function toSarif(run2) {
   const used = new Set(run2.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
@@ -27281,6 +27307,8 @@ function result(f, ruleIndex, fallbackUri) {
   if (loc2.line) region.startLine = loc2.line;
   if (loc2.column) region.startColumn = loc2.column;
   if (loc2.endLine && loc2.endLine >= (loc2.line ?? 0)) region.endLine = loc2.endLine;
+  const snippet = loc2.line ? regionText(f.evidence.snippet, loc2.line, loc2.endLine ?? loc2.line) : void 0;
+  if (snippet !== void 0) region.snippet = { text: snippet };
   r.locations = [
     {
       physicalLocation: {
@@ -27666,6 +27694,19 @@ var ANALYSIS_OPTS = [
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
   {
+    name: "root-label",
+    type: "string",
+    value: "<name>",
+    description: "Show this name instead of the absolute project path in every report, message and snippet."
+  },
+  {
+    name: "snippet-lines",
+    type: "number",
+    value: "<n>",
+    description: "Source lines per finding snippet (default 3); 0 is the same as --no-snippets."
+  },
+  { name: "no-snippets", type: "boolean", description: "Leave source snippets out of every report." },
+  {
     name: "max-duration",
     type: "number",
     value: "<seconds>",
@@ -27740,6 +27781,20 @@ function groupBy(items, key) {
   for (const x of items) m.set(key(x), [...m.get(key(x)) ?? [], x]);
   return m;
 }
+function snippetLinesOpt(v) {
+  if (v === void 0) return void 0;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n < 0 || n > 50)
+    throw new RelivaroError(
+      "USAGE",
+      `--snippet-lines must be a whole number from 0 to 50, got "${String(v)}".`
+    );
+  return n;
+}
+function reportDir(files) {
+  const any = files.json ?? files.html ?? files.md ?? files.sarif;
+  return any ? dirname5(any) : null;
+}
 function compactRun(run2, maxFindings = 30, files = {}, review = {}) {
   const open2 = run2.findings.filter((f) => f.status === "open");
   const rem = new Map(open2.map((f) => [f.id, remediationOf(f, review[f.id])]));
@@ -27801,7 +27856,8 @@ function compactRun(run2, maxFindings = 30, files = {}, review = {}) {
     },
     review: reviewSummary(run2, review),
     limitations: run2.limitations,
-    reports: `.relivaro/runs/${run2.runId}/ (rule details: relivaro rules show <rule>)`,
+    // The directory the reports were written to; null when nothing was written (--no-write).
+    reports: reportDir(files),
     ...files.html ? { report: { html: files.html, open: openCommand(files.html), markdown: files.md } } : {}
   };
 }
@@ -27865,6 +27921,8 @@ async function analysisCommand(p, out2, cfg) {
     useGit: p.opts["no-git"] ? false : void 0,
     inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
     ignoreRepoConfig: p.opts["ignore-repo-config"] ? true : void 0,
+    rootLabel: p.opts["root-label"],
+    snippetLines: p.opts["no-snippets"] ? 0 : snippetLinesOpt(p.opts["snippet-lines"]),
     respectGitignore: p.opts["no-gitignore"] ? false : void 0,
     assumeTracked: p.opts["assume-tracked"] ? true : void 0,
     noWrite: !!p.opts["no-write"],

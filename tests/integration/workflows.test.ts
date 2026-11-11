@@ -925,3 +925,80 @@ describe('run budget', () => {
     }
   });
 });
+
+describe('output privacy', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) removeTree(d, { recursive: true, force: true });
+  });
+  const project = () => {
+    const root = mkTemp(join(osTmp(), 'rlv-priv-'));
+    made.push(root);
+    mkdirSync(join(root, 'src'));
+    // The absolute root appears in code, so it reaches snippets (Review Focus 3).
+    writeFileSync(
+      join(root, 'src', 'run.js'),
+      `const base = ${JSON.stringify(root)};\nexport function run(x) {\n  return eval(base + x);\n}\n`,
+    );
+    return root;
+  };
+
+  it('--root-label replaces the absolute root everywhere in run, HTML and prompt data', async () => {
+    const { toHtml } = await import('../../src/report/html.js');
+    const { toMarkdown } = await import('../../src/report/markdown.js');
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const root = project();
+    const { realpathSync } = await import('node:fs');
+    const { run } = await runAudit({
+      root,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      rootLabel: 'repo',
+    });
+    expect(run.root).toBe('repo');
+    expect(run.findings.some((f) => f.ruleId === 'sec/code-injection')).toBe(true);
+    for (const text of [
+      JSON.stringify(run),
+      toHtml(run, {}),
+      toMarkdown(run),
+      JSON.stringify(toSarif(run)),
+    ]) {
+      expect(text).not.toContain(root);
+      expect(text).not.toContain(realpathSync(root));
+    }
+    expect(JSON.stringify(run)).toContain('repo');
+  });
+
+  it('snippets can be turned off or shortened', async () => {
+    const root = project();
+    const off = (await runAudit({ root, command: 'audit', noWrite: true, useGit: false, snippetLines: 0 }))
+      .run;
+    expect(off.findings.length).toBeGreaterThan(0);
+    expect(off.findings.every((f) => f.evidence.snippet === undefined)).toBe(true);
+    const one = (await runAudit({ root, command: 'audit', noWrite: true, useGit: false, snippetLines: 1 }))
+      .run;
+    const f = one.findings.find((x) => x.ruleId === 'sec/code-injection')!;
+    expect(f.evidence.snippet!.split('\n')).toHaveLength(1);
+  });
+
+  it('SARIF carries the snippet unless snippets are off', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const root = project();
+    const on = (await runAudit({ root, command: 'audit', noWrite: true, useGit: false })).run;
+    const r = (toSarif(on) as any).runs[0].results.find((x: any) => x.ruleId === 'sec/code-injection');
+    expect(r.locations[0].physicalLocation.region.snippet.text).toContain('eval(');
+    const off = (await runAudit({ root, command: 'audit', noWrite: true, useGit: false, snippetLines: 0 }))
+      .run;
+    const r2 = (toSarif(off) as any).runs[0].results.find((x: any) => x.ruleId === 'sec/code-injection');
+    expect(r2.locations[0].physicalLocation.region.snippet).toBeUndefined();
+  });
+
+  it('compact output names the real report directory, or null without writes', async () => {
+    const { compactRun } = await import('../../src/cli/commands.js');
+    const root = project();
+    const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
+    expect(compactRun(run, 30, {}).reports).toBeNull();
+    expect(compactRun(run, 30, { json: '/w/runs/x/report.json' }).reports).toBe('/w/runs/x');
+  });
+});

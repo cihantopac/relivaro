@@ -38,6 +38,9 @@ Runs every rule category. With --allow-exec it also runs the project's type chec
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -80,6 +83,9 @@ Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, COR
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -122,6 +128,9 @@ N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handl
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -164,6 +173,9 @@ Timeouts, error handling, idempotency, race conditions, migrations, retries, gra
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -206,6 +218,9 @@ Debug leftovers, complexity, disabled type checking; with --allow-exec the type 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -248,6 +263,9 @@ Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |
@@ -290,6 +308,9 @@ Runs all analyses plus build, tests, type check and lint (with --allow-exec), de
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--root-label <name>` | Show this name instead of the absolute project path in every report, message and snippet. |
+| `--snippet-lines <n>` | Source lines per finding snippet (default 3); 0 is the same as --no-snippets. |
+| `--no-snippets` | Leave source snippets out of every report. |
 | `--max-duration <seconds>` | Stop the analysis after this many seconds; the run is partial (exit code 4). |
 | `--max-files <n>` | Analyse at most this many files (root manifests and lockfiles first); partial beyond it. |
 | `--max-bytes <size>` | Analyse at most this many bytes of files (K, M or G suffix); partial beyond it. |

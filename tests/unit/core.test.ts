@@ -431,7 +431,7 @@ describe('branch review fixes', () => {
   it('a large git-ignored tree never ends the walk of the analysed tree', async () => {
     const root = tree({ '.gitignore': 'data/\n', 'asrc/a.js': 'eval(process.argv[2]);\n' });
     mkdirSync(join(root, 'data'));
-    for (let i = 0; i < 20_050; i++) writeFileSync(join(root, 'data', 'f' + i), '');
+    for (let i = 0; i < 20_050; i++) writeFileSync(join(root, 'data', `f${i}`), '');
     const files = new FileSet(root, { useGit: false });
     expect(files.files.map((f) => f.path)).toContain('asrc/a.js');
     const { run } = await runAudit({ root, command: 'audit', noWrite: true, useGit: false });
