@@ -38,6 +38,7 @@ Runs every rule category. With --allow-exec it also runs the project's type chec
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -86,6 +87,7 @@ Injection, XSS, SSRF, path traversal, deserialization, crypto, auth/session, COR
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -134,6 +136,7 @@ N+1 queries, rows loaded only to count, unbounded queries, blocking I/O in handl
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -182,6 +185,7 @@ Timeouts, error handling, idempotency, race conditions, migrations, retries, gra
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -230,6 +234,7 @@ Debug leftovers, complexity, disabled type checking; with --allow-exec the type 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -278,6 +283,7 @@ Finds test frameworks and suites, runs them with --allow-exec (parsed pass/fail 
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |
@@ -326,6 +332,7 @@ Runs all analyses plus build, tests, type check and lint (with --allow-exec), de
 | `--baseline <file>` | Baseline file (default: relivaro-baseline.json if present). |
 | `--no-baseline` | Ignore any baseline file. |
 | `--no-git` | Do not use git to list files (walk the tree instead). |
+| `--since <git-ref>` | Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed. |
 | `--osv-cache <file>` | OSV cache file to use (shared between runs; a read-only file is used without being written). |
 | `--osv-api <url>` | HTTPS mirror of the OSV API, used with --online. |
 | `--offline-osv` | Look up known vulnerabilities in the OSV cache only (no network); uncached packages are unverified. |

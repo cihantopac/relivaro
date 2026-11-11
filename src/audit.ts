@@ -17,6 +17,7 @@ import {
 import { VERSION } from './core/version.js';
 import { Workspace } from './core/workspace.js';
 import { queryOsv, uniquePackageCount } from './deps/osv.js';
+import { changedLines } from './fs/changed.js';
 import { classify, FileSet, runGit } from './fs/files.js';
 import { discover, type ProjectProfile } from './intel/discover.js';
 import { assessRelease, type ReleaseAssessment } from './release/readiness.js';
@@ -44,6 +45,8 @@ export interface AuditOptions {
   respectGitignore?: boolean;
   /** Without git, treat listed files as tracked so sensitive files are reported by path. */
   assumeTracked?: boolean;
+  /** Show only findings on lines changed since this git ref (the whole tree is still analysed). */
+  since?: string;
   /** OSV cache file (shared; a read-only file is used without being written). Default: the workspace cache. */
   osvCache?: string;
   /** HTTPS mirror of the OSV API (`--osv-api`); used only with `online`. */
@@ -141,6 +144,8 @@ export interface RunRecord {
     network: string[];
   };
   release?: ReleaseAssessment;
+  /** `--since <ref>`: only findings on lines changed since `ref` are listed; `files` changed files. */
+  since?: { ref: string; files: number };
   /** Set when the run stopped early; its findings and gates cover only part of the project. */
   partial?: { reason: StopReason; at: string };
 }
@@ -259,6 +264,8 @@ export async function runAudit(
   });
   stage('index', 'end');
   progress(`discovering project (${files.files.length} files)`);
+  // Resolved before the analysis so a bad ref or a missing repository fails fast (usage error, exit 2).
+  const changed = opts.since !== undefined ? changedLines(files.root, opts.since) : undefined;
   stage('discover', 'start');
   const profile = discover(files);
   if (files.gitRepo) {
@@ -406,7 +413,24 @@ export async function runAudit(
   }
 
   const coverageReports = readCoverage(files, profile);
-  const findings = builder.findings.sort(compareFindings);
+  let findings = builder.findings.sort(compareFindings);
+  // --since: the whole tree was analysed (so cross-file taint stays right); only findings on changed lines are shown.
+  let since: RunRecord['since'];
+  if (changed) {
+    const keep = findings.filter((f) => {
+      const c = f.location ? changed.get(f.location.file) : undefined;
+      if (!c) return false;
+      if (c === 'all' || f.location!.line === undefined) return true;
+      const end = Math.max(f.location!.line, f.location!.endLine ?? f.location!.line);
+      for (let l = f.location!.line; l <= end; l++) if (c.has(l)) return true;
+      return false;
+    });
+    limitations.push(
+      `Only findings on lines changed since \`${opts.since}\` are shown (${findings.length - keep.length} findings outside them were hidden).`,
+    );
+    since = { ref: opts.since!, files: changed.size };
+    findings = keep;
+  }
   const gaps =
     categories.includes('testing') || categories.includes('quality')
       ? testGaps(files, findings, analysis.complexity, coverageReports)
@@ -550,6 +574,7 @@ export async function runAudit(
       ...new Set(limitations),
     ],
     ...(stopped ? { partial: { reason: stopped, at: new Date().toISOString() } } : {}),
+    ...(since ? { since } : {}),
     errors: {
       parse: analysis.parseErrors.slice(0, 50),
       rules: analysis.ruleErrors.slice(0, 50),

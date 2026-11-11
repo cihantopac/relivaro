@@ -1021,3 +1021,92 @@ describe('coverage metrics', () => {
     }
   });
 });
+
+describe('since', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) removeTree(d, { recursive: true, force: true });
+  });
+  const repo = async () => {
+    const { execFileSync } = await import('node:child_process');
+    const dir = mkTemp(join(osTmp(), 'rlv-since-'));
+    made.push(dir);
+    const git = (...a: string[]) =>
+      execFileSync(
+        'git',
+        ['-c', 'user.name=t', '-c', 'user.email=t@t.invalid', '-c', 'commit.gpgsign=false', ...a],
+        {
+          cwd: dir,
+          stdio: 'pipe',
+        },
+      );
+    git('init', '-q');
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'old.js'), 'export function a(x) {\n  return eval(x);\n}\n');
+    writeFileSync(join(dir, 'src', 'keep.js'), 'export function b(y) {\n  return eval(y);\n}\n');
+    git('add', '-A');
+    git('commit', '-qm', 'base');
+    return { dir, git };
+  };
+  const codeInjection = (run: {
+    findings: { ruleId: string; location?: { file: string; line?: number } }[];
+  }) =>
+    run.findings
+      .filter((f) => f.ruleId === 'sec/code-injection')
+      .map((f) => `${f.location?.file}:${f.location?.line}`)
+      .sort();
+
+  it('shows only findings on lines changed since the ref', async () => {
+    const { dir } = await repo();
+    writeFileSync(
+      join(dir, 'src', 'keep.js'),
+      'export function b(y) {\n  return eval(y);\n}\nexport function c(z) {\n  return eval(z);\n}\n',
+    );
+    const full = (await runAudit({ root: dir, command: 'audit', noWrite: true })).run;
+    expect(codeInjection(full)).toEqual(['src/keep.js:2', 'src/keep.js:5', 'src/old.js:2']);
+    const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true, since: 'HEAD' });
+    expect(codeInjection(run)).toEqual(['src/keep.js:5']);
+    expect(run.since).toEqual({ ref: 'HEAD', files: 1 });
+    expect(
+      run.limitations.some((l) =>
+        /^Only findings on lines changed since `HEAD` are shown \(\d+ findings outside them were hidden\)\.$/.test(
+          l,
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it('a renamed file counts as changed in full', async () => {
+    const { dir, git } = await repo();
+    git('mv', 'src/old.js', 'src/renamed.js');
+    const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true, since: 'HEAD' });
+    expect(codeInjection(run)).toEqual(['src/renamed.js:2']);
+  });
+
+  it('an untracked file counts as changed in full', async () => {
+    const { dir } = await repo();
+    writeFileSync(join(dir, 'src', 'new.js'), 'export const n = (q) => eval(q);\n');
+    const { run } = await runAudit({ root: dir, command: 'audit', noWrite: true, since: 'HEAD' });
+    expect(codeInjection(run)).toEqual(['src/new.js:1']);
+  });
+
+  it('without git, or with an unknown ref, --since is a usage error', async () => {
+    const dir = mkTemp(join(osTmp(), 'rlv-since-nogit-'));
+    made.push(dir);
+    writeFileSync(join(dir, 'a.js'), 'eval(x);\n');
+    await expect(
+      runAudit({ root: dir, command: 'audit', noWrite: true, since: 'HEAD' }),
+    ).rejects.toMatchObject({
+      code: 'USAGE',
+    });
+    const { dir: d2 } = await repo();
+    await expect(
+      runAudit({ root: d2, command: 'audit', noWrite: true, since: 'no-such-ref' }),
+    ).rejects.toMatchObject({
+      code: 'USAGE',
+    });
+    await expect(
+      runAudit({ root: d2, command: 'audit', noWrite: true, since: '--output=/tmp/x' }),
+    ).rejects.toMatchObject({ code: 'USAGE' });
+  });
+});

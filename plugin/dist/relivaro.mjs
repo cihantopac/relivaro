@@ -22584,6 +22584,62 @@ init_errors();
 init_secrets();
 init_workspace();
 init_osv();
+
+// src/fs/changed.ts
+init_errors();
+init_files();
+function changedLines(root, ref) {
+  if (!ref || ref.startsWith("-") || /[\s\0]/.test(ref))
+    throw new RelivaroError("USAGE", `--since needs a git ref such as main or HEAD~3, got "${ref}".`);
+  if (runGit(root, ["rev-parse", "--is-inside-work-tree"])?.trim() !== "true")
+    throw new RelivaroError(
+      "USAGE",
+      "--since needs a git repository (and git); this directory is not one, or git is not available."
+    );
+  if (runGit(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) === null)
+    throw new RelivaroError("USAGE", `--since: unknown git ref "${ref}".`);
+  const diff = runGit(root, [
+    "-c",
+    "core.quotePath=false",
+    "diff",
+    "--unified=0",
+    "-M",
+    "--relative",
+    "--no-color",
+    "--no-ext-diff",
+    ref,
+    "--"
+  ]);
+  if (diff === null) throw new RelivaroError("USAGE", `--since: git diff against "${ref}" failed.`);
+  const out2 = /* @__PURE__ */ new Map();
+  let file = null;
+  let whole = false;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("diff --git ")) {
+      file = null;
+      whole = false;
+    } else if (line.startsWith("new file mode") || line.startsWith("rename to ") || line.startsWith("copy to "))
+      whole = true;
+    else if (line.startsWith("+++ ")) {
+      const p = line.slice(4);
+      file = p === "/dev/null" ? null : p.replace(/^b\//, "");
+      if (file) out2.set(file, whole ? "all" : out2.get(file) ?? /* @__PURE__ */ new Set());
+    } else if (line.startsWith("@@") && file) {
+      const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+      const set = out2.get(file);
+      if (!m || set === "all" || !set) continue;
+      const start2 = Number(m[1]);
+      const count = m[2] === void 0 ? 1 : Number(m[2]);
+      for (let i2 = 0; i2 < count; i2++) set.add(start2 + i2);
+    }
+  }
+  for (const m of diff.matchAll(/^rename to (.+)$/gm)) out2.set(m[1], "all");
+  const untracked = runGit(root, ["ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
+  for (const p of untracked.split("\0")) if (p) out2.set(p, "all");
+  return out2;
+}
+
+// src/audit.ts
 init_files();
 init_discover();
 
@@ -23643,6 +23699,7 @@ async function runAudit(opts) {
   });
   stage("index", "end");
   progress(`discovering project (${files.files.length} files)`);
+  const changed = opts.since !== void 0 ? changedLines(files.root, opts.since) : void 0;
   stage("discover", "start");
   const profile = discover(files);
   if (files.gitRepo) {
@@ -23782,7 +23839,23 @@ async function runAudit(opts) {
     }
   }
   const coverageReports = readCoverage(files, profile);
-  const findings = builder.findings.sort(compareFindings);
+  let findings = builder.findings.sort(compareFindings);
+  let since;
+  if (changed) {
+    const keep = findings.filter((f) => {
+      const c = f.location ? changed.get(f.location.file) : void 0;
+      if (!c) return false;
+      if (c === "all" || f.location.line === void 0) return true;
+      const end = Math.max(f.location.line, f.location.endLine ?? f.location.line);
+      for (let l = f.location.line; l <= end; l++) if (c.has(l)) return true;
+      return false;
+    });
+    limitations.push(
+      `Only findings on lines changed since \`${opts.since}\` are shown (${findings.length - keep.length} findings outside them were hidden).`
+    );
+    since = { ref: opts.since, files: changed.size };
+    findings = keep;
+  }
   const gaps = categories.includes("testing") || categories.includes("quality") ? testGaps(files, findings, analysis2.complexity, coverageReports) : [];
   const internalErrors = analysis2.ruleErrors.filter((e) => e.rule !== "relivaro-accept");
   const invalidAccepts = analysis2.ruleErrors.length - internalErrors.length;
@@ -23911,6 +23984,7 @@ async function runAudit(opts) {
       ...new Set(limitations)
     ],
     ...stopped ? { partial: { reason: stopped, at: (/* @__PURE__ */ new Date()).toISOString() } } : {},
+    ...since ? { since } : {},
     errors: {
       parse: analysis2.parseErrors.slice(0, 50),
       rules: analysis2.ruleErrors.slice(0, 50),
@@ -27838,6 +27912,12 @@ var ANALYSIS_OPTS = [
   { name: "no-baseline", type: "boolean", description: "Ignore any baseline file." },
   { name: "no-git", type: "boolean", description: "Do not use git to list files (walk the tree instead)." },
   {
+    name: "since",
+    type: "string",
+    value: "<git-ref>",
+    description: "Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed."
+  },
+  {
     name: "osv-cache",
     type: "string",
     value: "<file>",
@@ -28083,6 +28163,7 @@ async function analysisCommand(p, out2, cfg) {
     inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
     ignoreRepoConfig: p.opts["ignore-repo-config"] ? true : void 0,
     rootLabel: p.opts["root-label"],
+    since: p.opts.since,
     osvCache: p.opts["osv-cache"] !== void 0 ? resolve4(String(p.opts["osv-cache"])) : void 0,
     osvApi: p.opts["osv-api"] !== void 0 ? osvApiBase(String(p.opts["osv-api"])) : void 0,
     offlineOsv: p.opts["offline-osv"] ? true : void 0,

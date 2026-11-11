@@ -172,6 +172,12 @@
       }
     },
     "release": { "$ref": "#/$defs/release" },
+    "since": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "files"],
+      "properties": { "ref": { "type": "string" }, "files": { "type": "integer", "minimum": 0 } }
+    },
     "partial": {
       "type": "object",
       "additionalProperties": false,

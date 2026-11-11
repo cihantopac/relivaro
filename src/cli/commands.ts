@@ -104,6 +104,13 @@ const ANALYSIS_OPTS: OptSpec[] = [
   { name: 'no-baseline', type: 'boolean', description: 'Ignore any baseline file.' },
   { name: 'no-git', type: 'boolean', description: 'Do not use git to list files (walk the tree instead).' },
   {
+    name: 'since',
+    type: 'string',
+    value: '<git-ref>',
+    description:
+      'Show only findings on lines changed since this git ref (plus untracked files); the whole tree is still analysed.',
+  },
+  {
     name: 'osv-cache',
     type: 'string',
     value: '<file>',
@@ -397,6 +404,7 @@ async function analysisCommand(
     inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
     ignoreRepoConfig: p.opts['ignore-repo-config'] ? true : undefined,
     rootLabel: p.opts['root-label'] as string | undefined,
+    since: p.opts.since as string | undefined,
     osvCache: p.opts['osv-cache'] !== undefined ? resolve(String(p.opts['osv-cache'])) : undefined,
     osvApi: p.opts['osv-api'] !== undefined ? osvApiBase(String(p.opts['osv-api'])) : undefined,
     offlineOsv: p.opts['offline-osv'] ? true : undefined,
