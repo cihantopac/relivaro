@@ -1640,7 +1640,7 @@ function dynamicParts(n, lang) {
 }
 function isSafePart(part, lang) {
   const t2 = part.text.trim();
-  if (isLiteral(part, lang)) return true;
+  if (isLiteral(part, lang) || isConstantExpression(part, lang)) return true;
   if (/^[A-Z][A-Z0-9_]*$/.test(t2) || /^(?:self|static)::[A-Z][A-Z0-9_]*$/.test(t2)) return true;
   if (lang === "php" && part.type === "cast_expression" && /\(\s*(?:int|integer|float|double|bool)\s*\)/.test(t2))
     return true;
@@ -1655,6 +1655,14 @@ function isConstantExpression(n, lang) {
   if (!n) return false;
   if (isLiteral(n, lang)) return true;
   if (n.type === "parenthesized_expression") return isConstantExpression(n.namedChildren[0], lang);
+  if (isNumericExpression(n)) return true;
+  if (n.type === "ternary_expression")
+    return isConstantExpression(n.childForFieldName("consequence"), lang) && isConstantExpression(n.childForFieldName("alternative"), lang);
+  if (n.type === "conditional_expression") {
+    const body2 = n.childForFieldName("body") ?? (lang === "python" ? n.namedChildren[0] : null);
+    const alt = n.childForFieldName("alternative") ?? (lang === "python" ? n.namedChildren[2] : null);
+    return !!body2 && !!alt && isConstantExpression(body2, lang) && isConstantExpression(alt, lang);
+  }
   if ((n.type === "binary_expression" || n.type === "binary_operator") && /^[.+]$/.test(n.childForFieldName("operator")?.text ?? ""))
     return isConstantExpression(n.childForFieldName("left"), lang) && isConstantExpression(n.childForFieldName("right"), lang);
   if (n.type === "array" || n.type === "list" || n.type === "array_creation_expression")
@@ -1666,10 +1674,57 @@ function isConstantExpression(n, lang) {
     );
   if (n.type === "call_expression") {
     const fn = n.childForFieldName("function");
-    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "join")
-      return isConstantExpression(fn.childForFieldName("object"), lang);
+    if (fn?.type === "member_expression" && fn.childForFieldName("property")?.text === "join") {
+      const obj = fn.childForFieldName("object");
+      return isConstantExpression(obj, lang) || isConstantMap(obj, lang);
+    }
   }
   return false;
+}
+function isNumericExpression(n) {
+  if (!n) return false;
+  if (n.type === "number" || n.type === "integer" || n.type === "float") return true;
+  if (n.type === "parenthesized_expression") return isNumericExpression(n.namedChildren[0]);
+  if (n.type === "member_expression")
+    return /^(?:length|size|count)$/.test(n.childForFieldName("property")?.text ?? "");
+  if (n.type === "binary_expression" || n.type === "binary_operator") {
+    if (!/^[-+*/]$/.test(n.childForFieldName("operator")?.text ?? "")) return false;
+    const l = n.childForFieldName("left");
+    const r = n.childForFieldName("right");
+    return isNumericExpression(l) && isNumericExpression(r);
+  }
+  return false;
+}
+function isConstantMap(n, lang) {
+  if (n?.type !== "call_expression") return false;
+  const fn = n.childForFieldName("function");
+  if (fn?.type !== "member_expression" || fn.childForFieldName("property")?.text !== "map") return false;
+  const recv = fn.childForFieldName("object");
+  if (!recv || !(isConstantExpression(recv, lang) || recv.type === "identifier" && (/^[A-Z][A-Z0-9_]*$/.test(recv.text) || boundToLiteral(recv, lang))))
+    return false;
+  const args2 = n.childForFieldName("arguments")?.namedChildren.filter((c) => c && c.type !== "comment") ?? [];
+  const cb = args2[0];
+  if (args2.length !== 1 || cb?.type !== "arrow_function") return false;
+  const params = cb.childForFieldName("parameters");
+  const single = cb.childForFieldName("parameter");
+  const names = single ? [single.text] : (params?.namedChildren ?? []).map((p) => (p?.childForFieldName("pattern") ?? p)?.text ?? "");
+  if (names.length !== 1 || !/^[A-Za-z_$][\w$]*$/.test(names[0])) return false;
+  const param = names[0];
+  const body2 = cb.childForFieldName("body");
+  const formatsParam = (e) => {
+    if (!e) return false;
+    if (e.type === "identifier") return e.text === param;
+    if (isLiteral(e, lang)) return true;
+    if (e.type === "parenthesized_expression") return formatsParam(e.namedChildren[0]);
+    if (e.type === "template_string")
+      return e.namedChildren.every(
+        (c) => !c || c.type !== "template_substitution" || formatsParam(c.namedChildren[0])
+      );
+    if (e.type === "binary_expression" && e.childForFieldName("operator")?.text === "+")
+      return formatsParam(e.childForFieldName("left")) && formatsParam(e.childForFieldName("right"));
+    return false;
+  };
+  return formatsParam(body2);
 }
 function boundToLiteral(id, lang) {
   const name2 = id.text;

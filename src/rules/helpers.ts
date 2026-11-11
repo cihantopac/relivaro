@@ -111,7 +111,7 @@ const SAFE_PART_CALL =
 /** A dynamic part is "safe" when it is a numeric literal, a constant-looking identifier, or wrapped in an escaping/casting call. */
 export function isSafePart(part: Node, lang: Language): boolean {
   const t = part.text.trim();
-  if (isLiteral(part, lang)) return true;
+  if (isLiteral(part, lang) || isConstantExpression(part, lang)) return true;
   if (/^[A-Z][A-Z0-9_]*$/.test(t) || /^(?:self|static)::[A-Z][A-Z0-9_]*$/.test(t)) return true;
   if (
     lang === 'php' &&
@@ -128,11 +128,27 @@ export function isSafePart(part: Node, lang: Language): boolean {
   return false;
 }
 
-/** Literal, template without substitutions, `[…literals].join(…)`, or concatenation of those. */
+/**
+ * Literal, template without substitutions, `[…literals].join(…)`, concatenation of those, a ternary whose two
+ * branches are constant, number arithmetic over literals and `.length`/`.size`/`.count`, or
+ * `CONST.map((x) => `…${x}…`).join(…)` over a constant array.
+ */
 export function isConstantExpression(n: Node | null | undefined, lang: Language): boolean {
   if (!n) return false;
   if (isLiteral(n, lang)) return true;
   if (n.type === 'parenthesized_expression') return isConstantExpression(n.namedChildren[0], lang);
+  if (isNumericExpression(n)) return true;
+  if (n.type === 'ternary_expression')
+    return (
+      isConstantExpression(n.childForFieldName('consequence'), lang) &&
+      isConstantExpression(n.childForFieldName('alternative'), lang)
+    );
+  if (n.type === 'conditional_expression') {
+    // PHP: fields `body`/`alternative`; Python: `<body> if <condition> else <alternative>` without field names.
+    const body = n.childForFieldName('body') ?? (lang === 'python' ? n.namedChildren[0] : null);
+    const alt = n.childForFieldName('alternative') ?? (lang === 'python' ? n.namedChildren[2] : null);
+    return !!body && !!alt && isConstantExpression(body, lang) && isConstantExpression(alt, lang);
+  }
   if (
     (n.type === 'binary_expression' || n.type === 'binary_operator') &&
     /^[.+]$/.test(n.childForFieldName('operator')?.text ?? '')
@@ -153,10 +169,69 @@ export function isConstantExpression(n: Node | null | undefined, lang: Language)
     );
   if (n.type === 'call_expression') {
     const fn = n.childForFieldName('function');
-    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'join')
-      return isConstantExpression(fn.childForFieldName('object'), lang);
+    if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'join') {
+      const obj = fn.childForFieldName('object');
+      return isConstantExpression(obj, lang) || isConstantMap(obj, lang);
+    }
   }
   return false;
+}
+
+/** Number literals, `.length`/`.size`/`.count` and `+ - * /` arithmetic over them: never a string to inject. */
+function isNumericExpression(n: Node | null | undefined): boolean {
+  if (!n) return false;
+  if (n.type === 'number' || n.type === 'integer' || n.type === 'float') return true;
+  if (n.type === 'parenthesized_expression') return isNumericExpression(n.namedChildren[0]);
+  if (n.type === 'member_expression')
+    return /^(?:length|size|count)$/.test(n.childForFieldName('property')?.text ?? '');
+  if (n.type === 'binary_expression' || n.type === 'binary_operator') {
+    if (!/^[-+*/]$/.test(n.childForFieldName('operator')?.text ?? '')) return false;
+    const l = n.childForFieldName('left');
+    const r = n.childForFieldName('right');
+    return isNumericExpression(l) && isNumericExpression(r);
+  }
+  return false;
+}
+
+/** `X.map((c) => `"${c}"`)` where `X` is a constant array and the callback only formats its own parameter. */
+function isConstantMap(n: Node | null | undefined, lang: Language): boolean {
+  if (n?.type !== 'call_expression') return false;
+  const fn = n.childForFieldName('function');
+  if (fn?.type !== 'member_expression' || fn.childForFieldName('property')?.text !== 'map') return false;
+  const recv = fn.childForFieldName('object');
+  if (
+    !recv ||
+    !(
+      isConstantExpression(recv, lang) ||
+      (recv.type === 'identifier' && (/^[A-Z][A-Z0-9_]*$/.test(recv.text) || boundToLiteral(recv, lang)))
+    )
+  )
+    return false;
+  const args = n.childForFieldName('arguments')?.namedChildren.filter((c) => c && c.type !== 'comment') ?? [];
+  const cb = args[0];
+  if (args.length !== 1 || cb?.type !== 'arrow_function') return false;
+  const params = cb.childForFieldName('parameters');
+  const single = cb.childForFieldName('parameter');
+  const names = single
+    ? [single.text]
+    : (params?.namedChildren ?? []).map((p) => (p?.childForFieldName('pattern') ?? p)?.text ?? '');
+  if (names.length !== 1 || !/^[A-Za-z_$][\w$]*$/.test(names[0]!)) return false;
+  const param = names[0]!;
+  const body = cb.childForFieldName('body');
+  const formatsParam = (e: Node | null | undefined): boolean => {
+    if (!e) return false;
+    if (e.type === 'identifier') return e.text === param;
+    if (isLiteral(e, lang)) return true;
+    if (e.type === 'parenthesized_expression') return formatsParam(e.namedChildren[0]);
+    if (e.type === 'template_string')
+      return e.namedChildren.every(
+        (c) => !c || c.type !== 'template_substitution' || formatsParam(c.namedChildren[0]),
+      );
+    if (e.type === 'binary_expression' && e.childForFieldName('operator')?.text === '+')
+      return formatsParam(e.childForFieldName('left')) && formatsParam(e.childForFieldName('right'));
+    return false;
+  };
+  return formatsParam(body);
 }
 
 /** `const limit = 50` / `$table = 'users'` / `$cond = cond ? 'a' : 'b'`: every assignment in scope is a constant. */
