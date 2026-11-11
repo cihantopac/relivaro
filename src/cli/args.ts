@@ -45,6 +45,17 @@ export const GLOBAL_OPTIONS: OptSpec[] = [
   },
   { name: 'no-color', type: 'boolean', description: 'Disable colored output (also honours NO_COLOR).' },
   {
+    name: 'lockdown',
+    type: 'boolean',
+    description:
+      'Hosted scanning of untrusted code (also RELIVARO_LOCKDOWN=1): no processes, no network, no writes into the audited tree, no repository config or inline suppressions, no git.',
+  },
+  {
+    name: 'ignore-repo-config',
+    type: 'boolean',
+    description: "Ignore the audited repository's relivaro.config.json; use defaults or --config.",
+  },
+  {
     name: 'progress',
     type: 'string',
     value: '<mode>',

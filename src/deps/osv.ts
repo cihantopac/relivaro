@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { RelivaroError } from '../core/errors.js';
+import { assertNotLockedDown } from '../core/lockdown.js';
 import type { Severity } from '../core/types.js';
 import { atomicWrite } from '../core/workspace.js';
 import { registerExternalRule } from '../rules/index.js';
@@ -147,6 +148,7 @@ export async function queryOsv(
   lockfiles: LockfileInfo[],
   opts: { cacheFile?: string; fetchImpl?: FetchLike; onProgress?: (m: string) => void } = {},
 ): Promise<OsvResult> {
+  assertNotLockedDown('network access (OSV.dev)');
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = new Map<string, { pkg: ResolvedPackage; files: Set<string> }>();
   for (const l of lockfiles)

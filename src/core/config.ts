@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RelivaroError } from './errors.js';
 import { parseSize } from './limits.js';
+import { repoConfigIgnored } from './lockdown.js';
 import { SEVERITIES, type Severity } from './types.js';
 
 /**
@@ -54,7 +55,13 @@ export function defaultConfig(): RelivaroConfig {
   };
 }
 
-export function loadConfig(root: string, explicitPath?: string): { config: RelivaroConfig; path?: string } {
+export function loadConfig(
+  root: string,
+  explicitPath?: string,
+  opts: { ignoreRepoConfig?: boolean } = {},
+): { config: RelivaroConfig; path?: string } {
+  // `--ignore-repo-config` (and lockdown) use only defaults or an explicit --config, never the audited repo's file.
+  if (!explicitPath && (opts.ignoreRepoConfig ?? repoConfigIgnored())) return { config: defaultConfig() };
   const candidates = explicitPath ? [explicitPath] : CONFIG_FILES.map((f) => join(root, f));
   for (const file of candidates) {
     if (!existsSync(file)) {

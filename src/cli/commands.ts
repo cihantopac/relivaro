@@ -7,6 +7,7 @@ import { diffSpecs, loadSpec, validateSpec } from '../contract/openapi.js';
 import { defaultConfig, loadConfig } from '../core/config.js';
 import { EXIT, RelivaroError } from '../core/errors.js';
 import { parseSize, processAbort } from '../core/limits.js';
+import { configureProcess, lockdownForbids } from '../core/lockdown.js';
 import { CATEGORIES, type Category, SEVERITIES, SEVERITY_RANK, type Severity } from '../core/types.js';
 import { VERSION } from '../core/version.js';
 import { atomicWrite, Workspace } from '../core/workspace.js';
@@ -14,7 +15,7 @@ import { whichSync } from '../exec/runner.js';
 import { resolveActionRef } from '../fix/actions.js';
 import { FIXERS, findFixer } from '../fix/fixers.js';
 import { applyPlan, createPlan, history, loadPlan, rollback, verifyInPlace } from '../fix/workflow.js';
-import { runGit } from '../fs/files.js';
+import { isInside, runGit } from '../fs/files.js';
 import { grammarAssets, parse } from '../parse/treesitter.js';
 import {
   benchCommand,
@@ -343,6 +344,7 @@ async function analysisCommand(
     release: cfg.release,
     useGit: p.opts['no-git'] ? false : undefined,
     inlineSuppressions: p.opts['no-inline-suppressions'] ? false : undefined,
+    ignoreRepoConfig: p.opts['ignore-repo-config'] ? true : undefined,
     respectGitignore: p.opts['no-gitignore'] ? false : undefined,
     assumeTracked: p.opts['assume-tracked'] ? true : undefined,
     noWrite: !!p.opts['no-write'],
@@ -1749,4 +1751,37 @@ export const COMMANDS: Command[] = [
 
 export function fixerCatalog(): string {
   return FIXERS.map((f) => `| \`${f.id}\` | ${f.safety} | ${f.title} | ${f.description} |`).join('\n');
+}
+
+/**
+ * Resolves `--lockdown` / `RELIVARO_LOCKDOWN=1` and `--ignore-repo-config` once, before the command runs. Under lockdown a
+ * forbidden command or flag is a usage error (never silently overridden), and the safe options it implies are set.
+ */
+export function applyExecutionPolicy(name: string, p: Parsed): void {
+  const lockdown = !!p.opts.lockdown || process.env.RELIVARO_LOCKDOWN === '1';
+  configureProcess({ lockdown, ignoreRepoConfig: !!p.opts['ignore-repo-config'] });
+  if (!lockdown) return;
+  const action = p.positionals[0];
+  if (p.opts['allow-exec']) lockdownForbids('--allow-exec');
+  if (p.opts.online) lockdownForbids('--online');
+  if (p.opts.open) lockdownForbids('--open');
+  if (name === 'fix' && (action === 'apply' || action === 'rollback')) lockdownForbids(`fix ${action}`);
+  if (name === 'review' && action === 'add') lockdownForbids('review add');
+  if (['baseline', 'init', 'load', 'bench'].includes(name)) lockdownForbids(name);
+  // Reports go to a workspace outside the audited tree, or nowhere.
+  const spec = COMMANDS.find((c) => c.spec.name === name)?.spec;
+  if (
+    spec?.positionals?.[0] === 'path' &&
+    spec.options.some((o) => o.name === 'workspace') &&
+    !p.opts['no-write']
+  ) {
+    const root = resolve(p.positionals[0] ?? '.');
+    const ws = p.opts.workspace as string | undefined;
+    if (!ws || isInside(root, resolve(ws)))
+      lockdownForbids(
+        'writing into the audited directory (pass --workspace <dir> outside it, or --no-write)',
+      );
+  }
+  for (const implied of ['no-git', 'no-gitignore', 'no-inline-suppressions', 'ignore-repo-config'])
+    p.opts[implied] = true;
 }

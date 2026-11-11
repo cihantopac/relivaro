@@ -6,7 +6,7 @@ import { VERSION } from '../core/version.js';
 import { FIXERS } from '../fix/fixers.js';
 import { allRuleMeta } from '../rules/index.js';
 import { GLOBAL_OPTIONS, helpText, parseArgs } from './args.js';
-import { COMMANDS } from './commands.js';
+import { applyExecutionPolicy, COMMANDS } from './commands.js';
 import { clearProgress, makeOut } from './output.js';
 
 function mainHelp(): string {
@@ -143,6 +143,7 @@ export async function main(argv: string[]): Promise<number> {
       process.stdout.write(`${helpText(cmd.spec)}\n`);
       return EXIT.OK;
     }
+    applyExecutionPolicy(cmd.spec.name, parsed);
     const out = makeOut({
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,

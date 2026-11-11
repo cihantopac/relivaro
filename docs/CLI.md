@@ -599,5 +599,7 @@ relivaro doctor
 | `--json` | Print machine-readable JSON to stdout (errors as JSON on stderr). |
 | `--quiet` | Only print the essential result (no progress). |
 | `--no-color` | Disable colored output (also honours NO_COLOR). |
+| `--lockdown` | Hosted scanning of untrusted code (also RELIVARO_LOCKDOWN=1): no processes, no network, no writes into the audited tree, no repository config or inline suppressions, no git. |
+| `--ignore-repo-config` | Ignore the audited repository's relivaro.config.json; use defaults or --config. |
 | `--progress` | Progress on stderr: tty, plain (also RELIVARO_PROGRESS=1), ndjson (one JSON event per line, also with --json) or off. |
 | `--help` | Show help for the command. |

@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { delimiter, join } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
+import { assertNotLockedDown } from '../core/lockdown.js';
 import { redact } from '../core/secrets.js';
 
 /**
@@ -171,6 +172,7 @@ export function whichSync(cmd: string, pathEnv = process.env.PATH ?? process.env
 }
 
 export async function runCommand(argv: string[], opts: RunOptions): Promise<RunResult> {
+  assertNotLockedDown('running project commands');
   if (!opts.allowExec)
     throw new RelivaroError(
       'EXEC_NOT_ALLOWED',

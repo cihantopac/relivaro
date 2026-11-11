@@ -43,6 +43,8 @@ export interface AuditOptions {
   respectGitignore?: boolean;
   /** Without git, treat listed files as tracked so sensitive files are reported by path. */
   assumeTracked?: boolean;
+  /** Use only defaults or `configPath`, never the audited repository's config file. */
+  ignoreRepoConfig?: boolean;
   /** Honour `relivaro-ignore*` / `relivaro-accept*` comments in the audited code. Default true. */
   inlineSuppressions?: boolean;
   /** Do not write anything to disk. */
@@ -224,7 +226,9 @@ export async function runAudit(
 ): Promise<{ run: RunRecord; config: RelivaroConfig; workspace: Workspace }> {
   const started = performance.now();
   const startedAt = new Date().toISOString();
-  const { config, path: configFile } = loadConfig(opts.root, opts.configPath);
+  const { config, path: configFile } = loadConfig(opts.root, opts.configPath, {
+    ignoreRepoConfig: opts.ignoreRepoConfig,
+  });
   const progress = opts.onProgress ?? (() => {});
   const emit = opts.onEvent ?? (() => {});
   const stage = (s: ProgressStage, state: 'start' | 'end') =>

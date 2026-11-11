@@ -146,6 +146,13 @@ Reports land in `.relivaro/runs/<run-id>/` (`report.html`, `.md`, `.json`, optio
 **Safe by default.** Read-only and offline. Project code runs only with `--allow-exec`, the network is used only with
 `--online`, and files change only through `fix apply --yes` — with backups and hash-guarded rollback.
 
+**Hosted scanning of untrusted code.** `--lockdown` (or `RELIVARO_LOCKDOWN=1`) turns those opt-ins into usage errors
+(exit 2): `--allow-exec`, `--online`, `--open`, `fix apply`/`rollback`, `baseline`, `init`, `load`, `bench`,
+`review add`, and writing reports into the audited directory (use `--workspace <dir>` outside it, or `--no-write`). It
+also ignores the repository's `relivaro.config.json` and inline `relivaro-ignore`/`relivaro-accept` comments, applies
+`.gitignore` to nothing and never starts git, so no child process is spawned and no socket is opened.
+`--ignore-repo-config` alone uses only defaults or an explicit `--config`.
+
 ## Evidence
 
 - **251 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.

@@ -13,6 +13,7 @@ import {
 import { basename, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { RelivaroError } from '../core/errors.js';
 import { matchesAny } from '../core/glob.js';
+import { isLockedDown } from '../core/lockdown.js';
 import type { FileKind, Language, ProjectFile } from '../core/types.js';
 
 /** Directories that hold dependencies, build output or caches. Never analysed. */
@@ -697,6 +698,8 @@ export function gitEnv(): NodeJS.ProcessEnv {
 }
 
 export function runGit(cwd: string, args: string[], maxBuffer = 256 * 1024 * 1024): string | null {
+  // Under lockdown no process is started: callers treat null as "git is not available".
+  if (isLockedDown()) return null;
   const r = spawnSync('git', gitArgs(args), {
     cwd,
     env: gitEnv(),

@@ -381,6 +381,36 @@ var init_glob = __esm({
   }
 });
 
+// src/core/lockdown.ts
+function configureProcess(opts) {
+  state.lockdown = opts.lockdown;
+  state.ignoreRepoConfig = opts.lockdown || opts.ignoreRepoConfig;
+}
+function isLockedDown() {
+  return state.lockdown;
+}
+function repoConfigIgnored() {
+  return state.ignoreRepoConfig;
+}
+function lockdownForbids(what) {
+  throw new RelivaroError(
+    "USAGE",
+    `--lockdown forbids ${what}.`,
+    "Lockdown is for hosted scanning of untrusted code; run without --lockdown (and RELIVARO_LOCKDOWN) to allow it."
+  );
+}
+function assertNotLockedDown(what) {
+  if (state.lockdown) lockdownForbids(what);
+}
+var state;
+var init_lockdown = __esm({
+  "src/core/lockdown.ts"() {
+    "use strict";
+    init_errors();
+    state = { lockdown: false, ignoreRepoConfig: false };
+  }
+});
+
 // src/fs/files.ts
 var files_exports = {};
 __export(files_exports, {
@@ -548,6 +578,7 @@ function gitEnv() {
   };
 }
 function runGit(cwd, args2, maxBuffer = 256 * 1024 * 1024) {
+  if (isLockedDown()) return null;
   const r = spawnSync("git", gitArgs(args2), {
     cwd,
     env: gitEnv(),
@@ -676,6 +707,7 @@ var init_files = __esm({
     "use strict";
     init_errors();
     init_glob();
+    init_lockdown();
     DEFAULT_EXCLUDED_DIRS = /* @__PURE__ */ new Set([
       "node_modules",
       "bower_components",
@@ -10569,11 +10601,11 @@ var require_lexer = __commonJS({
       hasChars(n) {
         return this.pos + n <= this.buffer.length;
       }
-      setNext(state) {
+      setNext(state2) {
         this.buffer = this.buffer.substring(this.pos);
         this.pos = 0;
         this.lineEndPos = null;
-        this.next = state;
+        this.next = state2;
         return null;
       }
       peek(n) {
@@ -14210,6 +14242,7 @@ function uniquePackageCount(lockfiles) {
   return new Set(lockfiles.flatMap((l) => l.packages.map(packageKey))).size;
 }
 async function queryOsv(lockfiles, opts = {}) {
+  assertNotLockedDown("network access (OSV.dev)");
   const fetchImpl = opts.fetchImpl ?? fetch;
   const unique = /* @__PURE__ */ new Map();
   for (const l of lockfiles)
@@ -14316,6 +14349,7 @@ var init_osv = __esm({
   "src/deps/osv.ts"() {
     "use strict";
     init_errors();
+    init_lockdown();
     init_workspace();
     init_rules();
     OSV_RULE = registerExternalRule({
@@ -14401,32 +14435,32 @@ function parseString(ctx) {
   }
   let parsed = "";
   let sliceStart = ctx.p;
-  let state = 0;
+  let state2 = 0;
   for (; ctx.p < ctx.s.length; ctx.p++) {
     c = ctx.s.charCodeAt(ctx.p);
     if (isMultiline && (c === 10 || c === 13 && ctx.s.charCodeAt(ctx.p + 1) === 10)) {
-      state = state && 3;
+      state2 = state2 && 3;
     } else if (c < 32 && c !== 9 || c === 127) {
       TomlError.x("control characters are not allowed in strings", ctx);
-    } else if ((!state || state === 3) && c === first && (!isMultiline || ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first)) {
+    } else if ((!state2 || state2 === 3) && c === first && (!isMultiline || ctx.s.charCodeAt(ctx.p + 1) === first && ctx.s.charCodeAt(ctx.p + 2) === first)) {
       if (isMultiline) {
         if (ctx.s.charCodeAt(ctx.p + 3) === first)
           ctx.p++;
         if (ctx.s.charCodeAt(ctx.p + 3) === first)
           ctx.p++;
       }
-      if (!state) {
+      if (!state2) {
         let s = ctx.s.slice(sliceStart, ctx.p);
         parsed = parsed ? parsed + s : s;
       }
       ctx.p += isMultiline ? 3 : 1;
       return parsed;
-    } else if (!state) {
+    } else if (!state2) {
       if (!isLiteral2 && c === 92) {
         parsed += ctx.s.slice(sliceStart, sliceStart = ctx.p);
-        state = 1;
+        state2 = 1;
       }
-    } else if (state === 1) {
+    } else if (state2 === 1) {
       if (c === 120 || c === 117 || c === 85) {
         let errPtr = ctx.p++ - 1;
         let value = 0;
@@ -14452,9 +14486,9 @@ function parseString(ctx) {
         }
         parsed += String.fromCodePoint(value);
         sliceStart = ctx.p--;
-        state = 0;
+        state2 = 0;
       } else if (isMultiline && (c === 32 || c === 9)) {
-        state = 2;
+        state2 = 2;
       } else {
         if (c === 98)
           parsed += "\b";
@@ -14475,12 +14509,12 @@ function parseString(ctx) {
         else
           TomlError.x("unrecognised escape sequence", ctx);
         sliceStart = ctx.p + 1;
-        state = 0;
+        state2 = 0;
       }
     } else if (c !== 32 && c !== 9) {
-      if (state === 2)
+      if (state2 === 2)
         TomlError.x("invalid escape: only line-ending whitespace may be escaped", ctx, sliceStart);
-      state = !isLiteral2 && c === 92 ? 1 : 0;
+      state2 = !isLiteral2 && c === 92 ? 1 : 0;
       sliceStart = ctx.p;
     }
   }
@@ -14656,7 +14690,7 @@ function extractValue(ctx, end) {
 }
 function parseNumber(ctx, startPtr, startChr, sign, endChr) {
   let c = startChr;
-  let state = 0;
+  let state2 = 0;
   let hasUnderscores = false;
   if (c === 105) {
     if (ctx.s.charCodeAt(++ctx.p) !== 110 || ctx.s.charCodeAt(++ctx.p) !== 102)
@@ -14680,44 +14714,44 @@ function parseNumber(ctx, startPtr, startChr, sign, endChr) {
         return parseIntegerBaseN(ctx, startPtr, 8, endChr);
     }
     if (c === 46)
-      state = 2;
+      state2 = 2;
     else if (c === 101 || c === 69)
-      state = 4;
+      state2 = 4;
     else
       TomlError.x("illegal leading zero", ctx, startPtr);
   } else if (!isDigit(c))
     TomlError.x("invalid value", ctx, startPtr);
   while (++ctx.p < ctx.s.length && (c = ctx.s.charCodeAt(ctx.p), !isEndOfValue(c, endChr))) {
-    if (!state)
-      state = 1;
+    if (!state2)
+      state2 = 1;
     if (c === 95) {
-      if (!(state & 1))
+      if (!(state2 & 1))
         TomlError.x("illegal underscore", ctx);
-      state += 11;
+      state2 += 11;
       hasUnderscores = true;
-    } else if (state === 1 && c === 46)
-      state = 2;
-    else if ((state === 1 || state === 3) && (c === 101 || c === 69))
-      state = 4;
-    else if (state === 4 && (c === 43 || c === 45)) {
-      state = 6;
+    } else if (state2 === 1 && c === 46)
+      state2 = 2;
+    else if ((state2 === 1 || state2 === 3) && (c === 101 || c === 69))
+      state2 = 4;
+    else if (state2 === 4 && (c === 43 || c === 45)) {
+      state2 = 6;
     } else if (!isDigit(c))
       TomlError.x(`illegal character in numeric literal`, ctx);
-    else if (state > 9)
-      state -= 11;
-    else if (!(state & 1))
-      state++;
+    else if (state2 > 9)
+      state2 -= 11;
+    else if (!(state2 & 1))
+      state2++;
   }
-  if (!state) {
+  if (!state2) {
     let val = (startChr - 48) * (sign || 1);
     return ctx.bi === true ? BigInt(val) : val;
   }
-  if (!(state & 1))
+  if (!(state2 & 1))
     TomlError.x("unfinished numeric value", ctx, startPtr);
   let str = ctx.s.slice(startPtr, ctx.p);
   if (hasUnderscores)
     str = str.replaceAll("_", "");
-  return state > 1 ? parseFloat(str) : parseInteger(ctx, str, 10, startPtr);
+  return state2 > 1 ? parseFloat(str) : parseInteger(ctx, str, 10, startPtr);
 }
 function parseIntegerBaseN(ctx, startPtr, base, endChr) {
   let c, underscore = 1;
@@ -14863,38 +14897,38 @@ var init_util = __esm({
 // node_modules/smol-toml/dist/struct.js
 function parseKey(ctx, end = 61) {
   let startPtr;
-  let state = 0;
+  let state2 = 0;
   let parsed = [];
   let sliceStart;
   let c = ctx.s.charCodeAt(startPtr = ctx.p);
   do {
     if (c === end) {
-      if (!state)
+      if (!state2)
         TomlError.x("unexpected end of key", ctx);
-      if (state === 1)
+      if (state2 === 1)
         parsed.push(ctx.s.slice(sliceStart, ctx.p));
       return ctx.p++, parsed;
     } else if (c === 46) {
-      if (!state)
+      if (!state2)
         TomlError.x("illegal empty bare key", ctx);
-      if (state === 1)
+      if (state2 === 1)
         parsed.push(ctx.s.slice(sliceStart, ctx.p));
-      state = 0;
-    } else if (!state && (c === 34 || c === 39)) {
+      state2 = 0;
+    } else if (!state2 && (c === 34 || c === 39)) {
       if (c === ctx.s.charCodeAt(ctx.p + 1) && c === ctx.s.charCodeAt(ctx.p + 2))
         TomlError.x("illegal quoted key: multiline strings are not allowed", ctx);
       parsed.push(parseString(ctx));
-      state = 2;
+      state2 = 2;
       ctx.p--;
     } else if (c === 32 || c === 9) {
-      if (state === 1) {
+      if (state2 === 1) {
         parsed.push(ctx.s.slice(sliceStart, ctx.p));
-        state = 2;
+        state2 = 2;
       }
-    } else if (state === 2 || c < 48 && c !== 45 || c > 57 && c < 65 || c > 90 && c < 97 && c !== 95 || c > 122) {
+    } else if (state2 === 2 || c < 48 && c !== 45 || c > 57 && c < 65 || c > 90 && c < 97 && c !== 95 || c > 122) {
       TomlError.x("illegal character in key", ctx);
-    } else if (!state) {
-      state = 1;
+    } else if (!state2) {
+      state2 = 1;
       sliceStart = ctx.p;
     }
   } while (c = ctx.s.charCodeAt(++ctx.p));
@@ -14991,15 +15025,15 @@ function peekTable(ctx, key, table, meta, type) {
   let m = meta;
   let k;
   let hasOwn = false;
-  let state;
+  let state2;
   for (let i2 = 0; i2 < key.length; i2++) {
     if (i2) {
       t2 = hasOwn ? t2[k] : t2[k] = /* @__PURE__ */ Object.create(null);
-      m = (state = m[k]).c;
-      if (type === 0 && (state.t === 1 || state.t === 2)) {
+      m = (state2 = m[k]).c;
+      if (type === 0 && (state2.t === 1 || state2.t === 2)) {
         return null;
       }
-      if (state.t === 2) {
+      if (state2.t === 2) {
         let l = t2.length - 1;
         t2 = t2[l];
         m = m[l].c;
@@ -15025,28 +15059,28 @@ function peekTable(ctx, key, table, meta, type) {
       };
     }
   }
-  state = m[k];
-  if (state.t !== type && !(type === 1 && state.t === 3)) {
+  state2 = m[k];
+  if (state2.t !== type && !(type === 1 && state2.t === 3)) {
     return null;
   }
   if (type === 2) {
-    if (!state.d) {
-      state.d = true;
+    if (!state2.d) {
+      state2.d = true;
       t2[k] = [];
     }
     t2[k].push(t2 = /* @__PURE__ */ Object.create(null));
-    state.c[state.i++] = state = { t: 1, d: false, i: 0, c: /* @__PURE__ */ Object.create(null) };
+    state2.c[state2.i++] = state2 = { t: 1, d: false, i: 0, c: /* @__PURE__ */ Object.create(null) };
   }
-  if (state.d) {
+  if (state2.d) {
     return null;
   }
-  state.d = true;
+  state2.d = true;
   if (type === 1) {
     t2 = hasOwn ? t2[k] : t2[k] = /* @__PURE__ */ Object.create(null);
   } else if (type === 0 && hasOwn) {
     return null;
   }
-  return [k, t2, state.c];
+  return [k, t2, state2.c];
 }
 function validateTablePeek(ctx, peek, ptr) {
   if (peek === null || ctx.uk === 2)
@@ -21181,6 +21215,16 @@ var GLOBAL_OPTIONS = [
   },
   { name: "no-color", type: "boolean", description: "Disable colored output (also honours NO_COLOR)." },
   {
+    name: "lockdown",
+    type: "boolean",
+    description: "Hosted scanning of untrusted code (also RELIVARO_LOCKDOWN=1): no processes, no network, no writes into the audited tree, no repository config or inline suppressions, no git."
+  },
+  {
+    name: "ignore-repo-config",
+    type: "boolean",
+    description: "Ignore the audited repository's relivaro.config.json; use defaults or --config."
+  },
+  {
     name: "progress",
     type: "string",
     value: "<mode>",
@@ -21511,6 +21555,7 @@ import { join as join6 } from "node:path";
 
 // src/exec/runner.ts
 init_errors();
+init_lockdown();
 init_secrets();
 import { spawn } from "node:child_process";
 import { existsSync as existsSync4 } from "node:fs";
@@ -21637,6 +21682,7 @@ function whichSync(cmd, pathEnv = process.env.PATH ?? process.env.Path ?? "") {
   return null;
 }
 async function runCommand(argv, opts) {
+  assertNotLockedDown("running project commands");
   if (!opts.allowExec)
     throw new RelivaroError(
       "EXEC_NOT_ALLOWED",
@@ -22302,6 +22348,7 @@ ${r.stderr}`;
 init_errors();
 import { existsSync as existsSync6, readFileSync as readFileSync5 } from "node:fs";
 import { join as join7 } from "node:path";
+init_lockdown();
 var CONFIG_FILES = ["relivaro.config.json", ".relivaro.json"];
 function defaultConfig() {
   return {
@@ -22319,7 +22366,8 @@ function defaultConfig() {
     env: { optional: [] }
   };
 }
-function loadConfig(root, explicitPath) {
+function loadConfig(root, explicitPath, opts = {}) {
+  if (!explicitPath && (opts.ignoreRepoConfig ?? repoConfigIgnored())) return { config: defaultConfig() };
   const candidates = explicitPath ? [explicitPath] : CONFIG_FILES.map((f) => join7(root, f));
   for (const file of candidates) {
     if (!existsSync6(file)) {
@@ -23349,12 +23397,14 @@ function parseErrorLimitations(profile) {
 async function runAudit(opts) {
   const started = performance.now();
   const startedAt = (/* @__PURE__ */ new Date()).toISOString();
-  const { config, path: configFile } = loadConfig(opts.root, opts.configPath);
+  const { config, path: configFile } = loadConfig(opts.root, opts.configPath, {
+    ignoreRepoConfig: opts.ignoreRepoConfig
+  });
   const progress = opts.onProgress ?? (() => {
   });
   const emit = opts.onEvent ?? (() => {
   });
-  const stage = (s, state) => emit({ type: "stage", stage: s, state, elapsedMs: Math.round(performance.now() - started) });
+  const stage = (s, state2) => emit({ type: "stage", stage: s, state: state2, elapsedMs: Math.round(performance.now() - started) });
   progress("indexing files");
   stage("index", "start");
   const files = new FileSet(opts.root, {
@@ -23960,6 +24010,7 @@ function diffSpecs(oldDoc, newDoc) {
 
 // src/cli/commands.ts
 init_errors();
+init_lockdown();
 init_workspace();
 
 // src/fix/actions.ts
@@ -27813,6 +27864,7 @@ async function analysisCommand(p, out2, cfg) {
     release: cfg.release,
     useGit: p.opts["no-git"] ? false : void 0,
     inlineSuppressions: p.opts["no-inline-suppressions"] ? false : void 0,
+    ignoreRepoConfig: p.opts["ignore-repo-config"] ? true : void 0,
     respectGitignore: p.opts["no-gitignore"] ? false : void 0,
     assumeTracked: p.opts["assume-tracked"] ? true : void 0,
     noWrite: !!p.opts["no-write"],
@@ -29125,6 +29177,29 @@ var COMMANDS = [
   initCmd,
   doctorCmd
 ];
+function applyExecutionPolicy(name2, p) {
+  const lockdown = !!p.opts.lockdown || process.env.RELIVARO_LOCKDOWN === "1";
+  configureProcess({ lockdown, ignoreRepoConfig: !!p.opts["ignore-repo-config"] });
+  if (!lockdown) return;
+  const action = p.positionals[0];
+  if (p.opts["allow-exec"]) lockdownForbids("--allow-exec");
+  if (p.opts.online) lockdownForbids("--online");
+  if (p.opts.open) lockdownForbids("--open");
+  if (name2 === "fix" && (action === "apply" || action === "rollback")) lockdownForbids(`fix ${action}`);
+  if (name2 === "review" && action === "add") lockdownForbids("review add");
+  if (["baseline", "init", "load", "bench"].includes(name2)) lockdownForbids(name2);
+  const spec = COMMANDS.find((c) => c.spec.name === name2)?.spec;
+  if (spec?.positionals?.[0] === "path" && spec.options.some((o) => o.name === "workspace") && !p.opts["no-write"]) {
+    const root = resolve4(p.positionals[0] ?? ".");
+    const ws = p.opts.workspace;
+    if (!ws || isInside(root, resolve4(ws)))
+      lockdownForbids(
+        "writing into the audited directory (pass --workspace <dir> outside it, or --no-write)"
+      );
+  }
+  for (const implied of ["no-git", "no-gitignore", "no-inline-suppressions", "ignore-repo-config"])
+    p.opts[implied] = true;
+}
 
 // src/cli/main.ts
 function mainHelp() {
@@ -29265,6 +29340,7 @@ async function main(argv) {
 `);
       return EXIT.OK;
     }
+    applyExecutionPolicy(cmd.spec.name, parsed);
     const out2 = makeOut({
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,
