@@ -59,6 +59,28 @@ describe('relivaro CLI', () => {
   });
 
   it.skipIf(process.platform === 'win32')(
+    'SIGTERM still stops a non-analysis command at once',
+    async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'rlv-bench-sig-'));
+      writeFileSync(join(dir, 'sleep.js'), 'setTimeout(() => {}, 2000);\n');
+      const child = spawn(
+        process.execPath,
+        [CLI, 'bench', '--cmd', 'node sleep.js', '--runs', '3', '--warmup', '0', '--allow-exec', '--quiet'],
+        { cwd: dir, env: { ...process.env, NO_COLOR: '1' }, stdio: 'ignore' },
+      );
+      const started = Date.now();
+      const exit: { code: number | null; signal: string | null } = await new Promise((resolveExit) => {
+        setTimeout(() => child.kill('SIGTERM'), 1000);
+        child.on('exit', (code, signal) => resolveExit({ code, signal }));
+      });
+      rmSync(dir, { recursive: true, force: true });
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(exit.code === 0).toBe(false);
+    },
+    30_000,
+  );
+
+  it.skipIf(process.platform === 'win32')(
     'SIGTERM writes a partial run record atomically and exits 4',
     async () => {
       const dir = mkdtempSync(join(tmpdir(), 'rlv-sig-'));

@@ -1090,6 +1090,27 @@ describe('since', () => {
     expect(codeInjection(run)).toEqual(['src/new.js:1']);
   });
 
+  it('handles file names with spaces, custom diff prefixes, ++ content lines and binary files', async () => {
+    const { changedLines } = await import('../../src/fs/changed.js');
+    const { dir, git } = await repo();
+    git('config', 'diff.mnemonicPrefix', 'true');
+    git('config', 'diff.noprefix', 'false');
+    writeFileSync(join(dir, 'src', 'my file.js'), 'export const q = (x) => eval(x);\n');
+    writeFileSync(
+      join(dir, 'src', 'keep.js'),
+      'export function b(y) {\n  return eval(y);\n}\nlet counter = 0;\n++ counter;\nexport const z = (w) => eval(w);\n',
+    );
+    writeFileSync(join(dir, 'logo.png'), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 1, 2, 3]));
+    git('add', '-A');
+    const changed = changedLines(dir, 'HEAD');
+    expect(changed.get('src/my file.js')).toBe('all');
+    expect(changed.get('logo.png')).toBe('all');
+    expect([...(changed.get('src/keep.js') as Set<number>)].sort((a, b) => a - b)).toEqual([4, 5, 6]);
+    expect([...changed.keys()].some((k) => k.startsWith('+') || k.startsWith('w/') || k.endsWith('\t'))).toBe(
+      false,
+    );
+  });
+
   it('without git, or with an unknown ref, --since is a usage error', async () => {
     const dir = mkTemp(join(osTmp(), 'rlv-since-nogit-'));
     made.push(dir);
@@ -1109,4 +1130,75 @@ describe('since', () => {
       runAudit({ root: d2, command: 'audit', noWrite: true, since: '--output=/tmp/x' }),
     ).rejects.toMatchObject({ code: 'USAGE' });
   });
+});
+
+describe('abort during later stages', () => {
+  const made: string[] = [];
+  afterAll(() => {
+    for (const d of made.splice(0)) removeTree(d, { recursive: true, force: true });
+  });
+  const project = (scripts: Record<string, string> = {}) => {
+    const root = mkTemp(join(osTmp(), 'rlv-abort-'));
+    made.push(root);
+    writeFileSync(
+      join(root, 'package.json'),
+      JSON.stringify({ name: 'x', private: true, scripts, dependencies: { a: '1.0.0' } }),
+    );
+    writeFileSync(
+      join(root, 'package-lock.json'),
+      JSON.stringify({
+        name: 'x',
+        lockfileVersion: 3,
+        packages: { '': { name: 'x' }, 'node_modules/a': { version: '1.0.0' } },
+      }),
+    );
+    writeFileSync(join(root, 'index.js'), 'console.log(1);\n');
+    return root;
+  };
+
+  it('a signal during the OSV lookup stops it and marks the run partial', async () => {
+    const root = project();
+    const ac = new AbortController();
+    const fetchImpl = ((_url: string, init?: RequestInit) =>
+      new Promise((resolveFetch, reject) => {
+        const t = setTimeout(() => resolveFetch(new Response(JSON.stringify({ results: [{}] }))), 4000);
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(t);
+          reject(new Error('aborted'));
+        });
+      })) as unknown as typeof fetch;
+    setTimeout(() => ac.abort(), 200);
+    const started = Date.now();
+    const { run } = await runAudit({
+      root,
+      command: 'audit',
+      noWrite: true,
+      useGit: false,
+      online: true,
+      categories: ['supply-chain'],
+      fetchImpl,
+      signal: ac.signal,
+    });
+    expect(Date.now() - started).toBeLessThan(2500);
+    expect(run.partial?.reason).toBe('signal');
+  });
+
+  it('a signal during a build/test command stops it and marks the run partial', async () => {
+    const root = project({ test: 'node -e "setTimeout(()=>{},8000)"' });
+    mkdirSync(join(root, 'node_modules')); // checks run only when dependencies look installed
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 800);
+    const started = Date.now();
+    const { run } = await runAudit({
+      root,
+      command: 'release',
+      noWrite: true,
+      useGit: false,
+      allowExec: true,
+      checks: ['test'],
+      signal: ac.signal,
+    });
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(run.partial?.reason).toBe('signal');
+  }, 20_000);
 });

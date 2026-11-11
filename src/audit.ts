@@ -288,13 +288,7 @@ export async function runAudit(
     inlineSuppressions: opts.inlineSuppressions,
     snippetLines: opts.snippetLines,
   });
-  const limits: RunBudget = {
-    maxDurationMs: config.limits.maxDuration !== undefined ? config.limits.maxDuration * 1000 : undefined,
-    maxFiles: config.limits.maxFiles,
-    maxBytes: config.limits.maxBytes,
-    parseTimeoutMs: DEFAULT_PARSE_TIMEOUT_MS,
-    ...Object.fromEntries(Object.entries(opts.limits ?? {}).filter(([, v]) => v !== undefined)),
-  };
+  const limits = effectiveLimits(config, opts.limits ?? {});
   // The duration budget counts from the start of the run, not of the analysis.
   const budget = new Budget(limits, () => performance.now() - started);
   progress('analysing');
@@ -339,8 +333,10 @@ export async function runAudit(
         onProgress: progress,
         apiBase: opts.osvApi,
         offline: opts.offlineOsv,
+        signal: opts.signal,
       });
       stage('osv', 'end');
+      stopNow();
       if (osv.unverified)
         limitations.push(
           `Known vulnerabilities were looked up in the OSV cache only (--offline-osv); ${osv.unverified} package(s) without a fresh cache entry are unverified.`,
@@ -374,8 +370,10 @@ export async function runAudit(
       timeoutSeconds: config.timeouts.commandSeconds,
       root: files.root,
       onProgress: progress,
+      signal: opts.signal,
     });
     stage('checks', 'end');
+    stopNow();
     checks = exec.results;
     for (const h of exec.hits) builder.add(h.rule, h.hit, h.provenance);
     if (!opts.allowExec && planned.length)
@@ -610,14 +608,42 @@ export function noCommandsLimitation(kinds: CheckKind[], ws: ProjectProfile['wor
  * finding messages, snippets, limitations and errors, to `label`; `root` itself becomes the label.
  */
 export function relabelRoot(run: RunRecord, roots: string[], label: string): RunRecord {
-  let json = JSON.stringify(run);
-  for (const r of [...new Set(roots)].sort((a, b) => b.length - a.length)) {
-    const needle = JSON.stringify(r).slice(1, -1);
-    if (needle) json = json.split(needle).join(JSON.stringify(label).slice(1, -1));
-  }
-  const out = JSON.parse(json) as RunRecord;
+  // Only a whole path: not preceded by a path or word character (so `web/app` and `../app` stay), and not followed
+  // by one (so `/app-old` stays). Relative locations are never touched.
+  const patterns = [...new Set(roots)]
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length)
+    .map(
+      (r) =>
+        new RegExp(`(?<![\\w.~/\\\\-])${r.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\w-]|\\.\\w)`, 'g'),
+    );
+  const rewrite = (s: string) => patterns.reduce((t, re) => t.replace(re, () => label), s);
+  const walkValue = (v: unknown, key: string, parent: string): unknown => {
+    if (typeof v === 'string') return key === 'file' && parent === 'location' ? v : rewrite(v);
+    if (Array.isArray(v)) return v.map((x) => walkValue(x, key, parent));
+    if (v && typeof v === 'object')
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walkValue(x, k, key)]));
+    return v;
+  };
+  const out = walkValue(JSON.parse(JSON.stringify(run)), '', '') as RunRecord;
   out.root = label;
   out.profile.root = label;
+  return out;
+}
+
+/**
+ * Run limits from the config, overridden by explicit options. The parse-time limit applies only when some run limit
+ * is set (or it is given explicitly): an unbounded run never drops AST findings because a machine was slow.
+ */
+export function effectiveLimits(config: RelivaroConfig, given: Partial<RunBudget>): RunBudget {
+  const out: RunBudget = {
+    maxDurationMs: config.limits.maxDuration !== undefined ? config.limits.maxDuration * 1000 : undefined,
+    maxFiles: config.limits.maxFiles,
+    maxBytes: config.limits.maxBytes,
+    ...Object.fromEntries(Object.entries(given).filter(([, v]) => v !== undefined)),
+  };
+  const bounded = out.maxDurationMs !== undefined || out.maxFiles !== undefined || out.maxBytes !== undefined;
+  if (out.parseTimeoutMs === undefined && bounded) out.parseTimeoutMs = DEFAULT_PARSE_TIMEOUT_MS;
   return out;
 }
 

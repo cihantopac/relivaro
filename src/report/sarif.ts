@@ -66,7 +66,8 @@ export interface SarifLog {
 }
 
 export function toSarif(run: RunRecord, opts: { exitCode?: number } = {}): SarifLog {
-  const exitCode = opts.exitCode ?? (run.partial ? 4 : 0);
+  // Unknown (e.g. a report regenerated later, or the API): left out rather than guessed.
+  const exitCode = opts.exitCode;
   const vcs = run.profile.vcs;
   const used = new Set(run.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
@@ -127,7 +128,7 @@ export function toSarif(run: RunRecord, opts: { exitCode?: number } = {}): Sarif
           : {}),
         invocations: [
           {
-            exitCode,
+            ...(exitCode !== undefined ? { exitCode } : {}),
             // A usage error or a partial run did not complete the analysis it was asked for.
             executionSuccessful: exitCode !== 2 && !run.partial,
             startTimeUtc: run.startedAt,

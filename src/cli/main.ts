@@ -144,6 +144,9 @@ export async function main(argv: string[]): Promise<number> {
       return EXIT.OK;
     }
     applyExecutionPolicy(cmd.spec.name, parsed);
+    // Analysis commands stop gracefully on SIGTERM/SIGINT (partial record, exit code 4); every other command keeps
+    // the default behaviour and ends at once.
+    if (isEntry && cmd.spec.options.some((o) => o.name === 'max-duration')) installGracefulSignals();
     const out = makeOut({
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,
@@ -167,11 +170,11 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-// Entry point (the bundle is executed directly).
-const isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
-if (isEntry) {
-  // The first SIGTERM/SIGINT stops the analysis gracefully: the run is written as partial (exit code 4). A second
-  // signal exits immediately with the conventional 128 + signal number.
+/**
+ * The first SIGTERM/SIGINT aborts the running analysis (OSV requests and build/test commands included); a second one
+ * exits at once with the conventional 128 + signal number.
+ */
+function installGracefulSignals(): void {
   for (const [sig, code] of [
     ['SIGTERM', 143],
     ['SIGINT', 130],
@@ -180,6 +183,11 @@ if (isEntry) {
       if (processAbort.signal.aborted) process.exit(code);
       processAbort.abort();
     });
+}
+
+// Entry point (the bundle is executed directly).
+const isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
+if (isEntry) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

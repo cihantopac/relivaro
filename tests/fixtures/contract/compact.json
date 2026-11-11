@@ -16,7 +16,7 @@
       "limitations",
       "reports"
     ],
-    "optional": ["release", "report"]
+    "optional": ["release", "report", "partial", "since"]
   },
   "nested": {
     "project": ["name", "units", "languages", "technologies"],

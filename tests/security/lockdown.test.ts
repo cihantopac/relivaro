@@ -84,6 +84,51 @@ describe('lockdown', () => {
       expect(stderr).toContain(`--lockdown forbids ${what}`);
     });
 
+  for (const v of ['true', 'yes', 'ON'])
+    it(`RELIVARO_LOCKDOWN=${v} turns lockdown on`, async () => {
+      process.env.RELIVARO_LOCKDOWN = v;
+      expect(await main(['audit', '.', '--allow-exec'])).toBe(2);
+      expect(stderr).toContain('--lockdown forbids --allow-exec');
+    });
+
+  it('a committed baseline file is ignored under lockdown', async () => {
+    const dir = scratch();
+    mkdirSync(join(dir, 'src'));
+    writeFileSync(join(dir, 'src', 'run.js'), 'eval(process.argv[2]);\n');
+    expect(await main(['baseline', dir, '--reason', 'hide everything'])).toBe(0);
+    stdout = '';
+    const code = await main(['audit', dir, '--lockdown', '--no-write', '--json', '--fail-on', 'low']);
+    expect(JSON.parse(stdout).summary.baseline).toBe(0);
+    expect(code).toBe(1);
+  });
+
+  it('--out inside the audited directory is refused', async () => {
+    const dir = scratch();
+    writeFileSync(join(dir, 'a.js'), '1;\n');
+    expect(
+      await main(['audit', dir, '--lockdown', '--workspace', scratch(), '--out', join(dir, 'out')]),
+    ).toBe(2);
+    expect(stderr).toContain('--lockdown forbids writing into the audited directory');
+  });
+
+  it('report and review need a workspace outside the project', async () => {
+    const dir = scratch();
+    expect(await main(['report', 'latest', '--path', dir, '--lockdown'])).toBe(2);
+    expect(stderr).toContain('--lockdown forbids writing into the audited directory');
+  });
+
+  it('budget flags must be positive (and whole for files)', async () => {
+    for (const argv of [
+      ['--max-files', '0'],
+      ['--max-files', '1.5'],
+      ['--max-duration', '-1'],
+      ['--max-bytes', '0'],
+    ]) {
+      stderr = '';
+      expect(await main(['audit', '.', '--no-write', ...argv]), argv.join(' ')).toBe(2);
+    }
+  });
+
   it('RELIVARO_LOCKDOWN=1 is the same as --lockdown', async () => {
     process.env.RELIVARO_LOCKDOWN = '1';
     expect(await main(['audit', '.', '--allow-exec'])).toBe(2);

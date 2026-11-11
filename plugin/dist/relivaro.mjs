@@ -14175,20 +14175,20 @@ __export(osv_exports, {
   uniquePackageCount: () => uniquePackageCount
 });
 import { accessSync, constants, existsSync as existsSync8, readFileSync as readFileSync7 } from "node:fs";
-async function postJson(fetchImpl, url, body2) {
+async function postJson(fetchImpl, url, body2, abort2) {
   const res = await fetchImpl(url, {
     method: "POST",
     headers: { "content-type": "application/json", "user-agent": "relivaro" },
     body: JSON.stringify(body2),
-    signal: AbortSignal.timeout(3e4)
+    signal: requestSignal(abort2)
   });
   if (!res.ok) throw new RelivaroError("NETWORK_FAILED", `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
-async function getJson(fetchImpl, url) {
+async function getJson(fetchImpl, url, abort2) {
   const res = await fetchImpl(url, {
     headers: { "user-agent": "relivaro" },
-    signal: AbortSignal.timeout(3e4)
+    signal: requestSignal(abort2)
   });
   if (!res.ok) throw new RelivaroError("NETWORK_FAILED", `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
@@ -14259,13 +14259,12 @@ function readCache(file) {
   if (!file || !existsSync8(file)) return empty2;
   try {
     const raw = JSON.parse(readFileSync7(file, "utf8"));
+    const okPkg = (e) => !!e && typeof e.at === "number" && Array.isArray(e.ids) && e.ids.every((x) => typeof x === "string");
+    const okVuln = (e) => !!e && typeof e.at === "number" && typeof e.vuln?.id === "string";
+    const pick = (o, ok) => o && typeof o === "object" ? Object.fromEntries(Object.entries(o).filter(([, e]) => ok(e))) : {};
     if (raw.version === 2)
-      return {
-        version: 2,
-        packages: raw.packages ?? {},
-        vulns: raw.vulns ?? {}
-      };
-    return { ...empty2, vulns: raw };
+      return { version: 2, packages: pick(raw.packages, okPkg), vulns: pick(raw.vulns, okVuln) };
+    return { ...empty2, vulns: pick(raw, okVuln) };
   } catch {
     return empty2;
   }
@@ -14318,7 +14317,8 @@ async function queryOsv(lockfiles, opts = {}) {
         })
       };
       try {
-        const res = await postJson(fetchImpl, `${api}/querybatch`, body2);
+        if (opts.signal?.aborted) return result2;
+        const res = await postJson(fetchImpl, `${api}/querybatch`, body2, opts.signal);
         slice.forEach((i2, j) => {
           const ids2 = (res.results?.[j]?.vulns ?? []).map((v) => v.id);
           idsPer[i2] = ids2;
@@ -14341,10 +14341,14 @@ async function queryOsv(lockfiles, opts = {}) {
   if (!opts.offline)
     await Promise.all(
       Array.from({ length: Math.min(8, todo.length) }, async () => {
-        while (next < todo.length) {
+        while (next < todo.length && !opts.signal?.aborted) {
           const id = todo[next++];
           try {
-            const v = await getJson(fetchImpl, `${api}/vulns/${encodeURIComponent(id)}`);
+            const v = await getJson(
+              fetchImpl,
+              `${api}/vulns/${encodeURIComponent(id)}`,
+              opts.signal
+            );
             details.set(id, v);
             cache3.vulns[id] = { at: now, vuln: v };
             cacheChanged = true;
@@ -14393,7 +14397,7 @@ async function queryOsv(lockfiles, opts = {}) {
   });
   return result2;
 }
-var OSV_RULE, API2, BATCH, TTL_MS;
+var OSV_RULE, API2, BATCH, requestSignal, TTL_MS;
 var init_osv = __esm({
   "src/deps/osv.ts"() {
     "use strict";
@@ -14417,6 +14421,7 @@ var init_osv = __esm({
     });
     API2 = "https://api.osv.dev/v1";
     BATCH = 500;
+    requestSignal = (abort2) => abort2 ? AbortSignal.any([AbortSignal.timeout(3e4), abort2]) : AbortSignal.timeout(3e4);
     TTL_MS = 24 * 36e5;
   }
 });
@@ -21782,10 +21787,14 @@ async function runCommand(argv, opts) {
       timedOut = true;
       killTree(child.pid);
     }, opts.timeoutMs);
+    const onAbort = () => killTree(child.pid);
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener("abort", onAbort, { once: true });
     const finish = (exitCode, signal, error) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener("abort", onAbort);
       resolvePromise({
         command: display,
         exitCode,
@@ -22313,6 +22322,7 @@ async function runChecks(planned, opts) {
       });
       continue;
     }
+    if (opts.signal?.aborted) break;
     opts.onProgress?.(`running ${p.kind} (${p.unit}): ${display}`);
     let r;
     try {
@@ -22320,8 +22330,10 @@ async function runChecks(planned, opts) {
         cwd: p.cwd,
         timeoutMs: opts.timeoutSeconds * 1e3,
         allowExec: true,
-        env: { NODE_ENV: p.kind === "build" ? "production" : "test", APP_ENV: "testing" }
+        env: { NODE_ENV: p.kind === "build" ? "production" : "test", APP_ENV: "testing" },
+        signal: opts.signal
       });
+      if (opts.signal?.aborted) break;
     } catch (e) {
       results.push({
         kind: p.kind,
@@ -22588,6 +22600,29 @@ init_osv();
 // src/fs/changed.ts
 init_errors();
 init_files();
+function unquote2(p) {
+  if (!p.startsWith('"') || !p.endsWith('"')) return p;
+  const bytes = [];
+  const body2 = p.slice(1, -1);
+  const esc2 = { t: 9, n: 10, r: 13, '"': 34, "\\": 92, a: 7, b: 8, f: 12, v: 11 };
+  for (let i2 = 0; i2 < body2.length; i2++) {
+    const c = body2[i2];
+    if (c !== "\\") {
+      for (const b of Buffer.from(c, "utf8")) bytes.push(b);
+      continue;
+    }
+    const oct = /^[0-7]{3}/.exec(body2.slice(i2 + 1));
+    if (oct) {
+      bytes.push(Number.parseInt(oct[0], 8));
+      i2 += 3;
+    } else {
+      const n = body2[i2 + 1] ?? "";
+      bytes.push(esc2[n] ?? n.charCodeAt(0));
+      i2 += 1;
+    }
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
 function changedLines(root, ref) {
   if (!ref || ref.startsWith("-") || /[\s\0]/.test(ref))
     throw new RelivaroError("USAGE", `--since needs a git ref such as main or HEAD~3, got "${ref}".`);
@@ -22598,42 +22633,53 @@ function changedLines(root, ref) {
     );
   if (runGit(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]) === null)
     throw new RelivaroError("USAGE", `--since: unknown git ref "${ref}".`);
+  const common = ["-M", "--relative", "--no-color", "--no-ext-diff", ref, "--"];
+  const status = runGit(root, ["-c", "core.quotePath=false", "diff", "--name-status", "-z", ...common]);
   const diff = runGit(root, [
     "-c",
     "core.quotePath=false",
     "diff",
     "--unified=0",
-    "-M",
-    "--relative",
-    "--no-color",
-    "--no-ext-diff",
-    ref,
-    "--"
+    "--src-prefix=a/",
+    "--dst-prefix=b/",
+    ...common
   ]);
-  if (diff === null) throw new RelivaroError("USAGE", `--since: git diff against "${ref}" failed.`);
+  if (status === null || diff === null)
+    throw new RelivaroError("USAGE", `--since: git diff against "${ref}" failed.`);
   const out2 = /* @__PURE__ */ new Map();
+  const tok = status.split("\0");
+  for (let i2 = 0; i2 + 1 < tok.length; ) {
+    const st = tok[i2];
+    if (/^[RC]/.test(st)) {
+      out2.set(tok[i2 + 2], "all");
+      i2 += 3;
+    } else {
+      const path = tok[i2 + 1];
+      if (st.startsWith("A")) out2.set(path, "all");
+      else if (!st.startsWith("D")) out2.set(path, /* @__PURE__ */ new Set());
+      i2 += 2;
+    }
+  }
   let file = null;
-  let whole = false;
+  let inHeader = false;
   for (const line of diff.split("\n")) {
     if (line.startsWith("diff --git ")) {
+      inHeader = true;
       file = null;
-      whole = false;
-    } else if (line.startsWith("new file mode") || line.startsWith("rename to ") || line.startsWith("copy to "))
-      whole = true;
-    else if (line.startsWith("+++ ")) {
-      const p = line.slice(4);
-      file = p === "/dev/null" ? null : p.replace(/^b\//, "");
-      if (file) out2.set(file, whole ? "all" : out2.get(file) ?? /* @__PURE__ */ new Set());
-    } else if (line.startsWith("@@") && file) {
+    } else if (inHeader && line.startsWith("+++ ")) {
+      const raw = unquote2(line.slice(4).replace(/\t$/, ""));
+      file = raw === "/dev/null" ? null : raw.replace(/^b\//, "");
+    } else if (line.startsWith("@@")) {
+      inHeader = false;
+      const set = file ? out2.get(file) : void 0;
+      if (!(set instanceof Set)) continue;
       const m = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
-      const set = out2.get(file);
-      if (!m || set === "all" || !set) continue;
+      if (!m) continue;
       const start2 = Number(m[1]);
       const count = m[2] === void 0 ? 1 : Number(m[2]);
       for (let i2 = 0; i2 < count; i2++) set.add(start2 + i2);
     }
   }
-  for (const m of diff.matchAll(/^rename to (.+)$/gm)) out2.set(m[1], "all");
   const untracked = runGit(root, ["ls-files", "--others", "--exclude-standard", "-z"]) ?? "";
   for (const p of untracked.split("\0")) if (p) out2.set(p, "all");
   return out2;
@@ -23104,7 +23150,7 @@ function baseUri(root) {
   return `file:///${encodeURI(root.replace(/^\/+|\/+$/g, ""))}/`;
 }
 function toSarif(run2, opts = {}) {
-  const exitCode = opts.exitCode ?? (run2.partial ? 4 : 0);
+  const exitCode = opts.exitCode;
   const vcs = run2.profile.vcs;
   const used = new Set(run2.findings.map((f) => f.ruleId));
   const rules = allRuleMeta().filter((r) => used.has(r.id));
@@ -23166,7 +23212,7 @@ Verification: ${r.verification}`,
         } : {},
         invocations: [
           {
-            exitCode,
+            ...exitCode !== void 0 ? { exitCode } : {},
             // A usage error or a partial run did not complete the analysis it was asked for.
             executionSuccessful: exitCode !== 2 && !run2.partial,
             startTimeUtc: run2.startedAt,
@@ -23722,13 +23768,7 @@ async function runAudit(opts) {
     inlineSuppressions: opts.inlineSuppressions,
     snippetLines: opts.snippetLines
   });
-  const limits = {
-    maxDurationMs: config.limits.maxDuration !== void 0 ? config.limits.maxDuration * 1e3 : void 0,
-    maxFiles: config.limits.maxFiles,
-    maxBytes: config.limits.maxBytes,
-    parseTimeoutMs: DEFAULT_PARSE_TIMEOUT_MS,
-    ...Object.fromEntries(Object.entries(opts.limits ?? {}).filter(([, v]) => v !== void 0))
-  };
+  const limits = effectiveLimits(config, opts.limits ?? {});
   const budget = new Budget(limits, () => performance.now() - started);
   progress("analysing");
   stage("analyse", "start");
@@ -23768,9 +23808,11 @@ async function runAudit(opts) {
         fetchImpl: opts.fetchImpl,
         onProgress: progress,
         apiBase: opts.osvApi,
-        offline: opts.offlineOsv
+        offline: opts.offlineOsv,
+        signal: opts.signal
       });
       stage("osv", "end");
+      stopNow();
       if (osv.unverified)
         limitations.push(
           `Known vulnerabilities were looked up in the OSV cache only (--offline-osv); ${osv.unverified} package(s) without a fresh cache entry are unverified.`
@@ -23802,9 +23844,11 @@ async function runAudit(opts) {
       allowExec: !!opts.allowExec,
       timeoutSeconds: config.timeouts.commandSeconds,
       root: files.root,
-      onProgress: progress
+      onProgress: progress,
+      signal: opts.signal
     });
     stage("checks", "end");
+    stopNow();
     checks = exec.results;
     for (const h of exec.hits) builder.add(h.rule, h.hit, h.provenance);
     if (!opts.allowExec && planned.length)
@@ -24009,14 +24053,31 @@ function noCommandsLimitation(kinds, ws) {
   return `No ${kinds.join("/")} commands were detected in the audited directory; the workspace root (\`${up}\`) defines: ${defined.join(", ")}. Run the audit from the workspace root to include them.`;
 }
 function relabelRoot(run2, roots, label) {
-  let json = JSON.stringify(run2);
-  for (const r of [...new Set(roots)].sort((a, b) => b.length - a.length)) {
-    const needle = JSON.stringify(r).slice(1, -1);
-    if (needle) json = json.split(needle).join(JSON.stringify(label).slice(1, -1));
-  }
-  const out2 = JSON.parse(json);
+  const patterns = [...new Set(roots)].filter(Boolean).sort((a, b) => b.length - a.length).map(
+    (r) => new RegExp(`(?<![\\w.~/\\\\-])${r.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w-]|\\.\\w)`, "g")
+  );
+  const rewrite = (s) => patterns.reduce((t2, re) => t2.replace(re, () => label), s);
+  const walkValue = (v, key, parent) => {
+    if (typeof v === "string") return key === "file" && parent === "location" ? v : rewrite(v);
+    if (Array.isArray(v)) return v.map((x) => walkValue(x, key, parent));
+    if (v && typeof v === "object")
+      return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walkValue(x, k, key)]));
+    return v;
+  };
+  const out2 = walkValue(JSON.parse(JSON.stringify(run2)), "", "");
   out2.root = label;
   out2.profile.root = label;
+  return out2;
+}
+function effectiveLimits(config, given) {
+  const out2 = {
+    maxDurationMs: config.limits.maxDuration !== void 0 ? config.limits.maxDuration * 1e3 : void 0,
+    maxFiles: config.limits.maxFiles,
+    maxBytes: config.limits.maxBytes,
+    ...Object.fromEntries(Object.entries(given).filter(([, v]) => v !== void 0))
+  };
+  const bounded = out2.maxDurationMs !== void 0 || out2.maxFiles !== void 0 || out2.maxBytes !== void 0;
+  if (out2.parseTimeoutMs === void 0 && bounded) out2.parseTimeoutMs = DEFAULT_PARSE_TIMEOUT_MS;
   return out2;
 }
 function gateFailed(run2, failOn) {
@@ -27775,6 +27836,14 @@ function shellPath(p) {
 function printRunSummary(out2, run2, files, maxFindings = 15, openCommand2, typedPath = ".") {
   const on = out2.color;
   const s = run2.summary;
+  if (run2.partial)
+    out2.print(
+      paint(
+        on,
+        "yellow",
+        `PARTIAL RUN: stopped early (${run2.partial.reason}); the results below are incomplete.`
+      )
+    );
   out2.print(
     `${paint(on, "bold", `Relivaro ${run2.command}`)} \xB7 ${run2.profile.name} \xB7 ${run2.metrics.files} files \xB7 ${(run2.durationMs / 1e3).toFixed(1)}s`
   );
@@ -28022,6 +28091,17 @@ function groupBy(items, key) {
   for (const x of items) m.set(key(x), [...m.get(key(x)) ?? [], x]);
   return m;
 }
+function positiveOpt(p, name2, integer, map = (n) => n) {
+  const v = p.opts[name2];
+  if (v === void 0) return void 0;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || integer && !Number.isInteger(n))
+    throw new RelivaroError(
+      "USAGE",
+      `--${name2} must be a positive ${integer ? "whole number" : "number"}, got "${String(v)}".`
+    );
+  return map(n);
+}
 function snippetLinesOpt(v) {
   if (v === void 0) return void 0;
   const n = Number(v);
@@ -28099,6 +28179,8 @@ function compactRun(run2, maxFindings = 30, files = {}, review = {}) {
     limitations: run2.limitations,
     // The directory the reports were written to; null when nothing was written (--no-write).
     reports: reportDir(files),
+    ...run2.partial ? { partial: run2.partial } : {},
+    ...run2.since ? { since: run2.since } : {},
     ...files.html ? { report: { html: files.html, open: openCommand(files.html), markdown: files.md } } : {}
   };
 }
@@ -28175,9 +28257,13 @@ async function analysisCommand(p, out2, cfg) {
     onEvent: out2.event,
     signal: processAbort.signal,
     limits: {
-      maxDurationMs: p.opts["max-duration"] !== void 0 ? Number(p.opts["max-duration"]) * 1e3 : void 0,
-      maxFiles: p.opts["max-files"] !== void 0 ? Number(p.opts["max-files"]) : void 0,
-      maxBytes: p.opts["max-bytes"] !== void 0 ? parseSize(String(p.opts["max-bytes"])) : void 0
+      maxDurationMs: positiveOpt(p, "max-duration", false, (n) => n * 1e3),
+      maxFiles: positiveOpt(p, "max-files", true),
+      maxBytes: p.opts["max-bytes"] !== void 0 ? positiveOpt(
+        { ...p, opts: { "max-bytes": parseSize(String(p.opts["max-bytes"])) } },
+        "max-bytes",
+        true
+      ) : void 0
     }
   });
   if (cfg.release) run2.release = assessRelease(run2, config, benchSnapshots(workspace));
@@ -28217,13 +28303,13 @@ async function analysisCommand(p, out2, cfg) {
 }
 function analysisExitCode(run2, p, release, configFailOn) {
   const failOn = p.opts["fail-on"] ?? configFailOn;
-  if (run2.partial) return EXIT.PARTIAL;
   if (release && run2.release) {
     if (run2.release.status === "not-ready") return EXIT.GATE_FAILED;
     if (p.opts.strict && run2.release.status !== "ready" && run2.release.status !== "ready-with-warnings")
       return EXIT.GATE_FAILED;
   }
-  return gateFailed(run2, failOn) ? EXIT.GATE_FAILED : EXIT.OK;
+  if (gateFailed(run2, failOn)) return EXIT.GATE_FAILED;
+  return run2.partial ? EXIT.PARTIAL : EXIT.OK;
 }
 var categoryOpt = {
   name: "category",
@@ -29490,7 +29576,8 @@ var COMMANDS = [
   doctorCmd
 ];
 function applyExecutionPolicy(name2, p) {
-  const lockdown = !!p.opts.lockdown || process.env.RELIVARO_LOCKDOWN === "1";
+  const env = (process.env.RELIVARO_LOCKDOWN ?? "").trim().toLowerCase();
+  const lockdown = !!p.opts.lockdown || env !== "" && !["0", "false", "no", "off"].includes(env);
   configureProcess({ lockdown, ignoreRepoConfig: !!p.opts["ignore-repo-config"] });
   if (!lockdown) return;
   const action = p.positionals[0];
@@ -29501,14 +29588,16 @@ function applyExecutionPolicy(name2, p) {
   if (name2 === "review" && action === "add") lockdownForbids("review add");
   if (["baseline", "init", "load", "bench"].includes(name2)) lockdownForbids(name2);
   const spec = COMMANDS.find((c) => c.spec.name === name2)?.spec;
-  if (spec?.positionals?.[0] === "path" && spec.options.some((o) => o.name === "workspace") && !p.opts["no-write"]) {
-    const root = resolve4(p.positionals[0] ?? ".");
+  const root = resolve4(
+    spec?.positionals?.[0] === "path" ? p.positionals[0] ?? "." : p.opts.path ?? "."
+  );
+  const intoTree = "writing into the audited directory (pass --workspace <dir> outside it, or --no-write)";
+  if (spec?.options.some((o) => o.name === "workspace") && !p.opts["no-write"]) {
     const ws = p.opts.workspace;
-    if (!ws || isInside(root, resolve4(ws)))
-      lockdownForbids(
-        "writing into the audited directory (pass --workspace <dir> outside it, or --no-write)"
-      );
+    if (!ws || isInside(root, resolve4(ws))) lockdownForbids(intoTree);
   }
+  if (p.opts.out !== void 0 && isInside(root, resolve4(String(p.opts.out)))) lockdownForbids(intoTree);
+  if (p.opts.baseline === void 0) p.opts["no-baseline"] = true;
   for (const implied of ["no-git", "no-gitignore", "no-inline-suppressions", "ignore-repo-config"])
     p.opts[implied] = true;
 }
@@ -29653,6 +29742,7 @@ async function main(argv) {
       return EXIT.OK;
     }
     applyExecutionPolicy(cmd.spec.name, parsed);
+    if (isEntry && cmd.spec.options.some((o) => o.name === "max-duration")) installGracefulSignals();
     const out2 = makeOut({
       json: !!parsed.opts.json,
       quiet: !!parsed.opts.quiet,
@@ -29679,8 +29769,7 @@ async function main(argv) {
     return err2.exitCode;
   }
 }
-var isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
-if (isEntry) {
+function installGracefulSignals() {
   for (const [sig, code] of [
     ["SIGTERM", 143],
     ["SIGINT", 130]
@@ -29689,6 +29778,9 @@ if (isEntry) {
       if (processAbort.signal.aborted) process.exit(code);
       processAbort.abort();
     });
+}
+var isEntry = process.argv[1] && /relivaro(?:\.mjs)?$|main\.[cm]?[jt]s$/.test(process.argv[1]);
+if (isEntry) {
   main(process.argv.slice(2)).then(
     (code) => {
       process.exitCode = code;

@@ -574,7 +574,14 @@ export interface ExecOutcome {
 
 export async function runChecks(
   planned: PlannedCheck[],
-  opts: { allowExec: boolean; timeoutSeconds: number; root: string; onProgress?: (msg: string) => void },
+  opts: {
+    allowExec: boolean;
+    timeoutSeconds: number;
+    root: string;
+    onProgress?: (msg: string) => void;
+    /** Aborting kills the running command and skips the rest. */
+    signal?: AbortSignal;
+  },
 ): Promise<ExecOutcome> {
   const results: CheckResult[] = [];
   const hits: ExecOutcome['hits'] = [];
@@ -591,6 +598,7 @@ export async function runChecks(
       });
       continue;
     }
+    if (opts.signal?.aborted) break;
     opts.onProgress?.(`running ${p.kind} (${p.unit}): ${display}`);
     let r: RunResult;
     try {
@@ -599,7 +607,10 @@ export async function runChecks(
         timeoutMs: opts.timeoutSeconds * 1000,
         allowExec: true,
         env: { NODE_ENV: p.kind === 'build' ? 'production' : 'test', APP_ENV: 'testing' },
+        signal: opts.signal,
       });
+      // An interrupted command says nothing about the project: record no result for it.
+      if (opts.signal?.aborted) break;
     } catch (e) {
       results.push({
         kind: p.kind,

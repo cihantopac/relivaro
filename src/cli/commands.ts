@@ -233,6 +233,19 @@ function groupBy<T>(items: T[], key: (x: T) => string): Map<string, T[]> {
 }
 
 /** Token-efficient view of a run for AI agents: no rule boilerplate, open findings only, short snippets. */
+/** A positive budget flag (a whole number when `integer`); 0, negative or non-numeric values are usage errors. */
+function positiveOpt(p: Parsed, name: string, integer: boolean, map: (n: number) => number = (n) => n) {
+  const v = p.opts[name];
+  if (v === undefined) return undefined;
+  const n = Number(v);
+  if (!Number.isFinite(n) || n <= 0 || (integer && !Number.isInteger(n)))
+    throw new RelivaroError(
+      'USAGE',
+      `--${name} must be a positive ${integer ? 'whole number' : 'number'}, got "${String(v)}".`,
+    );
+  return map(n);
+}
+
 function snippetLinesOpt(v: unknown): number | undefined {
   if (v === undefined) return undefined;
   const n = Number(v);
@@ -322,6 +335,8 @@ export function compactRun(
     limitations: run.limitations,
     // The directory the reports were written to; null when nothing was written (--no-write).
     reports: reportDir(files),
+    ...(run.partial ? { partial: run.partial } : {}),
+    ...(run.since ? { since: run.since } : {}),
     ...(files.html
       ? { report: { html: files.html, open: openCommand(files.html), markdown: files.md } }
       : {}),
@@ -416,9 +431,16 @@ async function analysisCommand(
     onEvent: out.event,
     signal: processAbort.signal,
     limits: {
-      maxDurationMs: p.opts['max-duration'] !== undefined ? Number(p.opts['max-duration']) * 1000 : undefined,
-      maxFiles: p.opts['max-files'] !== undefined ? Number(p.opts['max-files']) : undefined,
-      maxBytes: p.opts['max-bytes'] !== undefined ? parseSize(String(p.opts['max-bytes'])) : undefined,
+      maxDurationMs: positiveOpt(p, 'max-duration', false, (n) => n * 1000),
+      maxFiles: positiveOpt(p, 'max-files', true),
+      maxBytes:
+        p.opts['max-bytes'] !== undefined
+          ? positiveOpt(
+              { ...p, opts: { 'max-bytes': parseSize(String(p.opts['max-bytes'])) } },
+              'max-bytes',
+              true,
+            )
+          : undefined,
     },
   });
   if (cfg.release) run.release = assessRelease(run, config, benchSnapshots(workspace));
@@ -462,21 +484,22 @@ async function analysisCommand(
   return exitCode;
 }
 
-function analysisExitCode(
+export function analysisExitCode(
   run: RunRecord,
   p: Parsed,
   release: boolean | undefined,
   configFailOn: Severity | 'none',
 ): number {
   const failOn = (p.opts['fail-on'] as Severity | 'none' | undefined) ?? configFailOn;
-  // A partial run is reported as partial, whatever its findings say: it never passes as complete.
-  if (run.partial) return EXIT.PARTIAL;
+  // A gate the partial results already fail stays failed (1); otherwise a partial run is reported as partial (4) and
+  // never passes as complete.
   if (release && run.release) {
     if (run.release.status === 'not-ready') return EXIT.GATE_FAILED;
     if (p.opts.strict && run.release.status !== 'ready' && run.release.status !== 'ready-with-warnings')
       return EXIT.GATE_FAILED;
   }
-  return gateFailed(run, failOn) ? EXIT.GATE_FAILED : EXIT.OK;
+  if (gateFailed(run, failOn)) return EXIT.GATE_FAILED;
+  return run.partial ? EXIT.PARTIAL : EXIT.OK;
 }
 
 const categoryOpt: OptSpec = {
@@ -1838,7 +1861,9 @@ export function fixerCatalog(): string {
  * forbidden command or flag is a usage error (never silently overridden), and the safe options it implies are set.
  */
 export function applyExecutionPolicy(name: string, p: Parsed): void {
-  const lockdown = !!p.opts.lockdown || process.env.RELIVARO_LOCKDOWN === '1';
+  // A security switch fails closed: any value except empty, 0, false, no or off turns it on.
+  const env = (process.env.RELIVARO_LOCKDOWN ?? '').trim().toLowerCase();
+  const lockdown = !!p.opts.lockdown || (env !== '' && !['0', 'false', 'no', 'off'].includes(env));
   configureProcess({ lockdown, ignoreRepoConfig: !!p.opts['ignore-repo-config'] });
   if (!lockdown) return;
   const action = p.positionals[0];
@@ -1848,20 +1873,21 @@ export function applyExecutionPolicy(name: string, p: Parsed): void {
   if (name === 'fix' && (action === 'apply' || action === 'rollback')) lockdownForbids(`fix ${action}`);
   if (name === 'review' && action === 'add') lockdownForbids('review add');
   if (['baseline', 'init', 'load', 'bench'].includes(name)) lockdownForbids(name);
-  // Reports go to a workspace outside the audited tree, or nowhere.
+  // Reports and the workspace go outside the audited tree, or nowhere.
   const spec = COMMANDS.find((c) => c.spec.name === name)?.spec;
-  if (
-    spec?.positionals?.[0] === 'path' &&
-    spec.options.some((o) => o.name === 'workspace') &&
-    !p.opts['no-write']
-  ) {
-    const root = resolve(p.positionals[0] ?? '.');
+  const root = resolve(
+    spec?.positionals?.[0] === 'path'
+      ? (p.positionals[0] ?? '.')
+      : ((p.opts.path as string | undefined) ?? '.'),
+  );
+  const intoTree = 'writing into the audited directory (pass --workspace <dir> outside it, or --no-write)';
+  if (spec?.options.some((o) => o.name === 'workspace') && !p.opts['no-write']) {
     const ws = p.opts.workspace as string | undefined;
-    if (!ws || isInside(root, resolve(ws)))
-      lockdownForbids(
-        'writing into the audited directory (pass --workspace <dir> outside it, or --no-write)',
-      );
+    if (!ws || isInside(root, resolve(ws))) lockdownForbids(intoTree);
   }
+  if (p.opts.out !== undefined && isInside(root, resolve(String(p.opts.out)))) lockdownForbids(intoTree);
+  // A baseline file shipped in the audited tree could hide every finding; only an explicit --baseline counts.
+  if (p.opts.baseline === undefined) p.opts['no-baseline'] = true;
   for (const implied of ['no-git', 'no-gitignore', 'no-inline-suppressions', 'ignore-repo-config'])
     p.opts[implied] = true;
 }

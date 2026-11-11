@@ -5,7 +5,8 @@ export interface RunBudget {
   maxDurationMs?: number;
   maxFiles?: number;
   maxBytes?: number;
-  parseTimeoutMs: number;
+  /** Set only for bounded runs (see effectiveLimits); unset means no parse-time limit. */
+  parseTimeoutMs?: number;
 }
 
 export type BudgetReason = 'duration' | 'files' | 'bytes';

@@ -128,6 +128,15 @@ export function printRunSummary(
 ): void {
   const on = out.color;
   const s = run.summary;
+  // Printed even with --quiet: a partial run must never read like a complete one.
+  if (run.partial)
+    out.print(
+      paint(
+        on,
+        'yellow',
+        `PARTIAL RUN: stopped early (${run.partial.reason}); the results below are incomplete.`,
+      ),
+    );
   out.print(
     `${paint(on, 'bold', `Relivaro ${run.command}`)} · ${run.profile.name} · ${run.metrics.files} files · ${(run.durationMs / 1000).toFixed(1)}s`,
   );

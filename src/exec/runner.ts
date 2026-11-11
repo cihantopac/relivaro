@@ -26,6 +26,8 @@ export interface RunOptions {
   maxOutputBytes?: number;
   /** Required acknowledgement that project code may run. */
   allowExec: boolean;
+  /** Aborting kills the command's process tree (SIGTERM/SIGINT of the CLI). */
+  signal?: AbortSignal;
 }
 
 export interface RunResult {
@@ -225,10 +227,14 @@ export async function runCommand(argv: string[], opts: RunOptions): Promise<RunR
       timedOut = true;
       killTree(child.pid);
     }, opts.timeoutMs);
+    const onAbort = () => killTree(child.pid);
+    if (opts.signal?.aborted) onAbort();
+    else opts.signal?.addEventListener('abort', onAbort, { once: true });
     const finish = (exitCode: number | null, signal: string | null, error?: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      opts.signal?.removeEventListener('abort', onAbort);
       resolvePromise({
         command: display,
         exitCode,

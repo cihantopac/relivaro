@@ -563,3 +563,109 @@ describe('sarif enrichment', () => {
     expect((toSarif(run) as any).runs[0].originalUriBaseIds['%SRCROOT%'].uri).toBe('file:///repo/');
   });
 });
+
+describe('1.5 review fixes', () => {
+  it('relabelRoot rewrites the root only at path boundaries and never relative locations', async () => {
+    const { relabelRoot } = await import('../../src/audit.js');
+    const run = {
+      root: '/app',
+      profile: { root: '/app' },
+      findings: [
+        {
+          location: { file: 'web/app/routes/user.ts' },
+          message: 'Reads /app/web/app/routes/user.ts and "/app" but not /app-old/x or /x/app/y',
+          evidence: { snippet: '  3 | import x from "../app/lib"' },
+        },
+      ],
+      limitations: ['Root is /app'],
+    } as never;
+    const out = relabelRoot(run, ['/app'], 'repo') as any;
+    expect(out.findings[0].location.file).toBe('web/app/routes/user.ts');
+    expect(out.findings[0].message).toBe(
+      'Reads repo/web/app/routes/user.ts and "repo" but not /app-old/x or /x/app/y',
+    );
+    expect(out.findings[0].evidence.snippet).toBe('  3 | import x from "../app/lib"');
+    expect(out.limitations).toEqual(['Root is repo']);
+    expect(out.root).toBe('repo');
+  });
+
+  it('a failed gate wins over a partial run (exit 1, not 4)', async () => {
+    const { analysisExitCode } = await import('../../src/cli/commands.js');
+    const high = { status: 'open', severity: 'high', confidence: 'high' };
+    const base = { findings: [high], partial: { reason: 'files', at: 'x' } } as never;
+    const p = { opts: { 'fail-on': 'high' }, positionals: [] } as never;
+    expect(analysisExitCode(base, p, false, 'none')).toBe(1);
+    const clean = { findings: [], partial: { reason: 'files', at: 'x' } } as never;
+    expect(analysisExitCode(clean, p, false, 'none')).toBe(4);
+  });
+
+  it('compact output carries partial and since', async () => {
+    const { compactRun } = await import('../../src/cli/commands.js');
+    const fx = mkdtempSync(join(tmpdir(), 'rlv-cmp-'));
+    try {
+      writeFileSync(join(fx, 'a.js'), 'eval(x);\n');
+      const { run } = await runAudit({
+        root: fx,
+        command: 'audit',
+        noWrite: true,
+        useGit: false,
+        limits: { maxFiles: 0 },
+      });
+      const c = compactRun({ ...run, since: { ref: 'HEAD', files: 1 } }) as any;
+      expect(c.partial.reason).toBe('files');
+      expect(c.since).toEqual({ ref: 'HEAD', files: 1 });
+    } finally {
+      rmSync(fx, { recursive: true, force: true });
+    }
+  });
+
+  it('toSarif without a known exit code leaves exitCode out', async () => {
+    const { toSarif } = await import('../../src/report/sarif.js');
+    const fx = mkdtempSync(join(tmpdir(), 'rlv-sx-'));
+    try {
+      writeFileSync(join(fx, 'a.js'), 'eval(x);\n');
+      const { run } = await runAudit({ root: fx, command: 'audit', noWrite: true, useGit: false });
+      const inv = (toSarif(run) as any).runs[0].invocations[0];
+      expect('exitCode' in inv).toBe(false);
+      expect(inv.executionSuccessful).toBe(true);
+    } finally {
+      rmSync(fx, { recursive: true, force: true });
+    }
+  });
+
+  it('the parse timeout applies only when a run limit is set', async () => {
+    const { effectiveLimits } = await import('../../src/audit.js');
+    const cfg = defaultConfig();
+    expect(effectiveLimits(cfg, {}).parseTimeoutMs).toBeUndefined();
+    expect(effectiveLimits(cfg, { maxFiles: 10 }).parseTimeoutMs).toBe(5000);
+    expect(effectiveLimits({ ...cfg, limits: { maxDuration: 60 } }, {}).parseTimeoutMs).toBe(5000);
+    expect(effectiveLimits(cfg, { parseTimeoutMs: 100 }).parseTimeoutMs).toBe(100);
+  });
+
+  it('a malformed shared OSV cache entry is ignored, not fatal', async () => {
+    const { queryOsv } = await import('../../src/deps/osv.js');
+    const dir = mkdtempSync(join(tmpdir(), 'rlv-osvbad-'));
+    try {
+      const file = join(dir, 'osv.json');
+      writeFileSync(
+        file,
+        JSON.stringify({
+          version: 2,
+          packages: { 'npm\u0000x\u00001.0.0': { at: Date.now() }, 'npm\u0000y\u00001.0.0': 'nope' },
+          vulns: { 'GHSA-1': { at: 'x' } },
+        }),
+      );
+      const lock = [
+        {
+          file: 'package-lock.json',
+          ecosystem: 'npm',
+          packages: [{ ecosystem: 'npm', name: 'x', version: '1.0.0' }],
+        },
+      ] as never;
+      const r = await queryOsv(lock, { cacheFile: file, offline: true });
+      expect(r.unverified).toBe(1);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

@@ -62,21 +62,29 @@ export interface OsvResult {
 
 type FetchLike = typeof fetch;
 
-async function postJson(fetchImpl: FetchLike, url: string, body: unknown): Promise<unknown> {
+const requestSignal = (abort?: AbortSignal) =>
+  abort ? AbortSignal.any([AbortSignal.timeout(30_000), abort]) : AbortSignal.timeout(30_000);
+
+async function postJson(
+  fetchImpl: FetchLike,
+  url: string,
+  body: unknown,
+  abort?: AbortSignal,
+): Promise<unknown> {
   const res = await fetchImpl(url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'user-agent': 'relivaro' },
     body: JSON.stringify(body),
-    signal: AbortSignal.timeout(30_000),
+    signal: requestSignal(abort),
   });
   if (!res.ok) throw new RelivaroError('NETWORK_FAILED', `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
 }
 
-async function getJson(fetchImpl: FetchLike, url: string): Promise<unknown> {
+async function getJson(fetchImpl: FetchLike, url: string, abort?: AbortSignal): Promise<unknown> {
   const res = await fetchImpl(url, {
     headers: { 'user-agent': 'relivaro' },
-    signal: AbortSignal.timeout(30_000),
+    signal: requestSignal(abort),
   });
   if (!res.ok) throw new RelivaroError('NETWORK_FAILED', `OSV ${url} returned HTTP ${res.status}`);
   return res.json();
@@ -175,14 +183,24 @@ function readCache(file: string | undefined): OsvCache {
   if (!file || !existsSync(file)) return empty;
   try {
     const raw = JSON.parse(readFileSync(file, 'utf8')) as Record<string, unknown>;
+    // A shared cache is untrusted input: keep only well-formed entries.
+    const okPkg = (e: unknown): e is { at: number; ids: string[] } =>
+      !!e &&
+      typeof (e as { at?: unknown }).at === 'number' &&
+      Array.isArray((e as { ids?: unknown }).ids) &&
+      (e as { ids: unknown[] }).ids.every((x) => typeof x === 'string');
+    const okVuln = (e: unknown): e is { at: number; vuln: OsvVuln } =>
+      !!e &&
+      typeof (e as { at?: unknown }).at === 'number' &&
+      typeof (e as { vuln?: { id?: unknown } }).vuln?.id === 'string';
+    const pick = <T>(o: unknown, ok: (e: unknown) => e is T): Record<string, T> =>
+      o && typeof o === 'object'
+        ? Object.fromEntries(Object.entries(o).filter(([, e]) => ok(e)) as [string, T][])
+        : {};
     if (raw.version === 2)
-      return {
-        version: 2,
-        packages: (raw.packages ?? {}) as OsvCache['packages'],
-        vulns: (raw.vulns ?? {}) as OsvCache['vulns'],
-      };
+      return { version: 2, packages: pick(raw.packages, okPkg), vulns: pick(raw.vulns, okVuln) };
     // 1.4 and earlier: advisory details keyed by id.
-    return { ...empty, vulns: raw as OsvCache['vulns'] };
+    return { ...empty, vulns: pick(raw, okVuln) };
   } catch {
     return empty;
   }
@@ -211,6 +229,8 @@ export async function queryOsv(
     offline?: boolean;
     /** Use the cache file but never write it (e.g. `--no-write`). */
     readOnlyCache?: boolean;
+    /** Aborting cancels the requests in flight (SIGTERM/SIGINT of the CLI). */
+    signal?: AbortSignal;
   } = {},
 ): Promise<OsvResult> {
   if (!opts.offline) assertNotLockedDown('network access (OSV.dev)');
@@ -254,7 +274,8 @@ export async function queryOsv(
         }),
       };
       try {
-        const res = (await postJson(fetchImpl, `${api}/querybatch`, body)) as {
+        if (opts.signal?.aborted) return result;
+        const res = (await postJson(fetchImpl, `${api}/querybatch`, body, opts.signal)) as {
           results?: { vulns?: { id: string }[] }[];
         };
         slice.forEach((i, j) => {
@@ -280,10 +301,14 @@ export async function queryOsv(
   if (!opts.offline)
     await Promise.all(
       Array.from({ length: Math.min(8, todo.length) }, async () => {
-        while (next < todo.length) {
+        while (next < todo.length && !opts.signal?.aborted) {
           const id = todo[next++]!;
           try {
-            const v = (await getJson(fetchImpl, `${api}/vulns/${encodeURIComponent(id)}`)) as OsvVuln;
+            const v = (await getJson(
+              fetchImpl,
+              `${api}/vulns/${encodeURIComponent(id)}`,
+              opts.signal,
+            )) as OsvVuln;
             details.set(id, v);
             cache.vulns[id] = { at: now, vuln: v };
             cacheChanged = true;
