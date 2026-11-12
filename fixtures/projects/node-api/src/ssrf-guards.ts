@@ -1,7 +1,9 @@
 import dns from 'node:dns/promises';
 import net from 'node:net';
+import axios from 'axios';
 import ipaddr from 'ipaddr.js';
-import { isPrivateAddress } from './net-policy';
+import { Agent } from 'undici';
+import { assertPublicUrl, isPrivateAddress, validateTarget } from './net-policy';
 
 // Hostname deny checks that compare strings instead of resolved, canonical addresses.
 
@@ -69,4 +71,64 @@ export function assertAllowedApi(u: string): void {
 export function describeTarget(u: string): string {
   const local = new URL(u).hostname === 'localhost';
   return local ? 'local' : 'remote';
+}
+
+// Guarded requests that still follow redirects.
+
+export async function fetchPublic(u: string): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u); // expect: sec/ssrf-redirect-bypass
+}
+
+export async function fetchTarget(u: string): Promise<unknown> {
+  validateTarget(u);
+  return axios.get(u, { timeout: 5000 }); // expect: sec/ssrf-redirect-bypass
+}
+
+export async function fetchNotLoopback(u: string): Promise<Response> {
+  assertNotLoopback(u);
+  return fetch(u, { redirect: 'follow' }); // expect: sec/ssrf-redirect-bypass
+}
+
+// Negative twins: redirects off, unknown options, a pinned dispatcher, or no guard at all.
+
+const noFollow = { redirect: 'error' as const };
+const pinned = new Agent({ connect: { lookup: pinnedLookup } });
+
+function pinnedLookup(host: string, opts: object, cb: (err: Error | null, address: string, family: number) => void): void {
+  cb(null, host, 4);
+}
+
+export async function fetchManual(u: string): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u, { redirect: 'manual' });
+}
+
+export async function fetchSpreadManual(u: string, base: RequestInit): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u, { ...base, redirect: 'manual' });
+}
+
+export async function fetchNamedOptions(u: string): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u, noFollow);
+}
+
+export async function fetchUnknownOptions(u: string, opts: RequestInit): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u, { ...opts });
+}
+
+export async function axiosNoRedirects(u: string): Promise<unknown> {
+  validateTarget(u);
+  return axios.get(u, { maxRedirects: 0, timeout: 5000 });
+}
+
+export async function fetchPinned(u: string): Promise<Response> {
+  await assertPublicUrl(u);
+  return fetch(u, { dispatcher: pinned } as RequestInit);
+}
+
+export async function fetchUnguarded(u: string): Promise<Response> {
+  return fetch(u);
 }

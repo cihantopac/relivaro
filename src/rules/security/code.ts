@@ -785,6 +785,128 @@ const ssrfHostnameDenylist: AstRule = {
   },
 };
 
+const URL_GUARD = /^(?:assert|check|validate|verify|ensure|is)\w*(?:Url|Host|Target|Safe|Allowed|Public)/i;
+/** Clients that follow redirects by default (`undici.request` does not, so it is not listed). */
+const REDIRECT_CLIENT =
+  /^(?:fetch|undici\.fetch|axios|axios\.(?:get|post|put|patch|delete|head|options)|got|got\.(?:get|post|put|patch|delete|head|stream))$/;
+/** A dispatcher or agent that checks the resolved address on every connection, so every hop is covered. */
+const PINNED_CONNECT = /\bconnect\s*:\s*\{[^}]*\blookup\b|new\s+[\w.]*Agent\(\s*\{[^}]*\blookup\b/;
+
+type RedirectState = 'on' | 'off' | 'unknown';
+
+function stripCasts(n: Node | null | undefined): Node | null | undefined {
+  let u = unwrap(n);
+  while (u?.type === 'as_expression' || u?.type === 'satisfies_expression') u = unwrap(u.namedChildren[0]);
+  return u;
+}
+
+/** Redirect behaviour of a request options object, following `const` objects and spreads in order. */
+function redirectState(opts: Node | null | undefined, source: string, depth = 0): RedirectState {
+  const o = stripCasts(opts);
+  if (!o) return 'on';
+  if (o.type === 'identifier') {
+    const init = depth < 3 ? constInitializer(o) : undefined;
+    return init ? redirectState(init, source, depth + 1) : 'unknown';
+  }
+  if (o.type !== 'object') return 'unknown';
+  let state: RedirectState = 'on';
+  for (const p of o.namedChildren) {
+    if (!p) continue;
+    if (p.type === 'spread_element') {
+      const inner = redirectState(p.namedChildren[0], source, depth + 1);
+      if (inner !== 'on') state = inner;
+      continue;
+    }
+    const key =
+      p.type === 'shorthand_property_identifier'
+        ? p.text
+        : p.type === 'pair'
+          ? (p.childForFieldName('key')?.text.replace(/['"]/g, '') ?? '')
+          : '';
+    const v = (p.type === 'pair' ? p.childForFieldName('value')?.text : '')?.replace(/['"`]/g, '') ?? '';
+    if (key === 'redirect') state = /^(?:manual|error)$/.test(v) ? 'off' : v === 'follow' ? 'on' : 'unknown';
+    else if (key === 'maxRedirects' || key === 'maxRedirections')
+      state = v === '0' ? 'off' : /^\d+$/.test(v) ? 'on' : 'unknown';
+    else if (key === 'followRedirect') state = v === 'false' ? 'off' : v === 'true' ? 'on' : 'unknown';
+    else if (key === 'lookup' || key === 'dnsLookup') state = 'off';
+    else if (/^(?:dispatcher|agent|httpAgent|httpsAgent)$/.test(key) && PINNED_CONNECT.test(source))
+      state = 'off';
+  }
+  return state;
+}
+
+/** The variable a request target comes from: `u`, `u.href`, `u.toString()`, `String(u)`. */
+function targetName(n: Node | null | undefined): string | undefined {
+  let u = stripCasts(n);
+  if (u?.type === 'call_expression') {
+    const fn = u.childForFieldName('function');
+    if (fn?.type === 'identifier' && fn.text === 'String')
+      u = u.childForFieldName('arguments')?.namedChildren[0];
+    else if (fn?.type === 'member_expression' && fn.childForFieldName('property')?.text === 'toString')
+      u = fn.childForFieldName('object');
+  }
+  u = stripCasts(u);
+  if (u?.type === 'member_expression' && u.childForFieldName('property')?.text === 'href')
+    u = stripCasts(u.childForFieldName('object'));
+  return u?.type === 'identifier' ? u.text : undefined;
+}
+
+const ssrfRedirectBypass: AstRule = {
+  kind: 'ast',
+  id: 'sec/ssrf-redirect-bypass',
+  title: 'Checked URL fetched with redirects enabled',
+  category: 'security',
+  severity: 'medium',
+  confidence: 'low',
+  languages: JS_LANGS,
+  cwe: ['CWE-918'],
+  owasp: [OWASP.A01],
+  tags: ['api-security'],
+  description:
+    'A URL passes an SSRF guard and is then requested with a client that follows redirects (the default for `fetch`, axios and got), so only the first hop is checked.',
+  impact:
+    'An allowed external host can answer with a redirect to `http://169.254.169.254/` or another internal address; the client follows it and the guard never sees the second URL.',
+  recommendation:
+    "Turn redirects off (`redirect: 'manual'` for `fetch`, `maxRedirects: 0` for axios, `followRedirect: false` for got) and re-check each `Location` yourself, or connect through a dispatcher or agent whose `lookup` rejects internal addresses so every hop is checked.",
+  verification:
+    'Add a test where an allowed host answers `302 Location: http://127.0.0.1/` and assert that the request fails or the redirect target is rejected.',
+  check(ctx) {
+    if (ctx.file.isTest || /^\s*['"]use client['"]/m.test(ctx.source.slice(0, 500))) return [];
+    const root = ctx.tree.rootNode;
+    const lang = ctx.lang;
+    const guardFns = new Set<string>();
+    for (const c of hostnameDenyChecks(root, lang)) {
+      const name = functionName(c.scope);
+      if (name) guardFns.add(name);
+    }
+    const isGuard = (callee: string) => URL_GUARD.test(callee.split('.').pop() ?? '') || guardFns.has(callee);
+    const out: Hit[] = [];
+    for (const c of ctx.calls) {
+      if (c.isNew || !REDIRECT_CLIENT.test(c.callee)) continue;
+      const url = targetName(c.args[0]);
+      if (!url) continue;
+      const optsAt = /^axios\.(?:post|put|patch)$/.test(c.callee) ? 2 : 1;
+      if (redirectState(c.args[optsAt], ctx.source) !== 'on') continue;
+      const scope = enclosingFunctionOf(c.node, lang) ?? root;
+      const guard = ctx.calls.find(
+        (g) =>
+          g.node.startIndex >= scope.startIndex &&
+          g.node.endIndex <= c.node.startIndex &&
+          isGuard(g.callee) &&
+          g.args.some((a) => targetName(a) === url) &&
+          (enclosingFunctionOf(g.node, lang) ?? root).id === scope.id,
+      );
+      if (!guard) continue;
+      out.push({
+        node: c.node,
+        message: `\`${url}\` is checked by \`${guard.callee}\` and then fetched with redirects enabled; a redirect to an internal address skips the check.`,
+        facts: { guard: guard.callee, client: c.callee },
+      });
+    }
+    return out;
+  },
+};
+
 const FS_SINK_JS =
   /^(?:fs\.(?:promises\.)?|fsp\.|fsPromises\.)?(?:readFile|readFileSync|createReadStream|writeFile|writeFileSync|appendFile|appendFileSync|createWriteStream|unlink|unlinkSync|rm|rmSync|readdir|readdirSync|stat|statSync|access|open|openSync|copyFile|rename)$|^res\.(?:sendFile|download|attachment)$|^(?:sendFile|download)$/;
 const FS_SINK_PHP =
@@ -2172,6 +2294,7 @@ export const securityCodeRules: AstRule[] = [
   xss,
   ssrf,
   ssrfHostnameDenylist,
+  ssrfRedirectBypass,
   pathTraversal,
   openRedirect,
   unsafeDeserialization,
