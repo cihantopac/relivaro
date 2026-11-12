@@ -1,7 +1,7 @@
 {
   "name": "relivaro",
   "displayName": "Relivaro",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Software quality, security, reliability, performance and release engineering: evidence-based audits with a deterministic engine, verified safe fixes with rollback, test-gap driven test generation and release-readiness gates.",
   "author": {
     "name": "Cihan Topa\u00e7",

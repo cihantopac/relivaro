@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.5.0",
-  "measuredAt": "2026-11-11T22:17:04.169Z",
+  "relivaro": "1.6.0",
+  "measuredAt": "2026-11-12T07:51:00.911Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 152
+        "ms": 138
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 137
+        "ms": 111
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 153
+        "ms": 101
       },
       "monorepo-docker": {
         "tp": 1,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 146
+        "ms": 97
       },
       "monorepo-lib": {
         "tp": 1,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 129
+        "ms": 102
       },
       "next-app": {
         "tp": 12,
@@ -57,23 +57,23 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 168
+        "ms": 130
       },
       "node-api": {
-        "tp": 64,
+        "tp": 72,
         "fp": 0,
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 200
+        "ms": 159
       },
       "python-app": {
-        "tp": 32,
+        "tp": 33,
         "fp": 0,
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 132
+        "ms": 113
       },
       "regressions": {
         "tp": 5,
@@ -81,7 +81,15 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 163
+        "ms": 132
+      },
+      "sql-migrations": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0,
+        "precision": 1,
+        "recall": 1,
+        "ms": 82
       },
       "static-site": {
         "tp": 3,
@@ -89,7 +97,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 101
+        "ms": 73
       }
     },
     "byRule": {
@@ -343,6 +351,11 @@
         "fp": 0,
         "fn": 0
       },
+      "rel/unbounded-poll-loop": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
       "perf/sync-io-in-request-handler": {
         "tp": 2,
         "fp": 0,
@@ -395,6 +408,16 @@
       },
       "sec/deprecated-buffer-constructor": {
         "tp": 1,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/ssrf-hostname-denylist": {
+        "tp": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "sec/ssrf-redirect-bypass": {
+        "tp": 3,
         "fp": 0,
         "fn": 0
       },
@@ -483,6 +506,11 @@
         "fp": 0,
         "fn": 0
       },
+      "sec/sql-grant-append-only": {
+        "tp": 4,
+        "fp": 0,
+        "fn": 0
+      },
       "sec/web-csp-unsafe-inline": {
         "tp": 1,
         "fp": 0,
@@ -500,12 +528,12 @@
       }
     },
     "total": {
-      "tp": 172,
+      "tp": 185,
       "fp": 0,
       "fn": 0,
       "precision": 1,
       "recall": 1,
-      "rulesCovered": 81
+      "rulesCovered": 85
     }
   },
   "performance": {
@@ -513,13 +541,13 @@
       "files": 3060,
       "linesOfCode": 48600,
       "parsedFiles": 3000,
-      "rulesRun": 83,
-      "medianMs": 2377,
-      "minMs": 2252,
-      "maxMs": 3041,
-      "filesPerSecond": 1287,
-      "linesPerSecond": 20444,
-      "peakRssMb": 147,
+      "rulesRun": 87,
+      "medianMs": 1607,
+      "minMs": 1533,
+      "maxMs": 1625,
+      "filesPerSecond": 1905,
+      "linesPerSecond": 30250,
+      "peakRssMb": 148,
       "openFindings": 60
     },
     "repositories": []

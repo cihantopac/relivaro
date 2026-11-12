@@ -4,13 +4,14 @@ Persistent record of scope, decisions, verified progress and open issues. Update
 
 ## Status (2026-11-12)
 
-v1.5.0 prepared for CI and hosted scanning (Frameva RELIVARO-001 to 010, 023): run record schema, structured
-progress, run limits with partial results (exit code 4) and graceful SIGTERM, `--lockdown`, `--root-label` and snippet
-controls, richer SARIF, a programmatic API, OSV cache/mirror/offline mode, a coverage line, `rules list --json`, a
-baseline hint and `--since`. Hosted dry run on a copy of frameva-engines with `--lockdown --root-label repo
---max-duration 60 --format sarif,md`: exit 0, 8 findings, no absolute path in any output, SARIF base URI
-`file:///repo/`. 89 rules; 10 fixture projects with 172 expected findings at 100% precision/recall; 333 tests.
-Next: 1.6.0 (new rule families).
+v1.6.0 prepared with four new rules from the Frameva field reports: `sec/ssrf-hostname-denylist`,
+`sec/ssrf-redirect-bypass`, `rel/unbounded-poll-loop` and `sec/sql-grant-append-only` (all medium or low confidence
+until they have field evidence from two repositories). Read-only field check on frameva-engines and frameva.io
+(`packages/preflight`, `apps/worker`, `packages/db`): the first SQL run produced 11 findings, 9 of them wrong (later
+REVOKEs, rollback scripts, SECURITY DEFINER owner roles, a conditional guard); all became negative fixtures. After the
+review fixes the rule also follows dropped triggers, and the final run reports nothing on those repositories, which
+matches their hardened state. 93 rules; 11 fixture projects with 185 expected findings at 100% precision/recall; 338
+tests. v1.5.0 (CI and hosted scanning) is released.
 
 ## Milestones (internal)
 

@@ -37,7 +37,7 @@
   </picture>
 </p>
 
-- **Audit** — 89 rules on tree-sitter syntax trees with taint tracking, plus project intelligence: stacks, monorepo
+- **Audit** — 93 rules on tree-sitter syntax trees with taint tracking, plus project intelligence: stacks, monorepo
   units, data stores, CI/CD, routes and environment variables. Offline and read-only.
 - **Evidence** — every finding carries `file:line`, a redacted snippet, facts, confidence, impact and CWE/OWASP mapping.
 - **Fix** — 15 deterministic fixers produce a reviewable diff; everything else becomes a fix prompt for your coding agent.
@@ -160,8 +160,8 @@ also ignores the repository's `relivaro.config.json` and inline `relivaro-ignore
 
 ## Evidence
 
-- **333 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
-- **Detection corpus:** 10 fixture projects, 172 expected findings, **precision and recall 100%**, enforced in CI.
+- **338 tests** (unit, integration, security, end-to-end) on Linux, macOS and Windows × Node 22 and 24 in CI.
+- **Detection corpus:** 11 fixture projects, 185 expected findings, **precision and recall 100%**, enforced in CI.
   A controlled corpus — real code will produce false positives and misses.
 - **Real repositories:** validated read-only on 5 production codebases; every significant finding checked by hand
   ([validation](docs/VALIDATION.md)).

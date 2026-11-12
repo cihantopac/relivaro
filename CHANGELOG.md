@@ -3,6 +3,63 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [1.6.0] — 2026-11-12
+
+New rule families from the Frameva field reports (b-03 safe-fetch, b-04 saga, b-05 artifact ingestion, b-08 health
+breaker, b-14 follow-ups). Every new rule is medium or low confidence until it has field evidence from two
+repositories, and none fires in test files.
+
+### Added
+
+- **`sec/ssrf-hostname-denylist`** (medium). An SSRF guard that compares the hostname of `new URL(...)` with a literal
+  IP, `localhost` or an IPv4 prefix (`===`, `includes`/`has`, `startsWith`, a regex `test`) in a branch that throws or
+  rejects, or in a function named for what it refuses, without resolving or classifying the address. The message names
+  a spelling that passes the check and reaches the same address (`[::ffff:7f00:1]`, `[::1]`, `127.0.0.2`); numeric forms
+  such as `2130706433` are not used, because `new URL()` already turns them into dotted quads. It stays quiet when the
+  function, a same-file helper or an imported helper given the hostname uses `net.isIP`, `BlockList`, `ipaddr` or
+  `dns.lookup`, for allow checks (`!==`, `isAllowedOrigin`), and for URLs built from config or the request line.
+- **`sec/ssrf-redirect-bypass`** (low). A URL passes an SSRF guard (`assertPublicUrl`, `validateTarget`, or a function
+  with the pattern above) and is then requested with `fetch`, axios or got with redirects enabled. Redirects count as
+  off with `redirect: 'manual' | 'error'`, `maxRedirects: 0`, `followRedirect: false` or a `lookup` option, also
+  through a `const` options object or after a spread; an unresolved options object, a `beforeRedirect` hook or a custom
+  agent or dispatcher counts as unknown and is not reported. URL format checks such as `isValidUrl` are not guards.
+- **`rel/unbounded-poll-loop`** (low, JS/TS and Python). A `while` loop that sleeps between checks and can end only
+  when its condition holds: no clock comparison, counted variable, numeric or limit-like comparison, abort signal or
+  enclosing `with …timeout…`. Service loops (`while (true)` without an exit, lifecycle flags such as `stopped`,
+  `isPolling` or `_stop_event.is_set()`) are not reported.
+- **`sec/sql-grant-append-only`** (medium). A table protected by a `BEFORE UPDATE OR DELETE` trigger whose function
+  always raises gets a table-wide `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE` or `ALL` grant. Migrations apply in numeric
+  path order across every `.sql` file, so a grant before the trigger is still matched, and later `REVOKE`, `DROP
+  TRIGGER`, `ALTER TABLE … DISABLE TRIGGER` and `DROP FUNCTION` are honoured. Triggers with `WHEN` or `UPDATE OF`,
+  functions that hand the row back, roles that own SECURITY DEFINER functions, and rollback scripts (`down.sql`,
+  `rollback/`, Flyway `U…__`) are left out. `"public"."t"`, `public.t` and `t` are one table; `audit.t` is another.
+- Detection corpus: the `sql-migrations` fixture project and new positive cases with negative twins in `node-api` and
+  `python-app` (11 projects, 185 expected findings, 85 rule ids, precision and recall 100%).
+
+### Fixed
+
+- `rel/destructive-sql-migration` no longer reports `REVOKE … TRUNCATE ON t FROM role` (or a `GRANT` naming `DELETE`)
+  as deleting all rows.
+
+### Considered, not added
+
+These Frameva requests would be heuristics with a high false-positive rate:
+
+- **Write-then-record ordering** (b-05): it needs knowledge of transactions and idempotency that a static pass does
+  not have.
+- **A try block that wraps more than the call it guards** (b-04): there is no reliable signal for what the guard is
+  for.
+- **RLS tenant context** (b-04, b-05): the policies and the `set_config` calls live in different files and in runtime
+  state.
+- **DB timestamp vs JS clock comparison** (b-11): types are not known.
+- **A forwarding-header guard behind a framework that adds those headers** (c-02): this is framework runtime
+  behaviour.
+- **A dynamic `import()` with a computed specifier** (c-02): it is legitimate in most code; an info note would be
+  noise.
+- **A generic SHA-1/MD5 rule**: carried over from the 1.4.0 ruling.
+- **A hand-written archive parser**: 1.4.0 covers archive entry names that reach file-system calls; byte-level parsers
+  are not recognisable.
+
 ## [1.5.0] — 2026-11-12
 
 Integration and hosted scanning: bounded runs, a hard lockdown for untrusted code, documented contracts, privacy

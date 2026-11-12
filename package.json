@@ -1,6 +1,6 @@
 {
   "name": "relivaro",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Verify the code. Prove the quality. Ship with confidence. Open-source CLI and Claude Code plugin: offline security, quality and reliability audits with evidence, verified fixes with rollback, fix prompts for coding agents and release gates that never hide what they did not check.",
   "license": "Apache-2.0",
   "type": "module",
