@@ -12,7 +12,7 @@ import {
   stringValue,
   walk,
 } from '../../parse/ast.js';
-import type { Node } from '../../parse/treesitter.js';
+import type { Node, Tree } from '../../parse/treesitter.js';
 import {
   constInitializer,
   importsModule,
@@ -545,24 +545,27 @@ const IPV4_PREFIX = /^(?:\d{1,3}\.){1,3}$/;
 const HOST_PROP = /^host(?:name)?$/;
 /** Real address handling: parsing/classifying IPs or resolving the name before the decision. */
 const CANONICALISES = /\bisIP(?:v4|v6)?\b|\bBlockList\b|\bipaddr\b|\blookup\b/;
-/** An address helper imported from elsewhere (its body is not visible here). */
-const ADDRESS_HELPER = /^is(?:Private|Internal|Public|Loopback|Reserved|Local|Blocked|Safe)[A-Z]\w*$/;
-const DENY_FN =
-  /safe|allow|block|deny|private|internal|public|ssrf|valid|forbid|reject|trusted|guard|assert|ensure/i;
-const DENY_BRANCH =
-  /\bthrow\b|\breturn\s+(?:false|null|undefined)\b|\breject\(|\.status\(4\d\d\)|\bnew\s+\w*Error\(/;
+/** Calls that read or log a hostname without classifying it; any other helper given the hostname may classify it. */
+const NON_CHECK_CALL =
+  /^(?:includes|has|test|startsWith|endsWith|indexOf|match|matchAll|search|replace|replaceAll|split|slice|toLowerCase|toUpperCase|trim|log|info|warn|error|debug|trace|push|add|set|get|delete|String|Error|TypeError|RangeError|format|stringify|encodeURIComponent|decodeURIComponent|URL|fetch)$/;
+/** A function whose name says it identifies hosts to refuse; a comparison inside it is the refusal. */
+const DENY_FN = /block|deny|forbid|private|internal|ssrf|reserved|loopback/i;
+const DENY_BRANCH = /\bthrow\b|\breject\(|\.status\(4\d\d\)|\bnew\s+\w*Error\(/;
+/** URLs the server builds from its own configuration or request line, not a target it is asked to fetch. */
+const OWN_URL =
+  /\b(?:location|import\.meta|document|process\.env|config|cfg|settings|env)\b|\breq(?:uest)?\.(?:url|originalUrl|nextUrl|headers)\b/;
 
 function unwrap(n: Node | null | undefined): Node | null | undefined {
   while (n?.type === 'parenthesized_expression' || n?.type === 'non_null_expression') n = n.namedChildren[0];
   return n;
 }
 
-/** `new URL(x)` for a value other than the page's own location. */
+/** `new URL(x)` for a target URL (not the page location, the server's own config or its request line). */
 function isUrlCtor(n: Node | null | undefined): boolean {
   const u = unwrap(n);
   if (u?.type !== 'new_expression' || u.childForFieldName('constructor')?.text !== 'URL') return false;
-  const arg = u.childForFieldName('arguments')?.namedChildren[0];
-  return !!arg && !/\b(?:location|import\.meta|document)\b/.test(arg.text);
+  const args = u.childForFieldName('arguments')?.namedChildren ?? [];
+  return !!args[0] && !args.some((a) => a && OWN_URL.test(a.text));
 }
 
 interface UrlBindings {
@@ -630,30 +633,42 @@ function denyLiteral(v: string | undefined, prefixOk: boolean): boolean {
   );
 }
 
-/** First deny literal of an array (or `new Set([...])`), following one `const`. */
-function denyInList(n: Node | null | undefined, lang: Language): string | undefined {
+/** Deny literals of an array (or `new Set([...])`), following one `const`. */
+function denyInList(n: Node | null | undefined, lang: Language): string[] {
   let list = unwrap(n);
   if (list?.type === 'identifier') list = constInitializer(list);
   if (list?.type === 'new_expression' && list.childForFieldName('constructor')?.text === 'Set') {
     list = list.childForFieldName('arguments')?.namedChildren[0];
     if (list?.type === 'identifier') list = constInitializer(list);
   }
-  if (list?.type !== 'array') return undefined;
+  if (list?.type !== 'array') return [];
+  const out: string[] = [];
   for (const el of list.namedChildren) {
     const v = isStaticString(el, lang) ? stringValue(el, lang) : undefined;
-    if (denyLiteral(v, false)) return v;
+    if (v && denyLiteral(v, false)) out.push(v);
   }
-  return undefined;
+  return out;
 }
 
 export interface HostnameDenyCheck {
   node: Node;
+  /** The first deny literal, and every literal the check compares with. */
   literal: string;
+  all: string[];
   scope: Node;
 }
 
-/** Comparisons of a `new URL(...)` hostname with a literal IP, `localhost` or an IPv4 prefix. */
-export function hostnameDenyChecks(root: Node, lang: Language): HostnameDenyCheck[] {
+const denyCheckCache = new WeakMap<Tree, HostnameDenyCheck[]>();
+
+/**
+ * Positive comparisons (`===`, `includes`, `startsWith`, a regex `test`) of a `new URL(...)` hostname with a
+ * literal IP, `localhost` or an IPv4 prefix. `!==` is not one: a deny check matches the bad host. Cached per tree,
+ * since two rules use it.
+ */
+export function hostnameDenyChecks(tree: Tree, lang: Language): HostnameDenyCheck[] {
+  const cached = denyCheckCache.get(tree);
+  if (cached) return cached;
+  const root = tree.rootNode;
   const out: HostnameDenyCheck[] = [];
   const cache = new Map<number, UrlBindings>();
   const bindingsFor = (scope: Node) => {
@@ -669,34 +684,38 @@ export function hostnameDenyChecks(root: Node, lang: Language): HostnameDenyChec
     return denyLiteral(v, prefixOk) ? v : undefined;
   };
   walk(root, (n) => {
-    const scope = enclosingFunctionOf(n, lang) ?? root;
     if (n.type === 'binary_expression') {
       const op = n.childForFieldName('operator')?.text ?? '';
-      if (!/^[!=]==?$/.test(op)) return;
+      if (op !== '===' && op !== '==') return;
+      const scope = enclosingFunctionOf(n, lang) ?? root;
       const l = n.childForFieldName('left');
       const r = n.childForFieldName('right');
       const b = bindingsFor(scope);
       const v = isHostRef(l, b) ? lit(r, false) : isHostRef(r, b) ? lit(l, false) : undefined;
-      if (v) out.push({ node: n, literal: v, scope });
+      if (v) out.push({ node: n, literal: v, all: [v], scope });
       return;
     }
     if (n.type !== 'call_expression') return;
     const fn = n.childForFieldName('function');
     if (fn?.type !== 'member_expression') return;
     const prop = fn.childForFieldName('property')?.text ?? '';
+    if (!/^(?:includes|has|startsWith|endsWith|test)$/.test(prop)) return;
     const obj = fn.childForFieldName('object');
     const arg = n.childForFieldName('arguments')?.namedChildren[0];
-    if (!/^(?:includes|has|startsWith|endsWith|test)$/.test(prop)) return;
+    const scope = enclosingFunctionOf(n, lang) ?? root;
     const b = bindingsFor(scope);
-    let v: string | undefined;
-    if ((prop === 'includes' || prop === 'has') && isHostRef(arg, b)) v = denyInList(obj, lang);
-    else if ((prop === 'startsWith' || prop === 'endsWith') && isHostRef(obj, b)) v = lit(arg, true);
-    else if (prop === 'test' && unwrap(obj)?.type === 'regex' && isHostRef(arg, b)) {
+    let all: string[] = [];
+    if ((prop === 'includes' || prop === 'has') && isHostRef(arg, b)) all = denyInList(obj, lang);
+    else if ((prop === 'startsWith' || prop === 'endsWith') && isHostRef(obj, b)) {
+      const v = lit(arg, true);
+      if (v) all = [v];
+    } else if (prop === 'test' && unwrap(obj)?.type === 'regex' && isHostRef(arg, b)) {
       const re = unwrap(obj)!.text;
-      if (/127\\?\.|localhost|169\\?\.254|\^10\\?\.|192\\?\.168|::1/.test(re)) v = re;
+      if (/127\\?\.|localhost|169\\?\.254|\^10\\?\.|192\\?\.168|::1/.test(re)) all = [re];
     }
-    if (v) out.push({ node: n, literal: v, scope });
+    if (all[0]) out.push({ node: n, literal: all[0], all, scope });
   });
+  denyCheckCache.set(tree, out);
   return out;
 }
 
@@ -711,43 +730,86 @@ function inDenyContext(n: Node, scope: Node): boolean {
   return DENY_FN.test(functionName(scope) ?? '');
 }
 
-/** The scope, or a same-file function it calls, resolves or classifies addresses for real. */
-function canonicalises(scope: Node, root: Node, lang: Language): boolean {
-  if (CANONICALISES.test(scope.text)) return true;
+interface FileFunctions {
+  /** Functions defined in this file, by name. */
+  local: Map<string, Node>;
+  /** Constants initialised with an address classifier (`const blocked = new net.BlockList()`). */
+  classifiers: Set<string>;
+}
+
+function fileFunctions(root: Node, lang: Language): FileFunctions {
   const local = new Map<string, Node>();
+  const classifiers = new Set<string>();
   walk(root, (n) => {
-    if (!FUNCTION_TYPES[lang].has(n.type)) return;
-    const name = functionName(n);
-    if (name) local.set(name, n);
+    if (FUNCTION_TYPES[lang].has(n.type)) {
+      const name = functionName(n);
+      if (name) local.set(name, n);
+    } else if (n.type === 'variable_declarator') {
+      const name = n.childForFieldName('name');
+      if (name?.type === 'identifier' && CANONICALISES.test(n.childForFieldName('value')?.text ?? ''))
+        classifiers.add(name.text);
+    }
   });
+  return { local, classifiers };
+}
+
+/**
+ * The scope resolves or classifies addresses for real: it names a classifier, calls a same-file function that does,
+ * or hands the hostname to a helper whose body is not visible here (imported), which may well canonicalise it.
+ */
+function canonicalises(scope: Node, files: FileFunctions): boolean {
+  if (CANONICALISES.test(scope.text)) return true;
+  const b = urlBindings(scope);
   for (const c of collect(scope, 'call_expression')) {
     const callee = c.childForFieldName('function');
-    // `blocked.check(h)` where `const blocked = new net.BlockList()` lives at module level.
     const recv = callee?.type === 'member_expression' ? callee.childForFieldName('object') : undefined;
-    if (recv?.type === 'identifier' && CANONICALISES.test(constInitializer(recv)?.text ?? '')) return true;
-    if (callee?.type !== 'identifier') continue;
-    const def = local.get(callee.text);
-    if (def ? def.id !== scope.id && CANONICALISES.test(def.text) : ADDRESS_HELPER.test(callee.text))
-      return true;
+    if (recv?.type === 'identifier' && files.classifiers.has(recv.text)) return true;
+    const name =
+      callee?.type === 'identifier'
+        ? callee.text
+        : callee?.type === 'member_expression'
+          ? (callee.childForFieldName('property')?.text ?? '')
+          : '';
+    if (!name) continue;
+    const def = callee?.type === 'identifier' ? files.local.get(name) : undefined;
+    if (def) {
+      if (def.id !== scope.id && CANONICALISES.test(def.text)) return true;
+      continue;
+    }
+    if (NON_CHECK_CALL.test(name)) continue;
+    const args = c.childForFieldName('arguments')?.namedChildren ?? [];
+    if (args.some((a) => isHostRef(a, b))) return true;
   }
   return false;
 }
 
-/** A spelling that `new URL()` keeps distinct from the literal but that reaches the same address. */
-function bypassExample(literal: string): string {
-  if (/localhost/.test(literal)) return '`127.1`';
-  let v4 = IPV4.test(literal) ? literal : undefined;
-  if (!v4 && IPV4_PREFIX.test(literal)) {
+/** A spelling that `new URL()` keeps distinct from the compared literals but that reaches the same address. */
+function bypassExample(literal: string, compared: string[]): string {
+  const mapped = (v4: string) => {
+    const [a, b, c, d] = v4.split('.').map(Number) as [number, number, number, number];
+    return `[::ffff:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}]`;
+  };
+  let candidates: string[] = [];
+  if (/localhost/.test(literal)) candidates = ['[::1]', mapped('127.0.0.1'), '127.0.0.2'];
+  else if (IPV4.test(literal)) candidates = [mapped(literal)];
+  else if (IPV4_PREFIX.test(literal)) {
     const parts = literal.slice(0, -1).split('.');
     while (parts.length < 3) parts.push('0');
-    v4 = [...parts, '1'].join('.');
-  }
-  if (v4) {
-    const [a, b, c, d] = v4.split('.').map(Number) as [number, number, number, number];
-    return `\`[::ffff:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}]\``;
-  }
-  if (/^[0-9a-f:.]+$/i.test(literal)) return `\`[${literal}]\``;
-  return 'a DNS name that resolves to it';
+    candidates = [mapped([...parts, '1'].join('.'))];
+  } else if (/^[0-9a-f:.]+$/i.test(literal)) candidates = [`[${literal}]`];
+  const blocked = new Set(compared.map((c) => c.toLowerCase()));
+  const pick = candidates.find((c) => !blocked.has(c));
+  return pick ? `\`${pick}\`` : 'a DNS name that resolves to it';
+}
+
+/** Not a test file and not browser code (`'use client'`, or a `.tsx`/`.jsx` file outside server code). */
+function serverCode(ctx: {
+  file: { isTest: boolean; path: string };
+  source: string;
+  serverSide: boolean;
+}): boolean {
+  if (ctx.file.isTest || /^\s*['"]use client['"]/m.test(ctx.source.slice(0, 500))) return false;
+  return ctx.serverSide || !/\.[jt]sx$/.test(ctx.file.path);
 }
 
 const ssrfHostnameDenylist: AstRule = {
@@ -764,20 +826,29 @@ const ssrfHostnameDenylist: AstRule = {
   description:
     'A URL guard compares the hostname of `new URL(...)` with literal IP addresses, `localhost` or an IP prefix, without resolving the name or canonicalising the address.',
   impact:
-    'Other spellings of the same address (IPv4-mapped IPv6, other loopback addresses, `127.1` for `localhost`) and DNS names that resolve to internal addresses pass the check, so the request still reaches internal services or cloud metadata.',
+    'Other spellings of the same address (IPv4-mapped IPv6 such as `[::ffff:7f00:1]`, `[::1]` or `127.0.0.2` for `localhost`) and DNS names that resolve to internal addresses pass the check, so the request still reaches internal services or cloud metadata.',
   recommendation:
     'Resolve the hostname (`dns.lookup` with `all: true`), reject private, loopback and link-local results with `net.BlockList` or `ipaddr.js`, and connect to the address you checked (a pinned `lookup`) so DNS cannot change between the check and the request.',
   verification:
-    'Add a test that passes `http://[::ffff:7f00:1]/`, `http://127.1/` and a hostname resolving to 127.0.0.1 through the guard and asserts that all of them are rejected.',
+    'Add a test that passes `http://[::ffff:7f00:1]/`, `http://[::1]/` and a hostname resolving to 127.0.0.1 through the guard and asserts that all of them are rejected.',
   check(ctx) {
-    if (ctx.file.isTest || /^\s*['"]use client['"]/m.test(ctx.source.slice(0, 500))) return [];
+    if (!serverCode(ctx)) return [];
     const root = ctx.tree.rootNode;
     const out: Hit[] = [];
-    for (const c of hostnameDenyChecks(root, ctx.lang)) {
-      if (!inDenyContext(c.node, c.scope) || canonicalises(c.scope, root, ctx.lang)) continue;
+    let files: FileFunctions | undefined;
+    const verdicts = new Map<number, boolean>();
+    for (const c of hostnameDenyChecks(ctx.tree, ctx.lang)) {
+      if (!inDenyContext(c.node, c.scope)) continue;
+      files ??= fileFunctions(root, ctx.lang);
+      let canon = verdicts.get(c.scope.id);
+      if (canon === undefined) {
+        canon = canonicalises(c.scope, files);
+        verdicts.set(c.scope.id, canon);
+      }
+      if (canon) continue;
       out.push({
         node: c.node,
-        message: `Hostname from \`new URL(...)\` is compared with \`${c.literal}\` without IP canonicalisation; ${bypassExample(c.literal)} reaches the same address.`,
+        message: `Hostname from \`new URL(...)\` is compared with \`${c.literal}\` without IP canonicalisation; ${bypassExample(c.literal, c.all)} reaches the same address.`,
         facts: { literal: c.literal },
       });
     }
@@ -785,12 +856,12 @@ const ssrfHostnameDenylist: AstRule = {
   },
 };
 
-const URL_GUARD = /^(?:assert|check|validate|verify|ensure|is)\w*(?:Url|Host|Target|Safe|Allowed|Public)/i;
+/** A guard named for what it refuses (a URL format check such as `isValidUrl` is not one). */
+const URL_GUARD =
+  /^(?:assert|check|validate|verify|ensure|guard|is)\w*(?:Safe|Public|Allowed|Private|Internal|Ssrf|SSRF|Blocked|External)|^(?:assert|check|validate|verify|ensure|guard)\w*(?:Target|Host)(?:[A-Z]\w*)?$/;
 /** Clients that follow redirects by default (`undici.request` does not, so it is not listed). */
 const REDIRECT_CLIENT =
   /^(?:fetch|undici\.fetch|axios|axios\.(?:get|post|put|patch|delete|head|options)|got|got\.(?:get|post|put|patch|delete|head|stream))$/;
-/** A dispatcher or agent that checks the resolved address on every connection, so every hop is covered. */
-const PINNED_CONNECT = /\bconnect\s*:\s*\{[^}]*\blookup\b|new\s+[\w.]*Agent\(\s*\{[^}]*\blookup\b/;
 
 type RedirectState = 'on' | 'off' | 'unknown';
 
@@ -801,19 +872,19 @@ function stripCasts(n: Node | null | undefined): Node | null | undefined {
 }
 
 /** Redirect behaviour of a request options object, following `const` objects and spreads in order. */
-function redirectState(opts: Node | null | undefined, source: string, depth = 0): RedirectState {
+function redirectState(opts: Node | null | undefined, depth = 0): RedirectState {
   const o = stripCasts(opts);
   if (!o) return 'on';
   if (o.type === 'identifier') {
     const init = depth < 3 ? constInitializer(o) : undefined;
-    return init ? redirectState(init, source, depth + 1) : 'unknown';
+    return init ? redirectState(init, depth + 1) : 'unknown';
   }
   if (o.type !== 'object') return 'unknown';
   let state: RedirectState = 'on';
   for (const p of o.namedChildren) {
     if (!p) continue;
     if (p.type === 'spread_element') {
-      const inner = redirectState(p.namedChildren[0], source, depth + 1);
+      const inner = redirectState(p.namedChildren[0], depth + 1);
       if (inner !== 'on') state = inner;
       continue;
     }
@@ -829,8 +900,8 @@ function redirectState(opts: Node | null | undefined, source: string, depth = 0)
       state = v === '0' ? 'off' : /^\d+$/.test(v) ? 'on' : 'unknown';
     else if (key === 'followRedirect') state = v === 'false' ? 'off' : v === 'true' ? 'on' : 'unknown';
     else if (key === 'lookup' || key === 'dnsLookup') state = 'off';
-    else if (/^(?:dispatcher|agent|httpAgent|httpsAgent)$/.test(key) && PINNED_CONNECT.test(source))
-      state = 'off';
+    // A redirect hook may re-check each hop; a custom dispatcher or agent may check every connection.
+    else if (/^(?:beforeRedirect|hooks|dispatcher|agent|httpAgent|httpsAgent)$/.test(key)) state = 'unknown';
   }
   return state;
 }
@@ -871,11 +942,11 @@ const ssrfRedirectBypass: AstRule = {
   verification:
     'Add a test where an allowed host answers `302 Location: http://127.0.0.1/` and assert that the request fails or the redirect target is rejected.',
   check(ctx) {
-    if (ctx.file.isTest || /^\s*['"]use client['"]/m.test(ctx.source.slice(0, 500))) return [];
+    if (!serverCode(ctx)) return [];
     const root = ctx.tree.rootNode;
     const lang = ctx.lang;
     const guardFns = new Set<string>();
-    for (const c of hostnameDenyChecks(root, lang)) {
+    for (const c of hostnameDenyChecks(ctx.tree, lang)) {
       const name = functionName(c.scope);
       if (name) guardFns.add(name);
     }
@@ -886,7 +957,7 @@ const ssrfRedirectBypass: AstRule = {
       const url = targetName(c.args[0]);
       if (!url) continue;
       const optsAt = /^axios\.(?:post|put|patch)$/.test(c.callee) ? 2 : 1;
-      if (redirectState(c.args[optsAt], ctx.source) !== 'on') continue;
+      if (redirectState(c.args[optsAt]) !== 'on') continue;
       const scope = enclosingFunctionOf(c.node, lang) ?? root;
       const guard = ctx.calls.find(
         (g) =>

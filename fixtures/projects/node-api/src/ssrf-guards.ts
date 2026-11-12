@@ -3,7 +3,15 @@ import net from 'node:net';
 import axios from 'axios';
 import ipaddr from 'ipaddr.js';
 import { Agent } from 'undici';
-import { assertPublicUrl, isPrivateAddress, validateTarget } from './net-policy';
+import {
+  assertPublicUrl,
+  isAbsoluteUrl,
+  isPrivate,
+  isPrivateAddress,
+  isValidUrl,
+  resolveAndCheck,
+  validateTarget,
+} from './net-policy';
 
 // Hostname deny checks that compare strings instead of resolved, canonical addresses.
 
@@ -131,4 +139,56 @@ export async function fetchPinned(u: string): Promise<Response> {
 
 export async function fetchUnguarded(u: string): Promise<Response> {
   return fetch(u);
+}
+
+// Review negatives: imported canonicalising helpers, allow and config checks, format validators, per-hop checks.
+
+export function assertNotPrivateShort(u: string): void {
+  const { hostname } = new URL(u);
+  if (isPrivate(hostname) || hostname === 'localhost') throw new Error('private');
+}
+
+export function assertResolved(u: string): void {
+  const h = new URL(u).hostname;
+  if (h === '169.254.169.254' || !resolveAndCheck(h)) throw new Error('blocked');
+}
+
+export function isAllowedOrigin(o: string): boolean {
+  const { hostname } = new URL(o);
+  return hostname === 'localhost' || hostname.endsWith('.example.com');
+}
+
+export function assertProductionUrl(): void {
+  if (new URL(process.env.PUBLIC_URL ?? '').hostname === 'localhost')
+    throw new Error('PUBLIC_URL must not be localhost in production');
+}
+
+export function assertLoopbackOnly(u: string): void {
+  if (new URL(u).hostname !== '127.0.0.1') throw new Error('only loopback');
+}
+
+export function isExternal(u: string): boolean {
+  const h = new URL(u).hostname;
+  if (h === 'localhost') return false;
+  return true;
+}
+
+export async function fetchValidUrl(u: string): Promise<Response> {
+  if (!isValidUrl(u)) throw new Error('bad url');
+  return fetch(u);
+}
+
+export async function fetchAbsolute(u: string): Promise<Response | undefined> {
+  if (isAbsoluteUrl(u)) return fetch(u);
+  return undefined;
+}
+
+export async function axiosRecheck(u: string): Promise<unknown> {
+  await assertPublicUrl(u);
+  return axios.get(u, { timeout: 5000, beforeRedirect: (o: { href: string }) => assertPublicUrl(o.href) });
+}
+
+export async function axiosAgent(u: string, agent: object): Promise<unknown> {
+  await assertPublicUrl(u);
+  return axios.get(u, { timeout: 5000, httpAgent: agent });
 }
