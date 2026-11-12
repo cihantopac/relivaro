@@ -92,6 +92,25 @@ const TRIGGER_RE =
 const GRANT_RE =
   /^GRANT\s+([\s\S]+?)\s+ON\s+(?:TABLE\s+)?([\w."]+(?:\s*,\s*[\w."]+)*)\s+TO\s+([\s\S]+?)\s*$/i;
 
+const REVOKE_RE =
+  /^REVOKE\s+(?:GRANT\s+OPTION\s+FOR\s+)?([\s\S]+?)\s+ON\s+(?:TABLE\s+)?(ALL\s+TABLES\s+IN\s+SCHEMA\s+[\s\S]+?|[\w."]+(?:\s*,\s*[\w."]+)*)\s+FROM\s+([\s\S]+?)(?:\s+(?:CASCADE|RESTRICT))?\s*$/i;
+/** `ALTER FUNCTION … OWNER TO role`, also inside a `format()` string of a DO block. */
+const FUNCTION_OWNER_RE = /\bALTER\s+FUNCTION\b[^;]*?\bOWNER\s+TO\s+("?[\w]+"?)/gi;
+/** Rollback scripts: `down.sql`, `0002_x.down.sql`, `down/0002.sql`. */
+const DOWN_MIGRATION = /(?:^|\/)down(?:\.sql$|\/)|[._-]down\.sql$/i;
+
+function bareRole(name: string): string {
+  return name.replace(/"/g, '').trim().toLowerCase();
+}
+
+/** Grantees of a GRANT or REVOKE (`GROUP` keywords dropped). */
+function roles(list: string): string[] {
+  return list
+    .split(',')
+    .map((r) => bareRole(r.replace(/^\s*GROUP\s+/i, '')))
+    .filter(Boolean);
+}
+
 /** Privileges of a GRANT, split on commas outside column lists. */
 function privileges(list: string): { name: string; columns: boolean }[] {
   const parts: string[] = [];
@@ -130,14 +149,21 @@ const sqlGrantAppendOnly: ProjectRule = {
   verification:
     'Connect as the role and assert that `UPDATE`, `DELETE`, `TRUNCATE` and an `INSERT` of a column outside the allowed list all fail.',
   check(ctx) {
-    const files = ctx.files.files.filter((f) => f.path.endsWith('.sql') && !f.isTest);
+    // Rollback scripts do not describe the deployed state; migrations apply in path order.
+    const files = ctx.files.files
+      .filter((f) => f.path.endsWith('.sql') && !f.isTest && !DOWN_MIGRATION.test(f.path))
+      .sort((a, b) => a.path.localeCompare(b.path));
     const stmts = files.flatMap((f) =>
       sqlStatements(ctx.files.read(f.path) ?? '').map((s) => ({ ...s, file: f.path })),
     );
+    // A function that always raises: it never hands the row back, so the trigger blocks every row.
     const raising = new Set<string>();
+    const definers = new Set<string>();
     for (const s of stmts) {
       const m = FUNCTION_RE.exec(s.sql);
-      if (m && /\bRAISE\s+EXCEPTION\b/i.test(s.sql)) raising.add(bareName(m[1]!));
+      if (m && /\bRAISE\s+EXCEPTION\b/i.test(s.sql) && !/\bRETURN\s+(?:NEW|OLD)\b/i.test(s.sql))
+        raising.add(bareName(m[1]!));
+      for (const o of s.sql.matchAll(FUNCTION_OWNER_RE)) definers.add(bareRole(o[1]!));
     }
     const appendOnly = new Map<string, { file: string; line: number }>();
     for (const s of stmts) {
@@ -150,26 +176,70 @@ const sqlGrantAppendOnly: ProjectRule = {
       if (!appendOnly.has(table)) appendOnly.set(table, { file: s.file, line: s.line });
     }
     if (!appendOnly.size) return [];
-    const out: Hit[] = [];
+    // Grants still in force after the later REVOKEs, one record per table, role and privilege.
+    const grants: {
+      table: string;
+      role: string;
+      priv: string;
+      file: string;
+      line: number;
+      active: boolean;
+    }[] = [];
     for (const s of stmts) {
-      const m = GRANT_RE.exec(s.sql);
-      if (!m) continue;
-      const privs = privileges(m[1]!).filter((p) =>
-        p.name === 'INSERT' ? !p.columns : /^(?:UPDATE|DELETE|TRUNCATE|ALL)$/.test(p.name) && !p.columns,
-      );
-      if (!privs.length) continue;
-      const role = m[3]!.replace(/\s+WITH\s+GRANT\s+OPTION$/i, '').trim();
-      for (const t of m[2]!.split(',')) {
-        const trigger = appendOnly.get(bareName(t.trim()));
-        if (!trigger) continue;
-        const priv = privs.map((p) => p.name).join(', ');
-        out.push({
-          file: s.file,
-          line: s.line,
-          message: `Role \`${role}\` gets table-wide \`${priv}\` on append-only table \`${bareName(t.trim())}\` (${trigger.file}:${trigger.line}); limit it to the columns the role must write, or insert through a SECURITY DEFINER function.`,
-          facts: { role, privileges: priv, table: bareName(t.trim()) },
-        });
+      const g = GRANT_RE.exec(s.sql);
+      if (g) {
+        const privs = privileges(g[1]!).filter(
+          (p) => !p.columns && /^(?:INSERT|UPDATE|DELETE|TRUNCATE|ALL)$/.test(p.name),
+        );
+        for (const t of g[2]!.split(','))
+          for (const role of roles(g[3]!.replace(/\s+WITH\s+GRANT\s+OPTION$/i, '')))
+            for (const p of privs)
+              grants.push({
+                table: bareName(t.trim()),
+                role,
+                priv: p.name,
+                file: s.file,
+                line: s.line,
+                active: true,
+              });
+        continue;
       }
+      const r = REVOKE_RE.exec(s.sql);
+      if (!r) continue;
+      const privs = privileges(r[1]!)
+        .filter((p) => !p.columns)
+        .map((p) => p.name);
+      const tables = /^ALL\s+TABLES\s+IN\s+SCHEMA\b/i.test(r[2]!)
+        ? undefined
+        : new Set(r[2]!.split(',').map((t) => bareName(t.trim())));
+      const from = new Set(roles(r[3]!));
+      for (const g2 of grants)
+        if (
+          g2.active &&
+          from.has(g2.role) &&
+          (!tables || tables.has(g2.table)) &&
+          (privs.includes('ALL') || privs.includes(g2.priv))
+        )
+          g2.active = false;
+    }
+    const out: Hit[] = [];
+    const sites = new Map<string, typeof grants>();
+    for (const g of grants) {
+      if (!g.active || !appendOnly.has(g.table) || definers.has(g.role)) continue;
+      const key = `${g.file}\0${g.line}\0${g.table}`;
+      sites.set(key, [...(sites.get(key) ?? []), g]);
+    }
+    for (const list of sites.values()) {
+      const { file, line, table } = list[0]!;
+      const trigger = appendOnly.get(table)!;
+      const role = [...new Set(list.map((g) => g.role))].join(', ');
+      const priv = [...new Set(list.map((g) => g.priv))].join(', ');
+      out.push({
+        file,
+        line,
+        message: `Role \`${role}\` gets table-wide \`${priv}\` on append-only table \`${table}\` (${trigger.file}:${trigger.line}); limit it to the columns the role must write, or insert through a SECURITY DEFINER function.`,
+        facts: { role, privileges: priv, table },
+      });
     }
     return out;
   },
