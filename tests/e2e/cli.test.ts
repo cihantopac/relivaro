@@ -231,8 +231,10 @@ describe('relivaro CLI', () => {
     const own = materialize('python-app');
     try {
       const first = cli(['audit', own.dir, '--no-write']);
+      // Windows temp paths contain `\` (and often `~`), which the hint quotes for the shell.
+      const shown = /[\\~]/.test(own.dir) ? `'${own.dir}'` : own.dir;
       expect(first.stdout).toContain(
-        `Next: relivaro baseline ${own.dir} to track only new findings from now on.`,
+        `Next: relivaro baseline ${shown} to track only new findings from now on.`,
       );
       expect(cli(['baseline', own.dir, '--reason', 'accepted for now']).code).toBe(0);
       const second = cli(['audit', own.dir, '--no-write']);
