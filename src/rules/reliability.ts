@@ -1,5 +1,6 @@
+import type { Language } from '../core/types.js';
 import { isTestPath } from '../fs/files.js';
-import { collect, compact, enclosingFunction, isJs } from '../parse/ast.js';
+import { type CallInfo, collect, compact, enclosingFunction, enclosingLoop, isJs } from '../parse/ast.js';
 import type { Node } from '../parse/treesitter.js';
 import { OWASP, objectArg, pairValue } from './helpers.js';
 import { ALL_LANGS, type AstRule, type FileRule, type Hit, JS_LANGS, type ProjectRule } from './types.js';
@@ -688,6 +689,112 @@ const httpNoRetry: AstRule = {
   },
 };
 
+const SLEEP_JS = /^(?:sleep|delay)(?:Ms|For|Seconds|Millis)?$|^(?:timers\.)?setTimeout$/i;
+const SLEEP_PY = /^(?:(?:asyncio|time|anyio|trio|gevent)\.)?sleep$/;
+const CLOCK =
+  /\bDate\.now\(\)|\bperformance\.now\(\)|\bnew Date\(\)|\b(?:time\.)?(?:monotonic|perf_counter)(?:_ns)?\(\)|\btime\.time\(\)|\bdatetime\.(?:now|utcnow)\(|\bloop\.time\(\)/;
+const ABORT_BOUND = /\bAbortSignal\.(?:timeout|any)\(|\bsignal\??\.(?:aborted|throwIfAborted)\b/;
+const BOUND_NAME = /deadline|timeout|until|attempt|tries|retries|maxWait|max_wait|expires/i;
+/** A lifecycle flag: the loop is a service loop that runs until shutdown, not a wait for a condition. */
+const LIFECYCLE =
+  /\b_?(?:running|isRunning|is_running|stopped|stopping|shutdown|shuttingDown|shutting_down|closed|closing|active|alive|cancelled|canceled)\b/i;
+const BOUND_TYPES = new Set([
+  'binary_expression',
+  'comparison_operator',
+  'update_expression',
+  'augmented_assignment_expression',
+  'augmented_assignment',
+]);
+const COMPARISON = /^(?:<|>|<=|>=|==|===|!=|!==)$/;
+const EXIT_TYPES = new Set(['break_statement', 'return_statement', 'throw_statement', 'raise_statement']);
+
+const sameId = (a: Node | null, b: Node | null) => (a?.id ?? -1) === (b?.id ?? -1);
+
+/** The sleep the loop awaits on each iteration, if any (calls in nested functions do not count). */
+function loopSleep(loop: Node, calls: CallInfo[], lang: Language): string | undefined {
+  const fn = enclosingFunction(loop, lang);
+  const inLoop = (n: Node) =>
+    n.startIndex >= loop.startIndex && n.endIndex <= loop.endIndex && sameId(enclosingFunction(n, lang), fn);
+  for (const c of calls) {
+    if (!inLoop(c.node)) continue;
+    if (isJs(lang)) {
+      if (SLEEP_JS.test(c.callee) && c.node.parent?.type === 'await_expression') return c.callee;
+    } else if (lang === 'python' && SLEEP_PY.test(c.callee)) return c.callee;
+  }
+  if (isJs(lang))
+    for (const a of collect(loop, 'await_expression')) {
+      const arg = a.namedChildren[0];
+      if (
+        inLoop(a) &&
+        arg?.type === 'new_expression' &&
+        /^new\s+Promise\b[\s\S]*\bsetTimeout\(/.test(arg.text)
+      )
+        return 'setTimeout';
+    }
+  return undefined;
+}
+
+/** A clock, an attempt counter, an abort timeout or an enclosing `with timeout(...)` limits the loop. */
+function loopBounded(loop: Node, lang: Language): boolean {
+  if (CLOCK.test(loop.text) || ABORT_BOUND.test(loop.text)) return true;
+  for (const n of collect(loop, BOUND_TYPES)) {
+    if (n.type === 'binary_expression' && !COMPARISON.test(n.childForFieldName('operator')?.text ?? ''))
+      continue;
+    if (BOUND_NAME.test(n.text)) return true;
+  }
+  const fn = enclosingFunction(loop, lang);
+  for (let p = loop.parent; p && !sameId(p, fn); p = p.parent)
+    if (p.type === 'with_statement' && /timeout/i.test(p.text.slice(0, p.text.indexOf(':')))) return true;
+  return false;
+}
+
+/** The loop can end by itself: a real condition, or a break/return/throw at its own level. */
+function loopCanExit(loop: Node, lang: Language): boolean {
+  const cond = loop.childForFieldName('condition');
+  if (cond && !/^\(?\s*(?:true|1|True)\s*\)?$/.test(cond.text)) return true;
+  const fn = enclosingFunction(loop, lang);
+  return collect(loop, EXIT_TYPES).some(
+    (n) =>
+      sameId(enclosingFunction(n, lang), fn) &&
+      (n.type !== 'break_statement' || sameId(enclosingLoop(n, lang), loop)),
+  );
+}
+
+const unboundedPollLoop: AstRule = {
+  kind: 'ast',
+  id: 'rel/unbounded-poll-loop',
+  title: 'Polling loop without a deadline',
+  category: 'reliability',
+  severity: 'low',
+  confidence: 'medium',
+  languages: [...JS_LANGS, 'python'],
+  cwe: ['CWE-835'],
+  description:
+    'A `while` loop waits for a condition by sleeping between checks, but nothing limits how long it waits: no clock comparison, attempt counter or abort timeout.',
+  impact:
+    'If the condition never holds (a stuck job, a dependency that stays down), the caller hangs forever, holding its request, worker slot or lock, and the failure never surfaces.',
+  recommendation:
+    'Bound the wait: compare `Date.now()` (or `time.monotonic()`) with a deadline, count attempts, or pass `AbortSignal.timeout(ms)` to the sleep, and fail with a clear error when the limit is reached.',
+  verification:
+    'Add a test where the condition never becomes true and assert that the wait fails after the limit.',
+  check(ctx) {
+    if (ctx.file.isTest) return [];
+    const out: Hit[] = [];
+    for (const loop of collect(ctx.tree.rootNode, 'while_statement')) {
+      const sleep = loopSleep(loop, ctx.calls, ctx.lang);
+      if (!sleep) continue;
+      if (LIFECYCLE.test(loop.childForFieldName('condition')?.text ?? '')) continue;
+      if (!loopCanExit(loop, ctx.lang) || loopBounded(loop, ctx.lang)) continue;
+      out.push({
+        node: loop,
+        message: `This polling loop waits with \`${sleep}\` but has no deadline or attempt limit; if the condition never holds it runs forever.`,
+        facts: { sleep },
+      });
+    }
+    return out;
+  },
+};
+
 export const reliabilityAstRules: AstRule[] = [
   pyRequestsTimeout,
   swallowed,
@@ -699,6 +806,7 @@ export const reliabilityAstRules: AstRule[] = [
   migrationNoDown,
   unhandledPromise,
   httpNoRetry,
+  unboundedPollLoop,
 ];
 export const reliabilityFileRules: FileRule[] = [sqlMigration];
 export const reliabilityProjectRules: ProjectRule[] = [noGracefulShutdown, noHealthCheck, noErrorTracking];
