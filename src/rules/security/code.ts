@@ -4,6 +4,8 @@ import {
   collect,
   compact,
   enclosingFunction as enclosingFunctionOf,
+  FUNCTION_TYPES,
+  functionName,
   isJs,
   isLiteral,
   isStaticString,
@@ -534,6 +536,251 @@ const ssrf: AstRule = {
             message: 'cURL URL is derived from user input.',
             facts: { sink: 'curl_setopt' },
           });
+    return out;
+  },
+};
+
+const IPV4 = /^(?:\d{1,3}\.){3}\d{1,3}$/;
+const IPV4_PREFIX = /^(?:\d{1,3}\.){1,3}$/;
+const HOST_PROP = /^host(?:name)?$/;
+/** Real address handling: parsing/classifying IPs or resolving the name before the decision. */
+const CANONICALISES = /\bisIP(?:v4|v6)?\b|\bBlockList\b|\bipaddr\b|\blookup\b/;
+/** An address helper imported from elsewhere (its body is not visible here). */
+const ADDRESS_HELPER = /^is(?:Private|Internal|Public|Loopback|Reserved|Local|Blocked|Safe)[A-Z]\w*$/;
+const DENY_FN =
+  /safe|allow|block|deny|private|internal|public|ssrf|valid|forbid|reject|trusted|guard|assert|ensure/i;
+const DENY_BRANCH =
+  /\bthrow\b|\breturn\s+(?:false|null|undefined)\b|\breject\(|\.status\(4\d\d\)|\bnew\s+\w*Error\(/;
+
+function unwrap(n: Node | null | undefined): Node | null | undefined {
+  while (n?.type === 'parenthesized_expression' || n?.type === 'non_null_expression') n = n.namedChildren[0];
+  return n;
+}
+
+/** `new URL(x)` for a value other than the page's own location. */
+function isUrlCtor(n: Node | null | undefined): boolean {
+  const u = unwrap(n);
+  if (u?.type !== 'new_expression' || u.childForFieldName('constructor')?.text !== 'URL') return false;
+  const arg = u.childForFieldName('arguments')?.namedChildren[0];
+  return !!arg && !/\b(?:location|import\.meta|document)\b/.test(arg.text);
+}
+
+interface UrlBindings {
+  urls: Set<string>;
+  hosts: Set<string>;
+}
+
+function isHostMember(n: Node | null | undefined, b: UrlBindings): boolean {
+  if (n?.type !== 'member_expression' || !HOST_PROP.test(n.childForFieldName('property')?.text ?? ''))
+    return false;
+  const obj = unwrap(n.childForFieldName('object'));
+  return isUrlCtor(obj) || (obj?.type === 'identifier' && b.urls.has(obj.text));
+}
+
+/** Names bound to `new URL(...)` and to its hostname within one function (or the module). */
+function urlBindings(scope: Node): UrlBindings {
+  const b: UrlBindings = { urls: new Set(), hosts: new Set() };
+  const decls = collect(scope, 'variable_declarator');
+  for (const d of decls) {
+    const name = d.childForFieldName('name');
+    if (name?.type === 'identifier' && isUrlCtor(d.childForFieldName('value'))) b.urls.add(name.text);
+  }
+  for (const d of decls) {
+    const name = d.childForFieldName('name');
+    const value = unwrap(d.childForFieldName('value'));
+    if (!name || !value) continue;
+    if (name.type === 'identifier' && isHostMember(value, b)) b.hosts.add(name.text);
+    if (
+      name.type === 'object_pattern' &&
+      (isUrlCtor(value) || (value.type === 'identifier' && b.urls.has(value.text)))
+    )
+      for (const c of name.namedChildren) {
+        if (c?.type === 'shorthand_property_identifier_pattern' && HOST_PROP.test(c.text))
+          b.hosts.add(c.text);
+        if (c?.type === 'pair_pattern' && HOST_PROP.test(c.childForFieldName('key')?.text ?? '')) {
+          const v = c.childForFieldName('value');
+          if (v?.type === 'identifier') b.hosts.add(v.text);
+        }
+      }
+  }
+  return b;
+}
+
+/** The hostname itself, or `hostname.toLowerCase()` / `.trim()`. */
+function isHostRef(n: Node | null | undefined, b: UrlBindings): boolean {
+  let u = unwrap(n);
+  if (u?.type === 'call_expression') {
+    const fn = u.childForFieldName('function');
+    if (
+      fn?.type === 'member_expression' &&
+      /^(?:toLowerCase|trim)$/.test(fn.childForFieldName('property')?.text ?? '')
+    )
+      u = unwrap(fn.childForFieldName('object'));
+  }
+  return isHostMember(u, b) || (u?.type === 'identifier' && b.hosts.has(u.text));
+}
+
+function denyLiteral(v: string | undefined, prefixOk: boolean): boolean {
+  if (!v) return false;
+  return (
+    IPV4.test(v) ||
+    v === 'localhost' ||
+    (v.includes(':') && /^\[?[0-9a-f:.]+\]?$/i.test(v)) ||
+    (prefixOk && IPV4_PREFIX.test(v))
+  );
+}
+
+/** First deny literal of an array (or `new Set([...])`), following one `const`. */
+function denyInList(n: Node | null | undefined, lang: Language): string | undefined {
+  let list = unwrap(n);
+  if (list?.type === 'identifier') list = constInitializer(list);
+  if (list?.type === 'new_expression' && list.childForFieldName('constructor')?.text === 'Set') {
+    list = list.childForFieldName('arguments')?.namedChildren[0];
+    if (list?.type === 'identifier') list = constInitializer(list);
+  }
+  if (list?.type !== 'array') return undefined;
+  for (const el of list.namedChildren) {
+    const v = isStaticString(el, lang) ? stringValue(el, lang) : undefined;
+    if (denyLiteral(v, false)) return v;
+  }
+  return undefined;
+}
+
+export interface HostnameDenyCheck {
+  node: Node;
+  literal: string;
+  scope: Node;
+}
+
+/** Comparisons of a `new URL(...)` hostname with a literal IP, `localhost` or an IPv4 prefix. */
+export function hostnameDenyChecks(root: Node, lang: Language): HostnameDenyCheck[] {
+  const out: HostnameDenyCheck[] = [];
+  const cache = new Map<number, UrlBindings>();
+  const bindingsFor = (scope: Node) => {
+    let b = cache.get(scope.id);
+    if (!b) {
+      b = urlBindings(scope);
+      cache.set(scope.id, b);
+    }
+    return b;
+  };
+  const lit = (n: Node | null | undefined, prefixOk: boolean) => {
+    const v = isStaticString(n, lang) ? stringValue(n, lang) : undefined;
+    return denyLiteral(v, prefixOk) ? v : undefined;
+  };
+  walk(root, (n) => {
+    const scope = enclosingFunctionOf(n, lang) ?? root;
+    if (n.type === 'binary_expression') {
+      const op = n.childForFieldName('operator')?.text ?? '';
+      if (!/^[!=]==?$/.test(op)) return;
+      const l = n.childForFieldName('left');
+      const r = n.childForFieldName('right');
+      const b = bindingsFor(scope);
+      const v = isHostRef(l, b) ? lit(r, false) : isHostRef(r, b) ? lit(l, false) : undefined;
+      if (v) out.push({ node: n, literal: v, scope });
+      return;
+    }
+    if (n.type !== 'call_expression') return;
+    const fn = n.childForFieldName('function');
+    if (fn?.type !== 'member_expression') return;
+    const prop = fn.childForFieldName('property')?.text ?? '';
+    const obj = fn.childForFieldName('object');
+    const arg = n.childForFieldName('arguments')?.namedChildren[0];
+    if (!/^(?:includes|has|startsWith|endsWith|test)$/.test(prop)) return;
+    const b = bindingsFor(scope);
+    let v: string | undefined;
+    if ((prop === 'includes' || prop === 'has') && isHostRef(arg, b)) v = denyInList(obj, lang);
+    else if ((prop === 'startsWith' || prop === 'endsWith') && isHostRef(obj, b)) v = lit(arg, true);
+    else if (prop === 'test' && unwrap(obj)?.type === 'regex' && isHostRef(arg, b)) {
+      const re = unwrap(obj)!.text;
+      if (/127\\?\.|localhost|169\\?\.254|\^10\\?\.|192\\?\.168|::1/.test(re)) v = re;
+    }
+    if (v) out.push({ node: n, literal: v, scope });
+  });
+  return out;
+}
+
+/** True when the check is a deny decision: an `if` that throws/rejects, or a guard-named function. */
+function inDenyContext(n: Node, scope: Node): boolean {
+  for (let p = n.parent; p && p.id !== scope.id; p = p.parent) {
+    if (p.type !== 'if_statement') continue;
+    const cond = p.childForFieldName('condition');
+    if (!cond || n.startIndex < cond.startIndex || n.endIndex > cond.endIndex) break;
+    return DENY_BRANCH.test(p.childForFieldName('consequence')?.text ?? '');
+  }
+  return DENY_FN.test(functionName(scope) ?? '');
+}
+
+/** The scope, or a same-file function it calls, resolves or classifies addresses for real. */
+function canonicalises(scope: Node, root: Node, lang: Language): boolean {
+  if (CANONICALISES.test(scope.text)) return true;
+  const local = new Map<string, Node>();
+  walk(root, (n) => {
+    if (!FUNCTION_TYPES[lang].has(n.type)) return;
+    const name = functionName(n);
+    if (name) local.set(name, n);
+  });
+  for (const c of collect(scope, 'call_expression')) {
+    const callee = c.childForFieldName('function');
+    // `blocked.check(h)` where `const blocked = new net.BlockList()` lives at module level.
+    const recv = callee?.type === 'member_expression' ? callee.childForFieldName('object') : undefined;
+    if (recv?.type === 'identifier' && CANONICALISES.test(constInitializer(recv)?.text ?? '')) return true;
+    if (callee?.type !== 'identifier') continue;
+    const def = local.get(callee.text);
+    if (def ? def.id !== scope.id && CANONICALISES.test(def.text) : ADDRESS_HELPER.test(callee.text))
+      return true;
+  }
+  return false;
+}
+
+/** A spelling that `new URL()` keeps distinct from the literal but that reaches the same address. */
+function bypassExample(literal: string): string {
+  if (/localhost/.test(literal)) return '`127.1`';
+  let v4 = IPV4.test(literal) ? literal : undefined;
+  if (!v4 && IPV4_PREFIX.test(literal)) {
+    const parts = literal.slice(0, -1).split('.');
+    while (parts.length < 3) parts.push('0');
+    v4 = [...parts, '1'].join('.');
+  }
+  if (v4) {
+    const [a, b, c, d] = v4.split('.').map(Number) as [number, number, number, number];
+    return `\`[::ffff:${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}]\``;
+  }
+  if (/^[0-9a-f:.]+$/i.test(literal)) return `\`[${literal}]\``;
+  return 'a DNS name that resolves to it';
+}
+
+const ssrfHostnameDenylist: AstRule = {
+  kind: 'ast',
+  id: 'sec/ssrf-hostname-denylist',
+  title: 'SSRF guard compares an unresolved hostname',
+  category: 'security',
+  severity: 'medium',
+  confidence: 'medium',
+  languages: JS_LANGS,
+  cwe: ['CWE-918'],
+  owasp: [OWASP.A01],
+  tags: ['api-security'],
+  description:
+    'A URL guard compares the hostname of `new URL(...)` with literal IP addresses, `localhost` or an IP prefix, without resolving the name or canonicalising the address.',
+  impact:
+    'Other spellings of the same address (IPv4-mapped IPv6, other loopback addresses, `127.1` for `localhost`) and DNS names that resolve to internal addresses pass the check, so the request still reaches internal services or cloud metadata.',
+  recommendation:
+    'Resolve the hostname (`dns.lookup` with `all: true`), reject private, loopback and link-local results with `net.BlockList` or `ipaddr.js`, and connect to the address you checked (a pinned `lookup`) so DNS cannot change between the check and the request.',
+  verification:
+    'Add a test that passes `http://[::ffff:7f00:1]/`, `http://127.1/` and a hostname resolving to 127.0.0.1 through the guard and asserts that all of them are rejected.',
+  check(ctx) {
+    if (ctx.file.isTest || /^\s*['"]use client['"]/m.test(ctx.source.slice(0, 500))) return [];
+    const root = ctx.tree.rootNode;
+    const out: Hit[] = [];
+    for (const c of hostnameDenyChecks(root, ctx.lang)) {
+      if (!inDenyContext(c.node, c.scope) || canonicalises(c.scope, root, ctx.lang)) continue;
+      out.push({
+        node: c.node,
+        message: `Hostname from \`new URL(...)\` is compared with \`${c.literal}\` without IP canonicalisation; ${bypassExample(c.literal)} reaches the same address.`,
+        facts: { literal: c.literal },
+      });
+    }
     return out;
   },
 };
@@ -1924,6 +2171,7 @@ export const securityCodeRules: AstRule[] = [
   codeInjection,
   xss,
   ssrf,
+  ssrfHostnameDenylist,
   pathTraversal,
   openRedirect,
   unsafeDeserialization,
