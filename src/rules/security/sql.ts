@@ -22,16 +22,16 @@ export function sqlStatements(text: string): { sql: string; line: number }[] {
     cur += s;
     line += s.match(/\n/g)?.length ?? 0;
   };
+  const tagRe = /\$(?:[A-Za-z_]\w*)?\$/y;
   let i = 0;
   while (i < text.length) {
     const ch = text[i]!;
-    const rest = text.slice(i);
-    if (rest.startsWith('--')) {
+    if (text.startsWith('--', i)) {
       const end = text.indexOf('\n', i);
       i = end < 0 ? text.length : end;
       continue;
     }
-    if (rest.startsWith('/*')) {
+    if (text.startsWith('/*', i)) {
       let depth = 0;
       let j = i;
       while (j < text.length) {
@@ -50,9 +50,12 @@ export function sqlStatements(text: string): { sql: string; line: number }[] {
       continue;
     }
     if (ch === "'" || ch === '"') {
+      // `E'…'` strings take backslash escapes (`E'Don\'t'`).
+      const escapes = ch === "'" && /[eE]/.test(text[i - 1] ?? '') && !/\w/.test(text[i - 2] ?? '');
       let j = i + 1;
       while (j < text.length) {
-        if (text[j] === ch) {
+        if (escapes && text[j] === '\\') j += 2;
+        else if (text[j] === ch) {
           if (text[j + 1] === ch) j += 2;
           else break;
         } else j++;
@@ -61,7 +64,8 @@ export function sqlStatements(text: string): { sql: string; line: number }[] {
       i = j + 1;
       continue;
     }
-    const tag = ch === '$' && !/[\w$]/.test(text[i - 1] ?? '') ? /^\$(?:[A-Za-z_]\w*)?\$/.exec(rest) : null;
+    tagRe.lastIndex = i;
+    const tag = ch === '$' && !/[\w$]/.test(text[i - 1] ?? '') ? tagRe.exec(text) : null;
     if (tag) {
       const end = text.indexOf(tag[0], i + tag[0].length);
       const j = end < 0 ? text.length : end + tag[0].length;
@@ -81,38 +85,61 @@ export function sqlStatements(text: string): { sql: string; line: number }[] {
   return out;
 }
 
-/** `"public"."ledger"`, `public.ledger` and `ledger` are the same table. */
+interface TableRef {
+  schema?: string;
+  name: string;
+}
+
+/** `"public"."ledger"`, `public.ledger` and `ledger` are one table; `audit.ledger` is another. */
+function tableRef(raw: string): TableRef {
+  const parts = raw.trim().replace(/"/g, '').toLowerCase().split('.');
+  const name = parts[parts.length - 1] ?? '';
+  const schema = parts.length > 1 ? parts[parts.length - 2] : undefined;
+  return schema && schema !== 'public' ? { schema, name } : { name };
+}
+
+function sameTable(a: TableRef, b: TableRef): boolean {
+  return a.name === b.name && (!a.schema || !b.schema || a.schema === b.schema);
+}
+
 function bareName(name: string): string {
-  return (name.split('.').pop() ?? name).replace(/"/g, '').toLowerCase();
+  return (name.split('.').pop() ?? name).replace(/"/g, '').trim().toLowerCase();
 }
 
 const FUNCTION_RE = /^CREATE\s+(?:OR\s+REPLACE\s+)?FUNCTION\s+([\w."]+)\s*\(/i;
+const DROP_FUNCTION_RE = /^DROP\s+FUNCTION\s+(?:IF\s+EXISTS\s+)?([\s\S]+?)(?:\s+(?:CASCADE|RESTRICT))?$/i;
 const TRIGGER_RE =
-  /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+[\w."]+\s+BEFORE\s+([\s\S]+?)\s+ON\s+([\w."]+)[\s\S]*?\bEXECUTE\s+(?:FUNCTION|PROCEDURE)\s+([\w."]+)/i;
+  /^CREATE\s+(?:OR\s+REPLACE\s+)?(?:CONSTRAINT\s+)?TRIGGER\s+([\w."]+)\s+BEFORE\s+([\s\S]+?)\s+ON\s+([\w."]+)([\s\S]*?)\bEXECUTE\s+(?:FUNCTION|PROCEDURE)\s+([\w."]+)/i;
+const DROP_TRIGGER_RE = /^DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?([\w."]+)\s+ON\s+([\w."]+)/i;
+const TOGGLE_TRIGGER_RE =
+  /^ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([\w."]+)\s+(ENABLE|DISABLE)\s+(?:ALWAYS\s+|REPLICA\s+)?TRIGGER\s+([\w."]+)/i;
 const GRANT_RE =
   /^GRANT\s+([\s\S]+?)\s+ON\s+(?:TABLE\s+)?([\w."]+(?:\s*,\s*[\w."]+)*)\s+TO\s+([\s\S]+?)\s*$/i;
-
 const REVOKE_RE =
   /^REVOKE\s+(?:GRANT\s+OPTION\s+FOR\s+)?([\s\S]+?)\s+ON\s+(?:TABLE\s+)?(ALL\s+TABLES\s+IN\s+SCHEMA\s+[\s\S]+?|[\w."]+(?:\s*,\s*[\w."]+)*)\s+FROM\s+([\s\S]+?)(?:\s+(?:CASCADE|RESTRICT))?\s*$/i;
 /** `ALTER FUNCTION … OWNER TO role`, also inside a `format()` string of a DO block. */
 const FUNCTION_OWNER_RE = /\bALTER\s+FUNCTION\b[^;]*?\bOWNER\s+TO\s+("?[\w]+"?)/gi;
-/** Rollback scripts: `down.sql`, `0002_x.down.sql`, `down/0002.sql`. */
-const DOWN_MIGRATION = /(?:^|\/)down(?:\.sql$|\/)|[._-]down\.sql$/i;
+/** Rollback scripts: `down.sql`, `0002_x.down.sql`, `down/` or `rollback/` folders, Flyway undo `U2__x.sql`. */
+const DOWN_MIGRATION =
+  /(?:^|\/)(?:down|rollbacks?|undo)(?:\.sql$|\/)|[._-](?:down|rollback|undo)\.sql$|(?:^|\/)U\d+(?:[._]\d+)*__[^/]*\.sql$/i;
+const WRITE_PRIVILEGES = ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE'];
 
 function bareRole(name: string): string {
   return name.replace(/"/g, '').trim().toLowerCase();
 }
 
-/** Grantees of a GRANT or REVOKE (`GROUP` keywords dropped). */
+/** Grantees of a GRANT or REVOKE (`GROUP`, `WITH GRANT OPTION` and `GRANTED BY` dropped). */
 function roles(list: string): string[] {
   return list
+    .replace(/\s+WITH\s+GRANT\s+OPTION\b/i, '')
+    .replace(/\s+GRANTED\s+BY\s+\S+/i, '')
     .split(',')
     .map((r) => bareRole(r.replace(/^\s*GROUP\s+/i, '')))
     .filter(Boolean);
 }
 
-/** Privileges of a GRANT, split on commas outside column lists. */
-function privileges(list: string): { name: string; columns: boolean }[] {
+/** Table-wide write privileges of a GRANT or REVOKE (`ALL` expanded); column lists are left out. */
+function writePrivileges(list: string): string[] {
   const parts: string[] = [];
   let depth = 0;
   let cur = '';
@@ -125,10 +152,27 @@ function privileges(list: string): { name: string; columns: boolean }[] {
     } else cur += ch;
   }
   parts.push(cur);
-  return parts.map((p) => ({
-    name: (/^\s*(\w+)/.exec(p)?.[1] ?? '').toUpperCase(),
-    columns: p.includes('('),
-  }));
+  const out = new Set<string>();
+  for (const p of parts) {
+    if (p.includes('(')) continue;
+    const name = (/^\s*(\w+)/.exec(p)?.[1] ?? '').toUpperCase();
+    if (name === 'ALL') for (const w of WRITE_PRIVILEGES) out.add(w);
+    else if (WRITE_PRIVILEGES.includes(name)) out.add(name);
+  }
+  return [...out];
+}
+
+/** A trigger function that always raises: it never hands a row back, so every row change is refused. */
+function alwaysRaises(sql: string): boolean {
+  return /\bRAISE\s+EXCEPTION\b/i.test(sql) && !/\bRETURN\s+(?!NULL\b)\S/i.test(sql);
+}
+
+function advice(privs: string[]): string {
+  if (privs.every((p) => p === 'INSERT'))
+    return 'limit it to the columns the role must write, or insert through a SECURITY DEFINER function.';
+  if (!privs.includes('INSERT'))
+    return 'remove the grant: the trigger forbids UPDATE and DELETE, and TRUNCATE skips row triggers.';
+  return 'grant at most INSERT on the columns the role must write; UPDATE, DELETE and TRUNCATE contradict the trigger.';
 }
 
 const sqlGrantAppendOnly: ProjectRule = {
@@ -149,96 +193,120 @@ const sqlGrantAppendOnly: ProjectRule = {
   verification:
     'Connect as the role and assert that `UPDATE`, `DELETE`, `TRUNCATE` and an `INSERT` of a column outside the allowed list all fail.',
   check(ctx) {
-    // Rollback scripts do not describe the deployed state; migrations apply in path order.
+    // Rollback scripts do not describe the deployed state; migrations apply in (numeric) path order.
     const files = ctx.files.files
       .filter((f) => f.path.endsWith('.sql') && !f.isTest && !DOWN_MIGRATION.test(f.path))
-      .sort((a, b) => a.path.localeCompare(b.path));
-    const stmts = files.flatMap((f) =>
-      sqlStatements(ctx.files.read(f.path) ?? '').map((s) => ({ ...s, file: f.path })),
-    );
-    // A function that always raises: it never hands the row back, so the trigger blocks every row.
-    const raising = new Set<string>();
+      .sort((a, b) => a.path.localeCompare(b.path, undefined, { numeric: true }));
+    const raising = new Map<string, boolean>();
     const definers = new Set<string>();
-    for (const s of stmts) {
-      const m = FUNCTION_RE.exec(s.sql);
-      if (m && /\bRAISE\s+EXCEPTION\b/i.test(s.sql) && !/\bRETURN\s+(?:NEW|OLD)\b/i.test(s.sql))
-        raising.add(bareName(m[1]!));
-      for (const o of s.sql.matchAll(FUNCTION_OWNER_RE)) definers.add(bareRole(o[1]!));
-    }
-    const appendOnly = new Map<string, { file: string; line: number }>();
-    for (const s of stmts) {
-      const m = TRIGGER_RE.exec(s.sql);
-      if (!m) continue;
-      const events = m[1]!;
-      if (!/\bUPDATE\b(?!\s+OF\b)/i.test(events) || !/\bDELETE\b/i.test(events)) continue;
-      if (!raising.has(bareName(m[3]!))) continue;
-      const table = bareName(m[2]!);
-      if (!appendOnly.has(table)) appendOnly.set(table, { file: s.file, line: s.line });
-    }
-    if (!appendOnly.size) return [];
-    // Grants still in force after the later REVOKEs, one record per table, role and privilege.
+    const triggers = new Map<
+      string,
+      { name: string; table: TableRef; fn: string; on: boolean; file: string; line: number }
+    >();
     const grants: {
-      table: string;
+      table: TableRef;
       role: string;
       priv: string;
       file: string;
       line: number;
       active: boolean;
     }[] = [];
-    for (const s of stmts) {
-      const g = GRANT_RE.exec(s.sql);
-      if (g) {
-        const privs = privileges(g[1]!).filter(
-          (p) => !p.columns && /^(?:INSERT|UPDATE|DELETE|TRUNCATE|ALL)$/.test(p.name),
-        );
-        for (const t of g[2]!.split(','))
-          for (const role of roles(g[3]!.replace(/\s+WITH\s+GRANT\s+OPTION$/i, '')))
-            for (const p of privs)
-              grants.push({
-                table: bareName(t.trim()),
-                role,
-                priv: p.name,
-                file: s.file,
-                line: s.line,
-                active: true,
-              });
-        continue;
+    for (const f of files)
+      for (const s of sqlStatements(ctx.files.read(f.path) ?? '')) {
+        for (const o of s.sql.matchAll(FUNCTION_OWNER_RE)) definers.add(bareRole(o[1]!));
+        let m = FUNCTION_RE.exec(s.sql);
+        if (m) {
+          raising.set(bareName(m[1]!), alwaysRaises(s.sql));
+          continue;
+        }
+        m = DROP_FUNCTION_RE.exec(s.sql);
+        if (m) {
+          for (const fn of m[1]!.replace(/\([^)]*\)/g, '').split(',')) raising.delete(bareName(fn));
+          continue;
+        }
+        m = TRIGGER_RE.exec(s.sql);
+        if (m) {
+          const [, name, events, table, between, fn] = m;
+          const key = `${bareName(name!)}\0${tableRef(table!).name}`;
+          // A WHEN clause locks only some rows; `UPDATE OF col` only some columns.
+          const lock =
+            /\bUPDATE\b(?!\s+OF\b)/i.test(events!) &&
+            /\bDELETE\b/i.test(events!) &&
+            !/\bWHEN\s*\(/i.test(between!);
+          if (lock)
+            triggers.set(key, {
+              name: bareName(name!),
+              table: tableRef(table!),
+              fn: bareName(fn!),
+              on: true,
+              file: f.path,
+              line: s.line,
+            });
+          else triggers.delete(key);
+          continue;
+        }
+        m = DROP_TRIGGER_RE.exec(s.sql);
+        if (m) {
+          triggers.delete(`${bareName(m[1]!)}\0${tableRef(m[2]!).name}`);
+          continue;
+        }
+        m = TOGGLE_TRIGGER_RE.exec(s.sql);
+        if (m) {
+          const table = tableRef(m[1]!);
+          const which = bareName(m[3]!);
+          for (const t of triggers.values())
+            if (sameTable(t.table, table) && (which === 'all' || which === 'user' || which === t.name))
+              t.on = m[2]!.toUpperCase() === 'ENABLE';
+          continue;
+        }
+        m = GRANT_RE.exec(s.sql);
+        if (m) {
+          const privs = writePrivileges(m[1]!);
+          for (const t of m[2]!.split(','))
+            for (const role of roles(m[3]!))
+              for (const priv of privs)
+                grants.push({ table: tableRef(t), role, priv, file: f.path, line: s.line, active: true });
+          continue;
+        }
+        m = REVOKE_RE.exec(s.sql);
+        if (m) {
+          const privs = writePrivileges(m[1]!);
+          const tables = /^ALL\s+TABLES\s+IN\s+SCHEMA\b/i.test(m[2]!)
+            ? undefined
+            : m[2]!.split(',').map(tableRef);
+          const from = new Set(roles(m[3]!));
+          for (const g of grants)
+            if (
+              g.active &&
+              from.has(g.role) &&
+              privs.includes(g.priv) &&
+              (!tables || tables.some((t) => sameTable(t, g.table)))
+            )
+              g.active = false;
+        }
       }
-      const r = REVOKE_RE.exec(s.sql);
-      if (!r) continue;
-      const privs = privileges(r[1]!)
-        .filter((p) => !p.columns)
-        .map((p) => p.name);
-      const tables = /^ALL\s+TABLES\s+IN\s+SCHEMA\b/i.test(r[2]!)
-        ? undefined
-        : new Set(r[2]!.split(',').map((t) => bareName(t.trim())));
-      const from = new Set(roles(r[3]!));
-      for (const g2 of grants)
-        if (
-          g2.active &&
-          from.has(g2.role) &&
-          (!tables || tables.has(g2.table)) &&
-          (privs.includes('ALL') || privs.includes(g2.priv))
-        )
-          g2.active = false;
+    const appendOnly = [...triggers.values()].filter((t) => t.on && raising.get(t.fn) === true);
+    if (!appendOnly.length) return [];
+    const sites = new Map<string, { grants: typeof grants; trigger: (typeof appendOnly)[number] }>();
+    for (const g of grants) {
+      if (!g.active || definers.has(g.role)) continue;
+      const trigger = appendOnly.find((t) => sameTable(t.table, g.table));
+      if (!trigger) continue;
+      const key = `${g.file}\0${g.line}\0${g.table.schema ?? ''}.${g.table.name}`;
+      const site = sites.get(key) ?? { grants: [], trigger };
+      site.grants.push(g);
+      sites.set(key, site);
     }
     const out: Hit[] = [];
-    const sites = new Map<string, typeof grants>();
-    for (const g of grants) {
-      if (!g.active || !appendOnly.has(g.table) || definers.has(g.role)) continue;
-      const key = `${g.file}\0${g.line}\0${g.table}`;
-      sites.set(key, [...(sites.get(key) ?? []), g]);
-    }
-    for (const list of sites.values()) {
+    for (const { grants: list, trigger } of sites.values()) {
       const { file, line, table } = list[0]!;
-      const trigger = appendOnly.get(table)!;
       const role = [...new Set(list.map((g) => g.role))].join(', ');
-      const priv = [...new Set(list.map((g) => g.priv))].join(', ');
+      const privs = WRITE_PRIVILEGES.filter((p) => list.some((g) => g.priv === p));
       out.push({
         file,
         line,
-        message: `Role \`${role}\` gets table-wide \`${priv}\` on append-only table \`${table}\` (${trigger.file}:${trigger.line}); limit it to the columns the role must write, or insert through a SECURITY DEFINER function.`,
-        facts: { role, privileges: priv, table },
+        message: `Role \`${role}\` gets table-wide \`${privs.join(', ')}\` on append-only table \`${table.name}\` (${trigger.file}:${trigger.line}); ${advice(privs)}`,
+        facts: { role, privileges: privs.join(', '), table: table.name },
       });
     }
     return out;

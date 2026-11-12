@@ -417,7 +417,8 @@ const sqlMigration: FileRule = {
   check(ctx) {
     const out: Hit[] = [];
     ctx.lines.forEach((l, i) => {
-      if (/^\s*--/.test(l)) return;
+      // Comments, and privilege statements that only name TRUNCATE/DELETE (`REVOKE … TRUNCATE ON t FROM r`).
+      if (/^\s*--/.test(l) || /^\s*(?:GRANT|REVOKE)\b/i.test(l)) return;
       if (/\bDROP\s+(?:TABLE|COLUMN|SCHEMA|DATABASE)\b/i.test(l))
         out.push({ line: i + 1, message: `\`${l.trim().slice(0, 80)}\` drops data.` });
       else if (/\bTRUNCATE\b/i.test(l) || /\bDELETE\s+FROM\s+\S+\s*;/i.test(l))

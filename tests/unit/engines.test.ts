@@ -655,4 +655,19 @@ describe('sql grants', () => {
       { sql: 'GRANT INSERT   ON t \nTO w', line: 1 },
     ]);
   });
+
+  it('advises by privilege: column grants for INSERT, no grant for DELETE', async () => {
+    const trigger = [
+      "CREATE FUNCTION f() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'no'; END $$;",
+      'CREATE TRIGGER t_ao BEFORE UPDATE OR DELETE ON t FOR EACH ROW EXECUTE FUNCTION f();',
+    ].join('\n');
+    const hits = await ruleHits(
+      makeTree({ 'db/schema.sql': `${trigger}\nGRANT DELETE ON t TO a;\nGRANT INSERT ON t TO b;\n` }),
+      'sec/sql-grant-append-only',
+    );
+    expect(hits.map((h) => h.message)).toEqual([
+      'Role `a` gets table-wide `DELETE` on append-only table `t` (db/schema.sql:2); remove the grant: the trigger forbids UPDATE and DELETE, and TRUNCATE skips row triggers.',
+      'Role `b` gets table-wide `INSERT` on append-only table `t` (db/schema.sql:2); limit it to the columns the role must write, or insert through a SECURITY DEFINER function.',
+    ]);
+  });
 });
