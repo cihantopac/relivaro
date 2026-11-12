@@ -3,6 +3,7 @@ import { qualityAstRules, qualityFileRules } from './quality.js';
 import { reliabilityAstRules, reliabilityFileRules, reliabilityProjectRules } from './reliability.js';
 import { securityCodeRules } from './security/code.js';
 import { securityFileRules, securityProjectRules } from './security/files.js';
+import { securitySqlRules } from './security/sql.js';
 import { webServerRules } from './security/webserver.js';
 import { supplyChainRules } from './supply-chain.js';
 import type { Rule, RuleMeta } from './types.js';
@@ -11,6 +12,7 @@ export const RULES: Rule[] = [
   ...securityCodeRules,
   ...securityFileRules,
   ...securityProjectRules,
+  ...securitySqlRules,
   ...webServerRules,
   ...supplyChainRules,
   ...reliabilityAstRules,

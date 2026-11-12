@@ -15,6 +15,7 @@ import { compareStats, stats } from '../../src/perf/stats.js';
 import { assessRelease, releaseTally } from '../../src/release/readiness.js';
 import { compareRuns } from '../../src/report/compare.js';
 import { HEALTH_ROUTE_RE } from '../../src/rules/reliability.js';
+import { sqlStatements } from '../../src/rules/security/sql.js';
 
 function finding(p: Partial<Finding>): Finding {
   return {
@@ -624,5 +625,34 @@ describe('deferred minors', () => {
       '',
     ].join('\n');
     expect(await ruleHits(makeTree({ 'app.py': code }), 'sec/path-traversal')).toEqual([]);
+  });
+});
+
+describe('sql grants', () => {
+  it('splits statements on semicolons outside quotes, dollar-quoted bodies and comments', () => {
+    const text = [
+      "CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'no; way'; END; $$ LANGUAGE plpgsql;",
+      '-- GRANT ALL ON t TO x;',
+      '/* GRANT ALL ON t TO y; */',
+      "INSERT INTO t VALUES ('a;b'); SELECT $body$ x; y $body$;",
+      '',
+      '  GRANT INSERT ON "public"."t"',
+      '    TO worker',
+    ].join('\n');
+    expect(sqlStatements(text)).toEqual([
+      {
+        sql: "CREATE FUNCTION f() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'no; way'; END; $$ LANGUAGE plpgsql",
+        line: 1,
+      },
+      { sql: "INSERT INTO t VALUES ('a;b')", line: 4 },
+      { sql: 'SELECT $body$ x; y $body$', line: 4 },
+      { sql: 'GRANT INSERT ON "public"."t"\n    TO worker', line: 6 },
+    ]);
+  });
+
+  it('drops comments inside a statement', () => {
+    expect(sqlStatements('GRANT INSERT /* all columns */ ON t -- note\nTO w;')).toEqual([
+      { sql: 'GRANT INSERT   ON t \nTO w', line: 1 },
+    ]);
   });
 });
