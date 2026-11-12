@@ -33,3 +33,19 @@ def wait_counted():
         if done():
             return
         time.sleep(1)
+
+
+def wait_counted():
+    i = 0
+    while i < 30 and not done():
+        time.sleep(1)
+        i += 1
+
+
+class Worker:
+    def __init__(self):
+        self._stop_event = None
+
+    def run(self):
+        while not self._stop_event.is_set():
+            time.sleep(5)

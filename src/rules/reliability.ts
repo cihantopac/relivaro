@@ -693,11 +693,12 @@ const SLEEP_JS = /^(?:sleep|delay)(?:Ms|For|Seconds|Millis)?$|^(?:timers\.)?setT
 const SLEEP_PY = /^(?:(?:asyncio|time|anyio|trio|gevent)\.)?sleep$/;
 const CLOCK =
   /\bDate\.now\(\)|\bperformance\.now\(\)|\bnew Date\(\)|\b(?:time\.)?(?:monotonic|perf_counter)(?:_ns)?\(\)|\btime\.time\(\)|\bdatetime\.(?:now|utcnow)\(|\bloop\.time\(\)/;
-const ABORT_BOUND = /\bAbortSignal\.(?:timeout|any)\(|\bsignal\??\.(?:aborted|throwIfAborted)\b/;
-const BOUND_NAME = /deadline|timeout|until|attempt|tries|retries|maxWait|max_wait|expires/i;
-/** A lifecycle flag: the loop is a service loop that runs until shutdown, not a wait for a condition. */
-const LIFECYCLE =
-  /\b_?(?:running|isRunning|is_running|stopped|stopping|shutdown|shuttingDown|shutting_down|closed|closing|active|alive|cancelled|canceled)\b/i;
+/** An abort signal anywhere in the loop (built inside, built outside and passed to the sleep, or the caller's). */
+const ABORT_BOUND = /\bAbortSignal\.(?:timeout|any)\(|\bsignal\b/;
+const BOUND_NAME =
+  /deadline|timeout|until|attempt|tries|retries|max|limit|elapsed|waited|remaining|expires|budget/i;
+/** A lifecycle flag or event: the loop is a service loop that runs until shutdown, not a wait for a condition. */
+const LIFECYCLE = /running|stop|shut|clos|cancel|abort|polling|enabled|keep|alive|active|is_?set/i;
 const BOUND_TYPES = new Set([
   'binary_expression',
   'comparison_operator',
@@ -706,6 +707,7 @@ const BOUND_TYPES = new Set([
   'augmented_assignment',
 ]);
 const COMPARISON = /^(?:<|>|<=|>=|==|===|!=|!==)$/;
+const COUNTED_REFS = new Set(['identifier', 'member_expression', 'attribute', 'update_expression']);
 const EXIT_TYPES = new Set(['break_statement', 'return_statement', 'throw_statement', 'raise_statement']);
 
 const sameId = (a: Node | null, b: Node | null) => (a?.id ?? -1) === (b?.id ?? -1);
@@ -737,10 +739,28 @@ function loopSleep(loop: Node, calls: CallInfo[], lang: Language): string | unde
 /** A clock, an attempt counter, an abort timeout or an enclosing `with timeout(...)` limits the loop. */
 function loopBounded(loop: Node, lang: Language): boolean {
   if (CLOCK.test(loop.text) || ABORT_BOUND.test(loop.text)) return true;
-  for (const n of collect(loop, BOUND_TYPES)) {
-    if (n.type === 'binary_expression' && !COMPARISON.test(n.childForFieldName('operator')?.text ?? ''))
-      continue;
-    if (BOUND_NAME.test(n.text)) return true;
+  const nodes = collect(loop, BOUND_TYPES);
+  // Variables the loop counts up or down (`i++`, `n--`, `waited += 100`, `tries += 1`).
+  const counted = new Set<string>();
+  for (const n of nodes) {
+    const target =
+      n.type === 'update_expression'
+        ? n.childForFieldName('argument')
+        : n.type === 'augmented_assignment_expression' || n.type === 'augmented_assignment'
+          ? n.childForFieldName('left')
+          : null;
+    if (target) counted.add(target.text);
+  }
+  for (const n of nodes) {
+    const comparison =
+      n.type === 'comparison_operator' ||
+      (n.type === 'binary_expression' && COMPARISON.test(n.childForFieldName('operator')?.text ?? ''));
+    if (comparison) {
+      // A counted variable, a numeric limit or a limit-like name in a comparison bounds the loop.
+      if (BOUND_NAME.test(n.text)) return true;
+      if (n.namedChildren.some((c) => c && /^(?:number|integer|float)$/.test(c.type))) return true;
+      if (collect(n, COUNTED_REFS).some((r) => counted.has(r.text)) || counted.has(n.text)) return true;
+    } else if (n.type !== 'binary_expression' && BOUND_NAME.test(n.text)) return true;
   }
   const fn = enclosingFunction(loop, lang);
   for (let p = loop.parent; p && !sameId(p, fn); p = p.parent)
@@ -768,7 +788,7 @@ const unboundedPollLoop: AstRule = {
   severity: 'low',
   confidence: 'medium',
   languages: [...JS_LANGS, 'python'],
-  cwe: ['CWE-835'],
+  cwe: ['CWE-834'],
   description:
     'A `while` loop waits for a condition by sleeping between checks, but nothing limits how long it waits: no clock comparison, attempt counter or abort timeout.',
   impact:

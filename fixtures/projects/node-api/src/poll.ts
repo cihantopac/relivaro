@@ -59,3 +59,57 @@ export class Worker {
     this.stopped = true;
   }
 }
+
+// Review negatives: counters, accumulated waits, a signal built outside the loop or passed in, worker flags.
+
+export async function waitCounted(): Promise<void> {
+  let i = 0;
+  while (i < 30 && !(await ready())) {
+    await sleep(1000);
+    i++;
+  }
+}
+
+export async function waitCountdown(n: number): Promise<void> {
+  while (n-- > 0) {
+    if (await ready()) return;
+    await sleep(100);
+  }
+}
+
+export async function waitAccumulated(maxMs: number): Promise<void> {
+  let waited = 0;
+  while (!(await ready())) {
+    if (waited >= maxMs) throw new Error('timed out');
+    await sleep(100);
+    waited += 100;
+  }
+}
+
+export async function waitOuterSignal(): Promise<void> {
+  const signal = AbortSignal.timeout(30_000);
+  while (!(await ready())) await sleepFor(500, undefined, { signal });
+}
+
+export async function waitCallerSignal(signal: AbortSignal): Promise<void> {
+  while (!(await ready())) await sleepFor(500, undefined, { signal });
+}
+
+export class Poller {
+  private stopRequested = false;
+  private isPolling = true;
+
+  async run(): Promise<void> {
+    while (!this.stopRequested) {
+      await ready();
+      await sleep(1000);
+    }
+  }
+
+  async poll(): Promise<void> {
+    while (this.isPolling) {
+      await ready();
+      await sleep(1000);
+    }
+  }
+}
