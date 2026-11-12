@@ -12,3 +12,5 @@ Thumbs.db
 # Relivaro run data (reports, fix backups, history) never belongs in git.
 /.relivaro/
 plugin/node_modules/
+# Plans, specs and session handoffs stay local.
+/docs/superpowers/
