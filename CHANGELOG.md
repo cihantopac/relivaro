@@ -3,6 +3,26 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
+## [Unreleased]
+
+### Changed
+
+- **HTML report redesign.** The report reads like a product page: one verdict sentence with a matching action
+  (*Fix these first* selects the findings behind the blocking gates; without such findings it points to the gates), a
+  band of four numbers, *Fix first* rows, the run flow on one line, a neutral breakdown, grouped gates (passed and not
+  applicable collapsed), quieter finding rows and a fix-prompt sheet that shows the selected findings first and keeps
+  the editable text one click away. Long explanations moved into disclosures; headings and labels are shorter in
+  English and Turkish. Colour follows a 60-30-10 balance on the Relivaro palette: teal only for actions, focus and
+  selection, severity and status as small dots and glyphs. The prompt text, the payload and the security model (CSP,
+  `textContent` only, three scripts) are unchanged.
+- README rewritten with new screenshots, a new workflow diagram and a new social preview image.
+
+### Added
+
+- `scripts/report-states.mjs` renders reports across widths, themes and languages and fails on page errors,
+  horizontal overflow, untranslated keys or lost selection state; `scripts/social-preview.mjs` renders the social
+  preview images from a real report (both development only).
+
 ## [1.6.0] — 2026-11-12
 
 New rule families from the Frameva field reports (b-03 safe-fetch, b-04 saga, b-05 artifact ingestion, b-08 health
