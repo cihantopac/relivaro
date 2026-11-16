@@ -207,3 +207,34 @@ describe('report client', () => {
     expect(REPORT_JS).not.toContain('sevStyle');
   });
 });
+
+describe('report review fixes', () => {
+  it('controls reset with all:unset get a visible focus ring', async () => {
+    const { REPORT_CSS } = await import('../../src/report/html-style.js');
+    for (const sel of [
+      '.link',
+      '.row-btn',
+      '.remsum button',
+      '.barrow',
+      '.sevlist button',
+      '.gate',
+      '.ab-btns .ghost',
+    ]) {
+      const unsetAt = REPORT_CSS.indexOf(`${sel}{all:unset`);
+      const focus = REPORT_CSS.search(
+        new RegExp(`${sel.replace(/[.*]/g, '\\$&')}:focus-visible[^{]*\\{[^}]*outline:2px`),
+      );
+      expect(unsetAt, sel).toBeGreaterThanOrEqual(0);
+      expect(focus, sel).toBeGreaterThan(unsetAt);
+    }
+  });
+
+  it('counted labels use the singular form for one', async () => {
+    const { REPORT_JS } = await import('../../src/report/html-client.js');
+    const { I18N } = await import('../../src/report/html-i18n.js');
+    for (const k of ['group.count', 'sel.group']) {
+      expect(REPORT_JS).toContain(`tn('${k}'`);
+      expect(Object.keys(I18N.en)).toContain(`${k}.one`);
+    }
+  });
+});

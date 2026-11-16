@@ -260,6 +260,7 @@ details.f>summary:hover .ttl{color:var(--accent-ink)}
 .ab-btns .ghost{all:unset;cursor:pointer;color:color-mix(in srgb,var(--on-pill) 70%,transparent);font-weight:600;font-size:13.5px;padding:8px 12px;border-radius:999px}
 .ab-btns .ghost:hover{color:var(--on-pill)}
 body.has-bar footer{padding-bottom:120px}
+.link:focus-visible,.row-btn:focus-visible,.remsum button:focus-visible,.barrow:focus-visible,.sevlist button:focus-visible,.gate:focus-visible,.ab-btns .ghost:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
 /* fix-prompt sheet */
 .pdlg{border:0;border-radius:22px;padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 32px);background:var(--surface);color:var(--text);box-shadow:0 30px 90px rgba(0,0,0,.35);overflow:auto}

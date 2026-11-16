@@ -129,6 +129,9 @@ function copyText(text, area, done) {
     try {
       var ta = area;
       if (!ta) { ta = el('textarea', { style: { position: 'fixed', opacity: '0' } }); ta.value = text; document.body.appendChild(ta); }
+      /* A textarea inside a closed disclosure cannot be selected: open it first. */
+      var holder = ta.closest && ta.closest('details');
+      if (holder && !holder.open) holder.open = true;
       ta.focus(); ta.select();
       ok = document.execCommand && document.execCommand('copy');
       if (!area) document.body.removeChild(ta);
@@ -490,7 +493,7 @@ function setSel(list, on) {
 }
 function groupHead(rule, list) {
   var all = list.every(function (f) { return state.sel[f.id]; }), some = list.some(function (f) { return state.sel[f.id]; });
-  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.group', { n: list.length, rule: rule }) });
+  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': tn('sel.group', list.length, { n: list.length, rule: rule }) });
   cb.checked = all; cb.indeterminate = some && !all;
   cb.addEventListener('change', function () { setSel(list, cb.checked); renderFindingsList(); var again = document.querySelector('[data-group="' + rule.replace(/[^\w\/-]/g, '') + '"]'); if (again) again.focus(); });
   cb.setAttribute('data-group', rule.replace(/[^\w\/-]/g, ''));
@@ -498,7 +501,7 @@ function groupHead(rule, list) {
   return el('div', { cls: 'ghead' }, [
     el('label', { cls: 'fsel-wrap' }, [cb]),
     el('div', { cls: 'gtitle' }, [dot(list[0].severity), el('b', null, [md(list[0].title)]), el('code', { text: rule })]),
-    el('span', { cls: 'side' }, uniq(list.map(function (f) { return remOf(f).kind; })).map(remTag).concat([el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: t('group.count', { n: num(list.length) }) })]))
+    el('span', { cls: 'side' }, uniq(list.map(function (f) { return remOf(f).kind; })).map(remTag).concat([el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: tn('group.count', list.length, { n: num(list.length) }) })]))
   ]);
 }
 function renderFindingsList() {
@@ -652,7 +655,7 @@ function openPrompt() {
   });
   if (list.length > 6) rows.push(el('div', { cls: 'muted' }, [el('span'), el('span', { text: t('pr.more', { n: num(list.length - 6) }) }), el('span')]));
   var copyBtn = el('button', { type: 'button', cls: 'btn pri', text: t('pr.copy'), on: { click: function () {
-    copyText(area.value, textBox.open ? area : null, function (ok) {
+    copyText(area.value, area, function (ok) {
       status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked');
       if (!ok) { textBox.open = true; area.focus(); area.select(); }
     });

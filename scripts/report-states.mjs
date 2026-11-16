@@ -61,6 +61,22 @@ for (const report of reports) {
           }));
           if (after.selected !== 2 || after.open !== 1 || !after.bar)
             problems.push(`${tag}: state lost ${JSON.stringify(after)}`);
+
+          // Copy falls back to selecting the prompt text when the async clipboard is refused (file:// pages).
+          await page.evaluate(() => {
+            navigator.clipboard.writeText = () => Promise.reject(new Error('blocked'));
+            window.__copied = null;
+            document.addEventListener('copy', () => {
+              window.__copied =
+                String(window.getSelection()) || document.activeElement?.value?.slice(0, 40) || '';
+            });
+          });
+          await page.locator('#actionbar .btn.pri').click();
+          await page.locator('#prompt[open] .pr-btns .btn.pri').click();
+          await page.waitForTimeout(100);
+          const copied = await page.evaluate(() => window.__copied);
+          if (!copied || !copied.includes('Relivaro'))
+            problems.push(`${tag}: copy fallback copied ${JSON.stringify(copied)}`);
         }
         await ctx.close();
       }
