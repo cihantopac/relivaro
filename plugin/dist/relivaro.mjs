@@ -26226,6 +26226,7 @@ var REM_KINDS = ['deterministic', 'agent', 'manual'];
 var VSTATES = ['detected', 'confirmed', 'false-positive', 'needs-runtime', 'accepted'];
 var SEV = ['critical', 'high', 'medium', 'low', 'info'];
 var CATS = ['security', 'supply-chain', 'reliability', 'performance', 'quality', 'testing', 'release'];
+var GATE_ORDER = ['block', 'warn', 'unverified', 'pass', 'n/a'];
 var SEV_W = { critical: 16, high: 8, medium: 4, low: 2, info: 1 };
 var NS = 'http://www.w3.org/2000/svg';
 var store = {
@@ -26250,6 +26251,8 @@ function t(k, v) {
   if (v) for (var n in v) s = s.split('{' + n + '}').join(String(v[n]));
   return s;
 }
+/* Count-aware string: the ".one" variant when the count is 1. */
+function tn(k, n, v) { return t(n === 1 && I.en[k + '.one'] ? k + '.one' : k, v); }
 function el(tag, o, kids) {
   var e = document.createElement(tag);
   if (o) for (var k in o) {
@@ -26299,10 +26302,8 @@ function when(iso) {
   catch (e) { return iso; }
 }
 function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
-var VAR_ALIAS = { unverified: 'unv', 'n/a': 'na' };
-function cssVar(name) { return 'var(--' + (VAR_ALIAS[name] || name) + ')'; }
 function stKey(st) { return st === 'n/a' ? 'na' : st; }
-function sevStyle(sev) { return { color: cssVar(sev), background: 'color-mix(in srgb, ' + cssVar(sev) + ' 13%, transparent)' }; }
+function where(f) { return f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : ''; }
 
 /* Status glyphs: drawn shapes, so status never relies on colour alone. */
 function glyph(st, size) {
@@ -26313,23 +26314,24 @@ function glyph(st, size) {
   if (st === 'unverified') return s('svg', o, [s('circle', { cx: 8, cy: 8, r: 6.2, 'stroke-dasharray': '2.4 2' }), s('path', { d: 'M6.3 6.3a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1M8 11.3v.1' })]);
   return s('svg', o, [s('path', { d: 'M4.5 8h7' })]);
 }
+function stGlyph(st, size) { return el('span', { cls: 'glyph c-' + stKey(st) }, [glyph(st, size)]); }
 var searchIcon = function () { return s('svg', { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true' }, [s('circle', { cx: 7, cy: 7, r: 4.8 }), s('path', { d: 'M10.6 10.6L14 14' })]); };
+function dot(cls) { return el('span', { cls: 'dot d-' + cls, 'aria-hidden': 'true' }); }
 
 var open = D.findings.filter(function (f) { return f.status === 'open'; });
 var R = D.release;
-var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false };
+var TONE = { 'not-ready': 'block', 'ready-with-warnings': 'warn', 'needs-verification': 'unverified', ready: 'pass' };
+var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false, fOpen: false, gOpen: {} };
 
-/* Verification state: reviewed verdicts, findings observed by running a tool, or a scanner candidate. */
-function vstate(f) {
-  var r = REV[f.id];
-  if (r) return r.verdict;
-  if (f.accepted) return 'accepted';
-  return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
-}
+function vstate(f) { return RelivaroModel.vstate(f, REV); }
 function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
-function remBadge(k) { return el('span', { cls: 'rb rb-' + k, text: t('rem.' + k) }); }
-function vsBadge(v) { return el('span', { cls: 'vs vs-' + v, text: t('vs.' + v) }); }
+function remTag(k) { return el('span', { cls: 'tag', text: t('rem.' + k) }); }
+function vsTag(v) {
+  var mark = v === 'confirmed' ? dot('block') : v === 'needs-runtime' ? dot('warn') : null;
+  return el('span', { cls: 'tag' + (v === 'detected' ? ' dash' : v === 'false-positive' ? ' strike' : '') }, [mark, t('vs.' + v)]);
+}
 function selectedList() { return D.findings.filter(function (f) { return state.sel[f.id]; }); }
+function scrollToId(id) { var e = document.getElementById(id); if (e) e.scrollIntoView(); }
 
 /* Clipboard with fallbacks: file:// pages may not expose the async clipboard API. */
 function copyText(text, area, done) {
@@ -26338,6 +26340,9 @@ function copyText(text, area, done) {
     try {
       var ta = area;
       if (!ta) { ta = el('textarea', { style: { position: 'fixed', opacity: '0' } }); ta.value = text; document.body.appendChild(ta); }
+      /* A textarea inside a closed disclosure cannot be selected: open it first. */
+      var holder = ta.closest && ta.closest('details');
+      if (holder && !holder.open) holder.open = true;
       ta.focus(); ta.select();
       ok = document.execCommand && document.execCommand('copy');
       if (!area) document.body.removeChild(ta);
@@ -26350,21 +26355,27 @@ function copyText(text, area, done) {
   } catch (e) { fallback(); }
 }
 
-function card(title, hint, kids, extraHead) {
-  return el('div', { cls: 'card' }, [
-    el('div', { cls: 'card-h' }, [el('div', null, [el('h2', { text: title }), hint ? el('p', { cls: 'hint' }, [md(hint)]) : null]), extraHead || null]),
+/* A disclosure; with a key, its open state survives re-rendering (language switch, filtering). */
+function more(label, kids, key) {
+  var d = el('details', { cls: 'more' }, [el('summary', { text: label }), el('div', { cls: 'more-body' }, kids)]);
+  if (key && state.gOpen[key]) d.open = true;
+  if (key) d.addEventListener('toggle', function () { state.gOpen[key] = d.open; });
+  return d;
+}
+function band(id, title, sub, kids) {
+  return el('section', { id: id, cls: 'band' }, [
+    el('div', { cls: 'band-h' }, [el('div', null, [el('h2', { cls: 'band-title', text: title }), sub ? el('p', { cls: 'band-sub' }, [md(sub)]) : null])])
   ].concat(kids));
 }
-function section(id, kids) { return el('section', { id: id }, kids); }
+function panel(title, kids) { return el('div', { cls: 'panel' }, [title ? el('h3', { text: title }) : null].concat(kids)); }
 
 /* ---------- header ---------- */
 function renderChrome() {
   document.documentElement.lang = lang;
   var nav = document.getElementById('nav');
   nav.textContent = '';
-  [['overview', 'nav.overview'], ['actions', 'nav.actions'], ['gates', 'nav.gates'], ['findings', 'nav.findings'], ['verification', 'nav.checks'], ['project', 'nav.project']].forEach(function (x) {
-    if (x[0] === 'gates' && !R) return;
-    nav.appendChild(el('a', { href: '#' + x[0], text: t(x[1]) }));
+  [['overview', t('nav.overview')], ['actions', t('nav.actions')], R ? ['gates', t('nav.gates')] : null, ['findings', t('nav.findings')], ['verification', t('nav.checks')], ['project', t('nav.project')]].forEach(function (x) {
+    if (x) nav.appendChild(el('a', { href: '#' + x[0], text: x[1] }));
   });
   var seg = document.getElementById('lang');
   seg.setAttribute('aria-label', 'Language / Dil');
@@ -26378,80 +26389,120 @@ function renderChrome() {
     b.setAttribute('title', t('theme.label') + ': ' + t('theme.' + m));
   });
   document.getElementById('skip').textContent = t('skip');
-  var foot = document.getElementById('foot-text');
-  foot.textContent = t('footer', { v: D.tool.version });
+  document.getElementById('foot-text').textContent = t('footer', { v: D.tool.version });
 }
 
-/* ---------- overview ---------- */
-function ring(score, color) {
-  var r = 56, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(1, score / 100));
-  return s('svg', { width: 132, height: 132, viewBox: '0 0 132 132', 'aria-hidden': 'true' }, [
-    s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: cssVar('surface-2'), 'stroke-width': 12 }),
-    frac > 0 ? s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: color, 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': (c * frac).toFixed(1) + ' ' + c.toFixed(1) }) : null
-  ]);
+/* ---------- headline ---------- */
+function selectIds(ids) {
+  state.sel = {};
+  ids.forEach(function (id) { state.sel[id] = true; });
+  renderFindingsList();
+  renderActionBar();
 }
-var STATUS_TONE = { ready: 'pass', 'ready-with-warnings': 'warn', 'needs-verification': 'unverified', 'not-ready': 'block' };
-
 function hero() {
-  if (R) {
-    var tone = STATUS_TONE[R.status] || 'na';
-    var tally = R.tally || {};
-    var chips = el('div', { cls: 'tally' });
-    ['block', 'warn', 'unverified', 'pass', 'n/a'].forEach(function (k) {
-      if (tally[k] === undefined) return;
-      chips.appendChild(el('span', { cls: 'pill st-' + stKey(k) }, [glyph(k, 12), num(tally[k]) + ' ' + t('gate.' + k)]));
-    });
-    return el('div', { cls: 'card hero' }, [
-      el('div', { cls: 'ring' }, [ring(R.score, cssVar(tone)), el('div', { cls: 'val' }, [el('b', { text: String(R.score) }), el('span', { text: t('hero.score') })])]),
-      el('div', null, [
-        el('div', { cls: 'eyebrow', text: t('hero.release') }),
-        el('div', { cls: 'status-name c-' + tone }, [glyph(tone, 20), t('status.' + R.status)]),
-        el('p', { cls: 'hint', text: t('status.desc.' + R.status) + (R.scoreCapped ? ' ' + t('hero.capped') + '.' : '') }),
-        chips
-      ])
-    ]);
-  }
-  var worst = SEV.filter(function (x) { return D.summary.bySeverity[x]; })[0];
-  var segs = SEV.map(function (x) { return { v: D.summary.bySeverity[x], c: cssVar(x) }; });
-  return el('div', { cls: 'card hero' }, [
-    el('div', { cls: 'ring' }, [donut(segs, 132, 12), el('div', { cls: 'val' }, [el('b', { text: num(open.length) }), el('span', { text: t('nav.findings') })])]),
-    el('div', null, [
-      el('div', { cls: 'eyebrow', text: t('hero.audit') }),
-      el('div', { cls: 'status-name' + (worst ? '' : ' c-pass') }, [open.length ? t('hero.auditOpen', { n: num(open.length) }) : t('hero.auditClean')]),
-      el('p', { cls: 'hint' }, [md(t('hero.auditHint'))])
-    ])
+  var h = RelivaroModel.hero(D, REV);
+  var meta = el('div', { cls: 'hero-meta' });
+  [D.profile.name, el('span', { cls: 'mono', text: D.runId }), when(D.startedAt), dur(D.durationMs), 'Relivaro ' + D.tool.version].forEach(function (x, i) {
+    if (i) meta.appendChild(el('span', { cls: 'sep', 'aria-hidden': 'true', text: '·' }));
+    meta.appendChild(typeof x === 'string' ? el('span', { text: x }) : x);
+  });
+  var title = h.kind === 'audit-open' ? tn('hero.audit-open', h.count, { n: num(h.count) }) : t('hero.' + h.kind);
+  var sub = h.kind === 'audit-open' || h.kind === 'audit-clean' ? t('hero.audit.sub')
+    : h.kind === 'ready' ? t('hero.ready.sub') : tn('hero.' + h.kind + '.sub', h.count, { n: num(h.count) });
+  var cta = el('div', { cls: 'hero-cta' });
+  var go = {
+    prompt: [t('cta.prompt'), function () { selectIds(h.ids); openPrompt(); }],
+    gates: [t('cta.gates'), function () { scrollToId('gates'); }],
+    findings: [t('cta.findings'), function () { scrollToId('findings'); }],
+    fixfirst: [t('cta.fixfirst'), function () { scrollToId('actions'); }]
+  }[h.action];
+  if (go) cta.appendChild(el('button', { type: 'button', cls: 'btn pri lg', text: go[0], on: { click: go[1] } }));
+  if (R && h.action !== 'gates') cta.appendChild(el('button', { type: 'button', cls: 'link', text: t('cta.allGates'), on: { click: function () { scrollToId('gates'); } } }));
+  return el('section', { id: 'overview', cls: 'hero' }, [
+    meta,
+    el('h1', { cls: 'hero-title' }, [R ? stGlyph(TONE[R.status] || 'na', 34) : null, el('span', { text: title })]),
+    el('p', { cls: 'hero-sub' }, [md(sub)]),
+    cta.childNodes.length ? cta : null
   ]);
 }
 
-function kpis() {
+function stat(label, value, sub, mark) {
+  return el('div', { cls: 'stat' }, [el('b', null, [mark || null, value]), el('span', { text: label }), sub ? el('span', { cls: 's', text: sub }) : null]);
+}
+function stats() {
   var urgent = D.summary.bySeverity.critical + D.summary.bySeverity.high;
   var fixable = open.filter(function (f) { return f.fixer; }).length;
   var ran = D.checks.filter(function (c) { return c.status !== 'skipped'; });
   var passed = ran.filter(function (c) { return c.status === 'passed'; }).length;
-  function k(label, value, sub, tone) {
-    return el('div', { cls: 'kpi' }, [el('div', { cls: 'k', text: label }), el('div', { cls: 'v' + (tone ? ' c-' + tone : ''), text: value }), sub ? el('div', { cls: 's', text: sub }) : null]);
-  }
-  return el('div', { cls: 'kpis' }, [
-    k(t('kpi.open'), num(open.length), (function () {
-      var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
-      var parts = [];
-      if (accepted) parts.push(t('kpi.accepted', { n: num(accepted) }));
-      if (D.summary.suppressed) parts.push(D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase());
-      return parts.length ? parts.join(' · ') : null;
-    })()),
-    k(t('kpi.urgent'), num(urgent), null, urgent ? 'block' : 'pass'),
-    k(t('kpi.fixable'), num(fixable)),
-    k(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) })),
-    k(t('kpi.checks'), ran.length ? passed + '/' + ran.length : '—', ran.length ? null : t('kpi.checksNone'), ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified'),
-    (function () {
-      var c = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'confirmed'; }).length;
-      var fp = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'false-positive'; }).length;
-      var n = open.filter(function (f) { return REV[f.id]; }).length;
-      return k(t('kpi.reviewed'), open.length ? num(n) + '/' + num(open.length) : '—', t('kpi.reviewedSub', { c: num(c), f: num(fp) }), n ? null : 'unverified');
-    })()
+  var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
+  var openSub = [accepted ? t('kpi.accepted', { n: num(accepted) }) : null, D.summary.suppressed ? t('kpi.suppressed', { n: num(D.summary.suppressed) }) : null].filter(Boolean).join(' · ') || null;
+  var files = stat(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) }));
+  var checks = stat(t('kpi.checks'), ran.length ? passed + '/' + ran.length : '—', ran.length ? null : t('kpi.checksNone'));
+  var main;
+  if (R) {
+    var applicable = R.gates.filter(function (g) { return g.status !== 'n/a'; });
+    var crit = D.summary.bySeverity.critical;
+    main = [
+      stat(t('stat.score'), String(R.score), R.scoreCapped ? t('hero.capped') : null),
+      stat(t('kpi.open'), num(open.length), openSub),
+      stat(t('stat.critical'), num(crit), null, crit ? dot('critical') : null),
+      stat(t('stat.gates'), num(R.tally.pass || 0) + '/' + num(applicable.length))
+    ];
+  } else main = [stat(t('kpi.open'), num(open.length), openSub), stat(t('kpi.urgent'), num(urgent), null, urgent ? dot('critical') : null), files, checks];
+  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
+  var conf = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'confirmed'; }).length;
+  var fp = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'false-positive'; }).length;
+  var extra = [
+    stat(t('kpi.fixable'), num(fixable)),
+    stat(t('kpi.reviewed'), open.length ? num(reviewed) + '/' + num(open.length) : '—', t('kpi.reviewedSub', { c: num(conf), f: num(fp) }))
+  ].concat(R ? [stat(t('kpi.urgent'), num(urgent)), files, checks] : []);
+  return el('section', { id: 'summary' }, [
+    el('div', { cls: 'stats' }, main),
+    el('div', { cls: 'stats-more' }, [more(t('more.numbers'), [el('div', { cls: 'stats stats-' + extra.length }, extra)], 'numbers')])
   ]);
 }
 
+/* ---------- fix first ---------- */
+function showRule(rule) {
+  state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
+  renderGates(); renderFindingsSection(); scrollToId('findings');
+}
+function filterRem(k) { state.rem = k; state.status = 'open'; state.limit = 50; renderFindingsSection(); scrollToId('findings'); }
+function fixFirst() {
+  var top = RelivaroModel.priorities(open, REV);
+  var kids = [];
+  if (!top.length) kids.push(el('div', { cls: 'empty', text: t('ff.none') }));
+  else {
+    kids.push(el('div', { cls: 'list' }, top.map(function (g) {
+      var f = g.list[0], sev = SEV[g.worst];
+      return el('div', { cls: 'row' }, [
+        dot(sev),
+        el('button', { type: 'button', cls: 'row-btn t', title: t('ff.show'), on: { click: function () { showRule(g.rule); } } }, [el('span', { cls: 'sr', text: t('sev.' + sev) + ': ' }), md(f.title)]),
+        el('span', { cls: 'side' }, [remTag(remOf(f).kind)]),
+        el('span', { cls: 'p' }, [el('bdi', { text: where(f) || g.rule }), g.list.length > 1 ? ' ' + t('ff.more', { n: num(g.list.length - 1) }) : null])
+      ]);
+    })));
+  }
+  var all = [].concat.apply([], top.map(function (g) { return g.list; }));
+  var sum = el('div', { cls: 'remsum' }, REM_KINDS.map(function (k) {
+    var n = open.filter(function (f) { return remOf(f).kind === k; }).length;
+    return el('button', { type: 'button', disabled: n ? null : true, on: { click: function () { filterRem(k); } } }, [t('rem.' + k), el('b', { text: num(n) })]);
+  }));
+  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
+  var how = more(t('more.how'), [el('div', { cls: 'prose' }, [
+    el('p', null, [md(t('rem.deterministic.d'))]), el('p', null, [md(t('rem.agent.d'))]), el('p', null, [md(t('rem.manual.d'))]),
+    el('ol', null, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]),
+    el('p', { style: { 'margin-top': '10px' } }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])
+  ])], 'how');
+  kids.push(el('div', { cls: 'band-foot' }, [
+    all.length ? el('button', { type: 'button', cls: 'btn pri', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { selectIds(all.map(function (f) { return f.id; })); openPrompt(); } } }) : null,
+    open.length ? sum : null
+  ]));
+  if (open.length) kids.push(el('div', { style: { 'margin-top': '16px' } }, [how]));
+  return band('actions', t('ff.title'), top.length ? t('ff.sub') : null, kids);
+}
+
+/* ---------- run flow ---------- */
 function flow() {
   var ran = D.checks.filter(function (c) { return c.status !== 'skipped'; });
   var passed = ran.filter(function (c) { return c.status === 'passed'; }).length;
@@ -26459,183 +26510,88 @@ function flow() {
   var fixable = open.filter(function (f) { return f.fixer; }).length;
   var fx = X.fixes;
   var steps = [
-    { t: 'flow.audit', v: t('flow.audit.v', { files: num(D.metrics.files), rules: num(D.metrics.rulesRun) }), st: 'pass' },
-    { t: 'flow.evidence', v: t('flow.evidence.v', { n: num(withEvidence) }), st: 'pass' },
-    { t: 'flow.fix', v: t('flow.fix.v', { n: num(fixable) }) + (fx && fx.applied ? ' · ' + fx.applied + ' ✓' : ''), st: fixable ? 'warn' : 'pass' },
-    { t: 'flow.verify', v: ran.length ? t('flow.verify.v', { p: passed, t: ran.length }) : t('flow.verify.none'), st: ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified' },
-    { t: 'flow.release', v: R ? t('status.' + R.status) : t('flow.release.none'), st: R ? STATUS_TONE[R.status] : 'na' }
+    [t('flow.audit'), t('flow.audit.v', { files: num(D.metrics.files), rules: num(D.metrics.rulesRun) }), 'pass'],
+    [t('flow.evidence'), t('flow.evidence.v', { n: num(withEvidence) }), 'pass'],
+    [t('flow.fix'), t('flow.fix.v', { n: num(fixable) }) + (fx && fx.applied ? ' · ' + fx.applied + ' ✓' : ''), fixable ? 'warn' : 'pass'],
+    [t('flow.verify'), ran.length ? t('flow.verify.v', { p: passed, t: ran.length }) : t('flow.verify.none'), ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified'],
+    [t('flow.release'), R ? t('hero.' + R.status) : t('flow.release.none'), R ? TONE[R.status] : 'na']
   ];
-  return el('div', { cls: 'flow', role: 'list', 'aria-label': t('flow.title') }, steps.map(function (x, i) {
-    return el('div', { cls: 'step' + (x.st === 'unverified' || x.st === 'na' ? ' s-todo' : ''), role: 'listitem' }, [
-      el('span', { cls: 'bar', style: { background: cssVar(stKey(x.st)) } }),
-      el('div', { cls: 'n', text: '0' + (i + 1) }),
-      el('div', { cls: 't' }, [el('span', { cls: 'c-' + stKey(x.st) }, [glyph(x.st, 14)]), t(x.t)]),
-      el('div', { cls: 'v', text: x.v })
+  return band('flow', t('flow.title'), null, [el('ol', { cls: 'flow' }, steps.map(function (x) {
+    return el('li', { cls: x[2] === 'unverified' || x[2] === 'na' ? 'todo' : null }, [
+      el('span', { cls: 'knot' }, [stGlyph(x[2], 15)]),
+      el('div', { cls: 'ft', text: x[0] }),
+      el('div', { cls: 'fv', text: x[1] })
     ]);
-  }));
+  }))]);
 }
 
-/* ---------- action center ---------- */
-function actionCenter() {
-  var tiles = el('div', { cls: 'ac-tiles' });
-  REM_KINDS.forEach(function (k) {
-    var n = open.filter(function (f) { return remOf(f).kind === k; }).length;
-    tiles.appendChild(el('div', { cls: 'ac-tile ac-' + k }, [
-      el('div', { cls: 'ac-h' }, [remBadge(k), el('b', { cls: 'ac-n', text: num(n) })]),
-      el('p', { cls: 'hint' }, [md(t('rem.' + k + '.d'))]),
-      el('button', { type: 'button', cls: 'btn', disabled: n ? null : true, text: t('ac.show'), on: { click: function () { state.rem = k; state.status = 'open'; state.limit = 50; renderFindingsSection(); focusFindings(); } } })
-    ]));
-  });
-  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
-  var steps = el('div', { cls: 'ac-next' }, [
-    el('h3', { text: t('ac.next') }),
-    el('ol', { cls: 'ac-steps' }, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]),
-    el('p', { cls: 'hint' }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])
-  ]);
-  return card(t('ac.title'), t('ac.hint'), [tiles, el('div', { cls: 'ac-foot' }, [fixFirst(), steps])]);
-}
-
-/* The three most severe root causes (rules) among open findings not reviewed as false positives or accepted risks. */
-function priorities() {
-  var groups = {}, order = [];
-  open.forEach(function (f) {
-    if (vstate(f) === 'false-positive' || vstate(f) === 'accepted') return;
-    if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); }
-    groups[f.ruleId].push(f);
-  });
-  return order.map(function (r) {
-    var g = groups[r].slice().sort(function (a, b) { return SEV.indexOf(a.severity) - SEV.indexOf(b.severity); });
-    return { rule: r, list: g, worst: SEV.indexOf(g[0].severity) };
-  }).sort(function (a, b) { return a.worst - b.worst || b.list.length - a.list.length || a.rule.localeCompare(b.rule); }).slice(0, 3);
-}
-function showRule(rule) {
-  state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
-  renderGates(); renderFindingsSection(); focusFindings();
-}
-function fixFirst() {
-  var top = priorities();
-  var box = el('div', { cls: 'ff-box' }, [el('h3', { text: t('ff.title') })]);
-  if (!top.length) { box.appendChild(el('div', { cls: 'empty', text: t('ff.none') })); return box; }
-  var list = el('ol', { cls: 'ff' });
-  top.forEach(function (g) {
-    var f = g.list[0], sev = SEV[g.worst];
-    var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : g.rule;
-    list.appendChild(el('li', null, [
-      el('span', { cls: 'sev', style: sevStyle(sev) }, [t('sev.' + sev)]),
-      el('div', { cls: 'ff-main' }, [
-        el('button', { type: 'button', cls: 'ff-t', title: t('ff.show'), on: { click: function () { showRule(g.rule); } } }, [md(f.title)]),
-        el('div', { cls: 'ff-m' }, [remBadge(remOf(f).kind), el('span', { cls: 'loc' }, [el('bdi', { text: g.list.length > 1 ? t('ff.where', { n: num(g.list.length - 1), w: where }) : where })])])
-      ])
-    ]));
-  });
-  var all = [].concat.apply([], top.map(function (g) { return g.list; }));
-  box.appendChild(list);
-  box.appendChild(el('button', { type: 'button', cls: 'btn primary', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { state.sel = {}; setSel(all, true); renderFindingsList(); openPrompt(); } } }));
-  return box;
-}
-
-function donut(segs, size, width) {
-  var r = (size - width) / 2, c = 2 * Math.PI * r, total = segs.reduce(function (a, x) { return a + x.v; }, 0), off = 0;
-  var kids = [s('circle', { cx: size / 2, cy: size / 2, r: r, fill: 'none', stroke: cssVar('surface-2'), 'stroke-width': width })];
-  if (total) segs.forEach(function (x) {
-    if (!x.v) return;
-    var len = (x.v / total) * c;
-    kids.push(s('circle', { cx: size / 2, cy: size / 2, r: r, fill: 'none', stroke: x.c, 'stroke-width': width, 'stroke-dasharray': Math.max(len - 1.5, 0.5).toFixed(2) + ' ' + c.toFixed(2), 'stroke-dashoffset': (-off).toFixed(2) }));
-    off += len;
-  });
-  return s('svg', { width: size, height: size, viewBox: '0 0 ' + size + ' ' + size, 'aria-hidden': 'true', style: 'transform:rotate(-90deg)' }, kids);
-}
-
-function focusFindings() { var f = document.getElementById('findings'); if (f) f.scrollIntoView(); }
-
+/* ---------- breakdown ---------- */
 function charts() {
   var bySev = D.summary.bySeverity;
-  var sevCard;
-  if (!open.length) sevCard = card(t('chart.severity'), null, [el('div', { cls: 'empty', text: t('chart.empty') })]);
-  else {
-    var legend = el('ul', { cls: 'legend' });
-    SEV.forEach(function (x) {
-      legend.appendChild(el('li', null, [el('button', { type: 'button', on: { click: function () { state.sev = {}; state.sev[x] = true; state.limit = 50; renderFindingsSection(); focusFindings(); } } }, [
-        el('span', { cls: 'sw', style: { background: cssVar(x) } }), el('span', { cls: 'lbl', text: t('sev.' + x) }), el('span', { cls: 'num', text: num(bySev[x]) })
-      ])]));
-    });
-    var d = el('div', { cls: 'ring', style: { width: '120px', height: '120px' } }, [donut(SEV.map(function (x) { return { v: bySev[x], c: cssVar(x) }; }), 120, 16), el('div', { cls: 'val' }, [el('b', { text: num(open.length), style: { 'font-size': '26px' } })])]);
-    sevCard = card(t('chart.severity'), null, [el('div', { cls: 'donut-wrap' }, [d, legend])]);
-  }
-  var cats = CATS.map(function (c) {
-    var fs = open.filter(function (f) { return f.category === c; });
-    return { c: c, n: fs.length, by: SEV.map(function (x) { return fs.filter(function (f) { return f.severity === x; }).length; }) };
-  }).filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; });
+  if (!open.length) return band('charts', t('chart.title'), null, [el('div', { cls: 'empty', text: t('chart.empty') })]);
+  var bar = el('div', { cls: 'sevbar', 'aria-hidden': 'true' }, SEV.map(function (x) { return bySev[x] ? el('span', { cls: 'd-' + x, style: { width: (bySev[x] / open.length * 100).toFixed(2) + '%' } }) : null; }));
+  var sevList = el('ul', { cls: 'sevlist' }, SEV.map(function (x) {
+    return el('li', null, [el('button', { type: 'button', on: { click: function () { state.sev = {}; state.sev[x] = true; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [dot(x), el('span', { text: t('sev.' + x) }), el('b', { text: num(bySev[x]) })])]);
+  }));
+  var cats = CATS.map(function (c) { return { c: c, n: open.filter(function (f) { return f.category === c; }).length }; })
+    .filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; });
   var maxC = Math.max.apply(null, cats.map(function (x) { return x.n; }).concat([1]));
-  var catCard = card(t('chart.category'), null, [cats.length ? el('div', { cls: 'bars' }, cats.map(function (x) {
-    return el('div', { cls: 'barrow', role: 'button', tabindex: '0', on: { click: function () { state.cat = x.c; state.limit = 50; renderFindingsSection(); focusFindings(); }, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); } } } }, [
+  var catBars = el('div', { cls: 'bars' }, cats.map(function (x) {
+    return el('button', { type: 'button', cls: 'barrow', on: { click: function () { state.cat = x.c; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [
       el('span', { cls: 'lbl', text: t('cat.' + x.c) }),
-      el('div', { cls: 'track', style: { width: (x.n / maxC * 100).toFixed(1) + '%' } }, x.by.map(function (v, i) { return v ? el('span', { style: { width: (v / x.n * 100).toFixed(2) + '%', background: cssVar(SEV[i]) } }) : null; })),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (x.n / maxC * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: num(x.n) })
     ]);
-  })) : el('div', { cls: 'empty', text: t('chart.empty') })]);
+  }));
   var files = {};
   open.forEach(function (f) { if (!f.location) return; var k = f.location.file; files[k] = files[k] || { n: 0, w: 0 }; files[k].n++; files[k].w += SEV_W[f.severity]; });
-  var hot = Object.keys(files).map(function (k) { return { f: k, n: files[k].n, w: files[k].w }; }).sort(function (a, b) { return b.w - a.w || b.n - a.n; }).slice(0, 7);
+  var hot = Object.keys(files).map(function (k) { return { f: k, n: files[k].n, w: files[k].w }; }).sort(function (a, b) { return b.w - a.w || b.n - a.n; }).slice(0, 6);
   var maxW = Math.max.apply(null, hot.map(function (x) { return x.w; }).concat([1]));
-  var hotCard = card(t('chart.hotspots'), null, [hot.length ? el('div', { cls: 'bars hot' }, hot.map(function (x) {
-    return el('div', { cls: 'barrow', role: 'button', tabindex: '0', title: x.f, on: { click: function () { state.q = x.f; state.limit = 50; renderFindingsSection(); focusFindings(); }, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); } } } }, [
+  var hotBars = hot.length ? el('div', { cls: 'bars hot' }, hot.map(function (x) {
+    return el('button', { type: 'button', cls: 'barrow', title: x.f, on: { click: function () { state.q = x.f; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [
       el('span', { cls: 'lbl' }, [el('bdi', { text: x.f })]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: (x.w / maxW * 100).toFixed(1) + '%', background: cssVar('brand') } })]),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (x.w / maxW * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: num(x.n) })
     ]);
-  })) : el('div', { cls: 'empty', text: t('chart.empty') })]);
-  return el('div', { cls: 'grid g-3' }, [sevCard, catCard, hotCard]);
+  })) : el('div', { cls: 'empty', text: t('chart.empty') });
+  return band('charts', t('chart.title'), null, [el('div', { cls: 'grid g-3' }, [
+    panel(t('chart.severity'), [bar, sevList]), panel(t('chart.category'), [catBars]), panel(t('chart.hotspots'), [hotBars])
+  ])]);
 }
 
 /* ---------- gates ---------- */
+function gateTitle(g) { return I[lang]['gt.' + g.id] && lang !== 'en' ? t('gt.' + g.id) : g.title; }
 function gates() {
   if (!R) return null;
-  var grid = el('div', { cls: 'gates' });
-  var ORDER = ['block', 'warn', 'unverified', 'pass', 'n/a'];
-  R.gates.slice().sort(function (a, b) { return ORDER.indexOf(a.status) - ORDER.indexOf(b.status); }).forEach(function (g) {
-    var title = I[lang]['gt.' + g.id] && lang !== 'en' ? t('gt.' + g.id) : g.title;
-    var n = g.findings ? g.findings.length : 0;
-    grid.appendChild(el('button', {
-      type: 'button', cls: 'gate b-' + stKey(g.status), 'aria-pressed': String(state.gate === g.id), title: g.detail,
-      on: { click: function () { state.gate = state.gate === g.id ? null : g.id; state.status = 'all'; state.limit = 50; renderGates(); renderFindingsSection(); if (state.gate && n) focusFindings(); } }
-    }, [
-      el('div', { cls: 'gm' }, [el('span', { cls: 'pill st-' + stKey(g.status) }, [glyph(g.status, 12), t('gate.' + g.status)]), g.basis && g.status !== 'n/a' ? el('span', { cls: 'basis', text: t('basis.' + g.basis) }) : null]),
-      el('div', { cls: 'gt', text: title }),
-      el('div', { cls: 'gd' }, [md(g.detail)]),
-      n ? el('div', { cls: 'faint', style: { 'font-size': '11.5px' }, text: t('gates.findings', { n: n }) }) : null
-    ]));
+  var applicable = R.gates.filter(function (g) { return g.status !== 'n/a'; });
+  var groups = GATE_ORDER.map(function (st) {
+    var list = R.gates.filter(function (g) { return g.status === st; });
+    if (!list.length) return null;
+    var rows = el('div', { cls: 'list' }, list.map(function (g) {
+      var n = g.findings ? g.findings.length : 0;
+      return el('button', {
+        type: 'button', cls: 'gate', 'aria-pressed': String(state.gate === g.id), title: g.detail,
+        on: { click: function () { state.gate = state.gate === g.id ? null : g.id; state.status = 'all'; state.limit = 50; renderGates(); renderFindingsSection(); if (state.gate && n) scrollToId('findings'); } }
+      }, [
+        stGlyph(g.status, 16),
+        el('span', { cls: 'gt', text: gateTitle(g) }),
+        el('span', { cls: 'gside' }, [
+          n ? el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: tn('gates.findings', n, { n: num(n) }) }) : null,
+          g.basis && g.status !== 'n/a' ? el('span', { cls: 'tag' + (g.basis === 'not-run' ? ' dash' : ''), text: t('basis.' + g.basis) }) : null
+        ]),
+        el('span', { cls: 'gd' }, [md(g.detail)])
+      ]);
+    }));
+    if (st === 'pass' || st === 'n/a') return el('div', { cls: 'ggroup' }, [more(t('gg.' + st) + ' · ' + num(list.length), [rows], 'gates-' + st)]);
+    return el('div', { cls: 'ggroup' }, [el('h3', null, [stGlyph(st, 14), t('gg.' + st), el('span', { cls: 'faint', text: num(list.length) })]), rows]);
   });
-  return card(t('gates.title'), t('gates.hint'), [grid]);
+  return band('gates', t('gates.title'), t('gates.sub', { p: num(R.tally.pass || 0), t: num(applicable.length) }), groups.concat([
+    el('div', { style: { 'margin-top': '18px' } }, [more(t('more.gates'), [el('p', { cls: 'prose' }, [md(t('gates.hint'))])], 'gates-hint')])
+  ]));
 }
-function renderGates() { var host = document.getElementById('gates'); if (!host) return; host.textContent = ''; var g = gates(); if (g) host.appendChild(g); }
-
-/* ---------- compare + perf ---------- */
-function compare() {
-  var C = X.comparison;
-  if (!C) return card(t('compare.title'), null, [el('div', { cls: 'empty', text: t('compare.none') })]);
-  var kids = [el('div', { cls: 'deltas' }, [
-    el('div', { cls: 'delta' }, [el('b', { cls: C.introduced ? 'c-block' : '', text: '+' + num(C.introduced) }), el('div', { cls: 'muted', text: t('compare.introduced') })]),
-    el('div', { cls: 'delta' }, [el('b', { cls: C.resolved ? 'c-pass' : '', text: '−' + num(C.resolved) }), el('div', { cls: 'muted', text: t('compare.resolved') })]),
-    el('div', { cls: 'delta' }, [el('b', { text: num(C.persisting) }), el('div', { cls: 'muted', text: t('compare.persisting') })])
-  ])];
-  if (C.releaseChange) kids.push(el('p', { cls: 'hint' }, [t('compare.release') + ': ' + t('status.' + C.releaseChange.from) + ' (' + C.releaseChange.scoreFrom + ') → ' + t('status.' + C.releaseChange.to) + ' (' + C.releaseChange.scoreTo + ')']));
-  var list = el('ul', { cls: 'mini' });
-  (C.introducedTop || []).forEach(function (f) { list.appendChild(el('li', null, [el('span', { cls: 'pill st-block', text: '+' }), el('span', { cls: 'sev', style: { color: cssVar(f.severity), 'min-width': '0', padding: '0' }, text: t('sev.' + f.severity) }), el('span', { text: f.title }), el('code', { text: f.file || '' })])); });
-  (C.resolvedTop || []).forEach(function (f) { list.appendChild(el('li', null, [el('span', { cls: 'pill st-pass', text: '−' }), el('span', { cls: 'sev', style: { color: cssVar(f.severity), 'min-width': '0', padding: '0' }, text: t('sev.' + f.severity) }), el('span', { text: f.title }), el('code', { text: f.file || '' })])); });
-  if (list.childNodes.length) kids.push(list);
-  return card(t('compare.title'), t('compare.base', { id: C.base.runId }) + ' · ' + when(C.base.startedAt), kids);
-}
-function perf() {
-  var B = X.bench || [];
-  if (!B.length) return card(t('perf.title'), null, [el('div', { cls: 'empty' }, [md(t('perf.none'))])]);
-  var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('perf.name') }), el('th', { cls: 'num', text: t('perf.mean') }), el('th', { cls: 'num', text: t('perf.p95') }), el('th', { cls: 'num', text: t('perf.errors') }), el('th', { text: t('perf.measured') })])])]);
-  var body = el('tbody');
-  B.forEach(function (b) {
-    body.appendChild(el('tr', null, [el('td', null, [el('code', { text: b.name }), ' ', el('span', { cls: 'basis', text: b.kind })]), el('td', { cls: 'num', text: b.stats.meanMs.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.stats.p95Ms.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.kind === 'http' ? ((b.stats.errorRate || 0) * 100).toFixed(2) + '%' : '—' }), el('td', { cls: 'muted', text: when(b.measuredAt) })]));
-  });
-  tb.appendChild(body);
-  return card(t('perf.title'), null, [el('div', { cls: 'tbl' }, [tb])]);
+function renderGates() {
+  var host = document.getElementById('gates');
+  if (host && R) host.parentNode.replaceChild(gates(), host);
 }
 
 /* ---------- findings ---------- */
@@ -26675,39 +26631,20 @@ function snippet(text, line) {
   });
   return box;
 }
+function output(ev) { return el('div', { cls: 'snip', role: 'region', 'aria-label': t('finding.output'), tabindex: '0' }, [el('pre', { text: (ev.command ? '$ ' + ev.command + '\n' : '') + ev.output })]); }
 function findingBody(f) {
   var b = el('div', { cls: 'body' });
-  var r = REV[f.id], rm = remOf(f);
-  b.appendChild(el('div', { cls: 'verdict v-' + vstate(f) }, [
-    el('div', { cls: 'vh' }, [vsBadge(vstate(f)), r ? el('span', { cls: 'faint', text: t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') }) : null]),
-    r ? el('p', { text: r.justification }) : f.accepted ? el('p', { text: t('finding.acceptedInCode', { r: f.accepted.reason }) }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
-    r && r.severity ? el('p', { cls: 'faint', text: t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) }) : null,
-    r && r.evidence && r.evidence.length ? el('div', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); })) : null
-  ]));
+  var r = REV[f.id], rm = remOf(f), v = vstate(f), ev = f.evidence || {};
+  b.appendChild(el('p', { cls: 'vline' }, [vsTag(v), el('span', { text: r ? r.justification : f.accepted ? t('finding.acceptedInCode', { r: f.accepted.reason }) : v === 'confirmed' ? t('finding.observed') : t('finding.notReviewed') })]));
   b.appendChild(el('p', { cls: 'msg' }, [md(f.message)]));
-  var ev = f.evidence || {};
   if (ev.snippet) b.appendChild(snippet(ev.snippet, f.location && f.location.line));
-  if (ev.facts) {
-    var facts = el('div', { cls: 'facts' });
-    Object.keys(ev.facts).forEach(function (k) { facts.appendChild(el('code', { text: k + ': ' + ev.facts[k] })); });
-    b.appendChild(facts);
-  }
-  if (ev.output) { b.appendChild(el('h4', { cls: 'muted', style: { margin: '10px 0 0', 'font-size': '11px' }, text: t('finding.output') })); b.appendChild(el('div', { cls: 'snip' }, [el('pre', { text: (ev.command ? '$ ' + ev.command + '\n' : '') + ev.output })])); }
-  function kv(k, v, mono) { return v ? el('div', null, [el('h4', { text: t(k) }), mono ? el('p', { cls: 'mono', style: { 'font-size': '12px' }, text: v }) : el('p', null, [md(v)])]) : null; }
-  b.appendChild(el('div', { cls: 'kv' }, [
-    kv('finding.impact', f.impact),
-    kv('finding.fix', f.recommendation),
-    kv('finding.verify', f.verification),
-    kv('finding.standards', [].concat(f.cwe || [], f.owasp || []).join(' · ')),
-    kv('finding.rule', f.ruleId + ' · ' + f.id, true),
-    kv('finding.confidence', t('conf.' + f.confidence) + ' · ' + (I.en['prov.' + f.provenance] ? t('prov.' + f.provenance) : f.provenance)),
-    f.suppression ? kv('finding.suppressed', f.suppression.kind + (f.suppression.reason ? ': ' + f.suppression.reason : '')) : null
-  ]));
-  b.appendChild(el('div', { cls: 'remline' }, [el('span', { cls: 'muted', text: t('finding.remediation') }), remBadge(rm.kind), el('span', { text: t('rem.reason.' + rm.reason) })]));
+  else if (ev.output) b.appendChild(output(ev));
+  var three = [[t('finding.impact'), f.impact], [t('finding.fix'), f.recommendation], [t('finding.verify'), f.verification]].filter(function (x) { return x[1]; });
+  if (three.length) b.appendChild(el('div', { cls: 'facts3' }, three.map(function (x) { return el('div', null, [el('h4', { text: x[0] }), el('p', null, [md(x[1])])]); })));
   if (rm.kind === 'deterministic') {
     var cmd = 'relivaro fix plan --finding ' + f.id + (rm.online ? ' --online' : '');
     var cmdCode = el('code', { text: cmd });
-    var btn = el('button', { type: 'button', cls: 'btn', text: t('finding.copy') });
+    var btn = el('button', { type: 'button', cls: 'btn sm', text: t('finding.copy') });
     btn.addEventListener('click', function () {
       copyText(cmd, null, function (ok) {
         btn.textContent = ok ? t('finding.copied') : t('finding.copyFail');
@@ -26715,12 +26652,26 @@ function findingBody(f) {
         setTimeout(function () { btn.textContent = t('finding.copy'); }, 1800);
       });
     });
-    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12px', 'font-weight': '600' }, text: t('finding.autofix') + (rm.safety === 'review' ? ' · ' + t('finding.reviewDiff') : '') }), cmdCode, btn]));
+    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12.5px', 'font-weight': '600' }, text: t('finding.autofix') + (rm.safety === 'review' ? ' · ' + t('finding.reviewDiff') : '') }), cmdCode, btn]));
   }
+  function kv(label, val, mono) { return val ? el('div', null, [el('h4', { text: label }), mono ? el('p', { cls: 'mono', style: { 'font-size': '12.5px' }, text: val }) : el('p', null, [typeof val === 'string' ? md(val) : val])]) : null; }
+  var details = el('div', { cls: 'kv' }, [
+    kv(t('finding.remediation'), el('span', null, [remTag(rm.kind), ' ', t('rem.reason.' + rm.reason)])),
+    kv(t('finding.standards'), [].concat(f.cwe || [], f.owasp || []).join(' · ')),
+    kv(t('finding.rule'), f.ruleId + ' · ' + f.id, true),
+    kv(t('finding.confidence'), t('conf.' + f.confidence) + ' · ' + (I.en['prov.' + f.provenance] ? t('prov.' + f.provenance) : f.provenance)),
+    r ? kv(t('vs.label'), t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') + (r.severity ? ' · ' + t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) : '')) : null,
+    r && r.evidence && r.evidence.length ? kv(t('finding.evidence'), el('span', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); }))) : null,
+    ev.facts ? kv(t('finding.facts'), el('span', { cls: 'facts' }, Object.keys(ev.facts).map(function (k) { return el('code', { text: k + ': ' + ev.facts[k] }); }))) : null,
+    f.suppression ? kv(t('finding.suppressed'), f.suppression.kind + (f.suppression.reason ? ': ' + f.suppression.reason : '')) : null
+  ]);
+  var dkids = [details];
+  if (ev.snippet && ev.output) dkids.push(el('div', { style: { 'margin-top': '14px' } }, [el('h4', { cls: 'muted', style: { margin: '0 0 6px', 'font-size': '12px' }, text: t('finding.output') }), output(ev)]));
+  b.appendChild(more(t('more.details'), dkids));
   return b;
 }
 function findingRow(f) {
-  var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : '';
+  var loc = where(f);
   var row = el('div', { cls: 'frow' + (state.sel[f.id] ? ' is-sel' : '') });
   var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.row', { id: f.id, title: f.title }) });
   cb.checked = !!state.sel[f.id];
@@ -26729,10 +26680,10 @@ function findingRow(f) {
   var d = el('details', { cls: 'f' });
   if (state.opened[f.id]) d.open = true;
   d.appendChild(el('summary', null, [
-    el('span', { cls: 'sev', style: sevStyle(f.severity) }, [t('sev.' + f.severity)]),
-    el('span', { cls: 'ttl' }, [md(f.title)]),
-    el('span', { cls: 'side' }, [vsBadge(vstate(f)), remBadge(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
-    where ? el('span', { cls: 'loc', title: where }, [el('bdi', { text: where })]) : null
+    dot(f.severity),
+    el('span', { cls: 'ttl' }, [el('span', { cls: 'sr', text: t('sev.' + f.severity) + ': ' }), md(f.title)]),
+    el('span', { cls: 'side' }, [vstate(f) !== 'detected' ? vsTag(vstate(f)) : null, remTag(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'tag', text: t('findings.status.' + f.status) }) : null]),
+    loc ? el('span', { cls: 'loc', title: loc }, [el('bdi', { text: loc })]) : null
   ]));
   var filled = false;
   d.addEventListener('toggle', function () {
@@ -26753,59 +26704,60 @@ function setSel(list, on) {
 }
 function groupHead(rule, list) {
   var all = list.every(function (f) { return state.sel[f.id]; }), some = list.some(function (f) { return state.sel[f.id]; });
-  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.group', { n: list.length, rule: rule }) });
+  var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': tn('sel.group', list.length, { n: list.length, rule: rule }) });
   cb.checked = all; cb.indeterminate = some && !all;
   cb.addEventListener('change', function () { setSel(list, cb.checked); renderFindingsList(); var again = document.querySelector('[data-group="' + rule.replace(/[^\w\/-]/g, '') + '"]'); if (again) again.focus(); });
   cb.setAttribute('data-group', rule.replace(/[^\w\/-]/g, ''));
   state.groupBoxes.push({ cb: cb, list: list });
-  var kinds = uniq(list.map(function (f) { return remOf(f).kind; }));
   return el('div', { cls: 'ghead' }, [
     el('label', { cls: 'fsel-wrap' }, [cb]),
-    el('div', { cls: 'gtitle' }, [el('b', { text: list[0].title }), el('code', { text: rule })]),
-    el('span', { cls: 'side' }, kinds.map(remBadge).concat([el('span', { cls: 'faint', text: t('group.count', { n: num(list.length) }) })]))
+    el('div', { cls: 'gtitle' }, [dot(list[0].severity), el('b', null, [md(list[0].title)]), el('code', { text: rule })]),
+    el('span', { cls: 'side' }, uniq(list.map(function (f) { return remOf(f).kind; })).map(remTag).concat([el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: tn('group.count', list.length, { n: num(list.length) }) })]))
   ]);
 }
 function renderFindingsList() {
   var host = document.getElementById('flist'), cnt = document.getElementById('fcount');
+  if (!host) return;
   host.textContent = ''; cnt.textContent = '';
   var list = sorted(D.findings.filter(matches));
   cnt.appendChild(el('span', { text: t('findings.count', { n: num(list.length), t: num(D.findings.length) }) }));
   if (state.gate) {
     var g = R.gates.filter(function (x) { return x.id === state.gate; })[0];
-    cnt.appendChild(el('span', { cls: 'chip', 'aria-pressed': 'true' }, [t('findings.gate', { g: lang !== 'en' && I[lang]['gt.' + g.id] ? t('gt.' + g.id) : g.title }), el('button', { type: 'button', cls: 'btn', style: { padding: '1px 6px' }, text: t('findings.clear'), on: { click: function () { state.gate = null; state.status = 'open'; renderGates(); renderFindingsSection(); } } })]));
+    cnt.appendChild(el('span', { cls: 'chip', 'aria-pressed': 'true' }, [t('findings.gate', { g: gateTitle(g) }), el('button', { type: 'button', cls: 'link plain', style: { 'font-size': '12.5px' }, text: t('findings.clear'), on: { click: function () { state.gate = null; state.status = 'open'; renderGates(); renderFindingsSection(); } } })]));
   }
-  var more = document.getElementById('fmore');
-  more.textContent = '';
+  var moreHost = document.getElementById('fmore');
+  moreHost.textContent = '';
   state.visible = list;
   state.groupBoxes = [];
-  if (!list.length) { host.appendChild(el('div', { cls: 'empty', text: t('findings.empty') })); return; }
+  host.hidden = !list.length;
+  if (!list.length) { moreHost.appendChild(el('div', { cls: 'empty', style: { width: '100%' }, text: t('findings.empty') })); return; }
   if (state.group) {
     var groups = {}, order = [];
     list.forEach(function (f) { if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); } groups[f.ruleId].push(f); });
     var shown = 0;
     order.forEach(function (rule) {
       if (shown >= state.limit) return;
-      var g = groups[rule], box = el('div', { cls: 'group' }, [groupHead(rule, g)]);
-      g.slice(0, Math.max(state.limit - shown, 1)).forEach(function (f) { box.appendChild(findingRow(f)); });
-      shown += g.length;
+      var gl = groups[rule], box = el('div', { cls: 'group' }, [groupHead(rule, gl)]);
+      gl.slice(0, Math.max(state.limit - shown, 1)).forEach(function (f) { box.appendChild(findingRow(f)); });
+      shown += gl.length;
       host.appendChild(box);
     });
   } else list.slice(0, state.limit).forEach(function (f) { host.appendChild(findingRow(f)); });
-  if (list.length > state.limit) more.appendChild(el('button', { type: 'button', cls: 'btn', text: t('findings.more', { n: num(Math.min(50, list.length - state.limit)) }), on: { click: function () { state.limit += 50; renderFindingsList(); } } }));
+  if (list.length > state.limit) moreHost.appendChild(el('button', { type: 'button', cls: 'btn', text: t('findings.more', { n: num(Math.min(50, list.length - state.limit)) }), on: { click: function () { state.limit += 50; renderFindingsList(); } } }));
 }
 function findingsSection() {
-  var q = el('input', { type: 'search', id: 'fq', placeholder: t('findings.search'), 'aria-label': t('findings.search'), value: state.q });
+  var q = el('input', { type: 'search', id: 'fq', placeholder: t('findings.search'), 'aria-label': t('findings.search') });
   q.value = state.q;
   q.addEventListener('input', function () { state.q = q.value; state.limit = 50; renderFindingsList(); });
   var chips = el('div', { cls: 'chips', role: 'group', 'aria-label': t('chart.severity') });
   SEV.forEach(function (x) {
     var n = D.findings.filter(function (f) { return f.severity === x && (state.status === 'all' || f.status === state.status); }).length;
-    chips.appendChild(el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(!!state.sev[x]), on: { click: function () { state.sev[x] = !state.sev[x]; state.limit = 50; this.setAttribute('aria-pressed', String(!!state.sev[x])); renderFindingsList(); } } }, [el('span', { cls: 'dot', style: { background: cssVar(x) } }), t('sev.' + x) + ' ' + n]));
+    chips.appendChild(el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(!!state.sev[x]), on: { click: function () { state.sev[x] = !state.sev[x]; state.limit = 50; this.setAttribute('aria-pressed', String(!!state.sev[x])); renderFindingsList(); } } }, [dot(x), t('sev.' + x) + ' ' + num(n)]));
   });
-  var cat = el('select', { 'aria-label': t('chart.category') }, [el('option', { value: '', text: t('findings.allCats') })].concat(CATS.filter(function (c) { return D.findings.some(function (f) { return f.category === c; }); }).map(function (c) { return el('option', { value: c, text: t('cat.' + c) }); })));
+  var cat = el('select', { 'aria-label': t('findings.category') }, [el('option', { value: '', text: t('findings.allCats') })].concat(CATS.filter(function (c) { return D.findings.some(function (f) { return f.category === c; }); }).map(function (c) { return el('option', { value: c, text: t('cat.' + c) }); })));
   cat.value = state.cat;
   cat.addEventListener('change', function () { state.cat = cat.value; state.limit = 50; renderFindingsList(); });
-  var st = el('select', { 'aria-label': t('findings.status.all') }, ['open', 'all', 'suppressed', 'baseline'].map(function (v) { return el('option', { value: v, text: t('findings.status.' + v) }); }));
+  var st = el('select', { 'aria-label': t('findings.status') }, ['open', 'all', 'suppressed', 'baseline'].map(function (v) { return el('option', { value: v, text: t('findings.status.' + v) }); }));
   st.value = state.status;
   st.addEventListener('change', function () { state.status = st.value; state.limit = 50; renderFindingsSection(); });
   var fx = el('input', { type: 'checkbox' });
@@ -26815,14 +26767,25 @@ function findingsSection() {
   so.value = state.sort;
   so.addEventListener('change', function () { state.sort = so.value; renderFindingsList(); });
   var pool = D.findings.filter(function (f) { return state.status === 'all' || f.status === state.status; });
-  function toggleChips(label, keys, cur, count, badge, set) {
+  function toggleChips(label, keys, cur, count, text, set) {
     return el('div', { cls: 'chips', role: 'group', 'aria-label': label }, keys.map(function (k) {
       var n = pool.filter(function (f) { return count(f) === k; }).length;
-      return el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(cur === k), disabled: n || cur === k ? null : true, on: { click: function () { set(cur === k ? '' : k); state.limit = 50; renderFindingsSection(); } } }, [badge(k), ' ' + num(n)]);
+      return el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(cur === k), disabled: n || cur === k ? null : true, on: { click: function () { set(cur === k ? '' : k); state.limit = 50; renderFindingsSection(); } } }, [text(k) + ' ' + num(n)]);
     }));
   }
-  var remChips = toggleChips(t('finding.remediation'), REM_KINDS, state.rem, function (f) { return remOf(f).kind; }, remBadge, function (v) { state.rem = v; });
-  var vsChips = toggleChips(t('vs.label'), VSTATES, state.vs, vstate, vsBadge, function (v) { state.vs = v; });
+  var remChips = toggleChips(t('finding.remediation'), REM_KINDS, state.rem, function (f) { return remOf(f).kind; }, function (k) { return t('rem.' + k); }, function (v) { state.rem = v; });
+  var vsChips = toggleChips(t('vs.label'), VSTATES, state.vs, vstate, function (k) { return t('vs.' + k); }, function (v) { state.vs = v; });
+  var active = (state.cat ? 1 : 0) + (state.status !== 'open' ? 1 : 0) + (state.fixable ? 1 : 0) + (state.rem ? 1 : 0) + (state.vs ? 1 : 0);
+  var filters = el('details', { cls: 'more' }, [
+    el('summary', { text: t('more.filters') + (active ? ' · ' + active : '') }),
+    el('div', { cls: 'fpanel' }, [
+      el('div', { cls: 'fline' }, [cat, st, so, el('label', { cls: 'chk' }, [fx, t('findings.fixable')])]),
+      el('div', { cls: 'fline' }, [el('span', { cls: 'flabel', text: t('finding.remediation') }), remChips]),
+      el('div', { cls: 'fline' }, [el('span', { cls: 'flabel', text: t('vs.label') }), vsChips])
+    ])
+  ]);
+  if (state.fOpen) filters.open = true;
+  filters.addEventListener('toggle', function () { state.fOpen = filters.open; });
   var bySev = el('select', { 'aria-label': t('sel.severity') }, [el('option', { value: '', text: t('sel.severity') })].concat(SEV.map(function (x) { return el('option', { value: x, text: t('sev.' + x) }); })));
   bySev.addEventListener('change', function () {
     var v = bySev.value; if (!v) return;
@@ -26832,30 +26795,29 @@ function findingsSection() {
   var grp = el('input', { type: 'checkbox' });
   grp.checked = state.group;
   grp.addEventListener('change', function () { state.group = grp.checked; renderFindingsList(); });
-  var selBar = el('div', { cls: 'selbar', role: 'group', 'aria-label': t('sel.label') }, [
-    el('button', { type: 'button', cls: 'btn', text: t('sel.visible'), on: { click: function () { setSel(state.visible || [], true); renderFindingsList(); } } }),
+  var selRow = el('div', { cls: 'selrow', role: 'group', 'aria-label': t('sel.label') }, [
+    el('button', { type: 'button', cls: 'link', text: t('sel.visible'), on: { click: function () { setSel(state.visible || [], true); renderFindingsList(); } } }),
     bySev,
-    el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+    el('button', { type: 'button', cls: 'link', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
     el('label', { cls: 'chk' }, [grp, t('group.toggle')])
   ]);
-  return card(t('findings.title'), t('findings.hint'), [
-    el('div', { cls: 'filters' }, [el('label', { cls: 'search' }, [searchIcon(), q]), cat, st, so, el('label', { cls: 'chk' }, [fx, t('findings.fixable')])]),
-    el('div', { cls: 'filters' }, [chips]),
-    el('div', { cls: 'filters' }, [el('span', { cls: 'flabel', text: t('finding.remediation') }), remChips, el('span', { cls: 'flabel', text: t('vs.label') }), vsChips]),
-    selBar,
+  return band('findings', t('findings.title'), t('findings.sub'), [
+    el('div', { cls: 'ftools' }, [el('label', { cls: 'search' }, [searchIcon(), q]), chips]),
+    filters,
+    selRow,
     el('div', { id: 'fcount', cls: 'count', 'aria-live': 'polite' }),
     el('div', { id: 'flist', cls: 'flist' }),
-    el('div', { id: 'fmore', cls: 'more' })
+    el('div', { id: 'fmore', cls: 'more-row' })
   ]);
 }
 function renderFindingsSection() {
   var host = document.getElementById('findings');
-  host.textContent = '';
-  host.appendChild(findingsSection());
+  if (!host) return;
+  host.parentNode.replaceChild(findingsSection(), host);
   renderFindingsList();
 }
 
-/* ---------- action bar + prompt ---------- */
+/* ---------- selection bar + prompt sheet ---------- */
 function renderActionBar() {
   var bar = document.getElementById('actionbar');
   var list = selectedList();
@@ -26867,15 +26829,13 @@ function renderActionBar() {
   var c = { deterministic: 0, agent: 0, manual: 0, none: 0 };
   list.forEach(function (f) { c[remOf(f).kind]++; });
   var hidden = list.filter(function (f) { return (state.visible || []).indexOf(f) < 0; }).length;
-  bar.appendChild(el('div', { cls: 'wrap ab-in' }, [
-    el('div', { cls: 'ab-txt' }, [
-      el('b', { text: t('sel.count', { n: num(list.length) }) }),
-      el('span', { cls: 'ab-mix' }, REM_KINDS.concat(['none']).filter(function (k) { return c[k]; }).map(function (k) { return el('span', null, [remBadge(k), ' ' + num(c[k])]); })),
-      hidden ? el('span', { cls: 'faint', text: t('sel.hidden', { n: num(hidden) }) }) : null
-    ]),
+  var mix = REM_KINDS.concat(['none']).filter(function (k) { return c[k]; }).map(function (k) { return t('rem.' + k) + ' ' + num(c[k]); });
+  if (hidden) mix.push(t('sel.hidden', { n: num(hidden) }));
+  bar.appendChild(el('div', { cls: 'ab-in' }, [
+    el('div', { cls: 'ab-txt' }, [el('b', { text: t('sel.count', { n: num(list.length) }) }), el('span', { cls: 'x', text: mix.join(' · ') })]),
     el('div', { cls: 'ab-btns' }, [
-      el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
-      el('button', { type: 'button', cls: 'btn primary', text: t('ab.generate'), on: { click: openPrompt } })
+      el('button', { type: 'button', cls: 'ghost', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+      el('button', { type: 'button', cls: 'btn pri', text: t('ab.generate'), on: { click: openPrompt } })
     ])
   ]));
 }
@@ -26886,6 +26846,7 @@ function nonce() {
 }
 function openPrompt() {
   var list = sorted(selectedList());
+  if (!list.length) return;
   var text = RelivaroPrompt.build({
     project: D.profile.name, runId: D.runId, command: D.command, startedAt: D.startedAt, version: D.tool.version, root: D.root,
     lang: lang, nonce: nonce(), remText: REMTXT,
@@ -26896,16 +26857,30 @@ function openPrompt() {
   var status = el('p', { cls: 'pr-status', role: 'status', 'aria-live': 'polite' });
   var area = el('textarea', { id: 'prompt-text', spellcheck: 'false', 'aria-label': t('pr.label') });
   area.value = text;
+  var textBox = more(t('pr.showText'), [el('label', { 'for': 'prompt-text', cls: 'sr', text: t('pr.label') }), area]);
   var file = 'relivaro-fix-' + String(D.runId).replace(/[^\w.-]/g, '') + '.md';
   function close() { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  var rows = list.slice(0, 6).map(function (f) {
+    var loc = where(f);
+    return el('div', null, [dot(f.severity), el('span', { cls: 't' }, [el('span', { cls: 'sr', text: t('sev.' + f.severity) + ': ' }), md(f.title)]), el('span', { cls: 'p', title: loc }, [el('bdi', { text: loc })])]);
+  });
+  if (list.length > 6) rows.push(el('div', { cls: 'muted' }, [el('span'), el('span', { text: t('pr.more', { n: num(list.length - 6) }) }), el('span')]));
+  var copyBtn = el('button', { type: 'button', cls: 'btn pri', text: t('pr.copy'), on: { click: function () {
+    copyText(area.value, area, function (ok) {
+      status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked');
+      if (!ok) { textBox.open = true; area.focus(); area.select(); }
+    });
+  } } });
   dlg.appendChild(el('div', { cls: 'pr' }, [
-    el('div', { cls: 'pr-h' }, [el('h2', { id: 'prompt-title', text: t('pr.title') + ' · ' + t('sel.count', { n: num(list.length) }) }), el('button', { type: 'button', cls: 'icon-btn', 'aria-label': t('pr.close'), text: '×', on: { click: close } })]),
-    el('p', { cls: 'hint' }, [md(t('pr.where'))]),
-    el('p', { cls: 'hint' }, [md(t('pr.static'))]),
-    el('label', { 'for': 'prompt-text', cls: 'sr', text: t('pr.label') }),
-    area,
+    el('div', { cls: 'pr-h' }, [
+      el('div', null, [el('h2', { id: 'prompt-title', text: t('pr.title') }), el('p', { text: t('sel.count', { n: num(list.length) }) + ' · ' + t('pr.paste') })]),
+      el('button', { type: 'button', cls: 'icon-btn', 'aria-label': t('pr.close'), text: '×', on: { click: close } })
+    ]),
+    el('div', { cls: 'pr-list' }, rows),
+    el('p', { cls: 'pr-steps' }, [el('b', { text: t('pr.steps') }), ' ' + t('pr.stepsList')]),
+    el('div', { cls: 'pr-more' }, [textBox, more(t('pr.limits'), [el('div', { cls: 'prose' }, [el('p', null, [md(t('pr.where'))]), el('p', null, [md(t('pr.static'))])])])]),
     el('div', { cls: 'pr-btns' }, [
-      el('button', { type: 'button', cls: 'btn primary', text: t('pr.copy'), on: { click: function () { copyText(area.value, area, function (ok) { status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked'); if (!ok) { area.focus(); area.select(); } }); } } }),
+      status,
       el('button', { type: 'button', cls: 'btn', text: t('pr.download'), on: { click: function () {
         var url = URL.createObjectURL(new Blob([area.value], { type: 'text/markdown;charset=utf-8' }));
         var a = el('a', { href: url, download: file });
@@ -26913,21 +26888,19 @@ function openPrompt() {
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         status.textContent = t('pr.downloaded', { f: file });
       } } }),
-      el('button', { type: 'button', cls: 'btn', text: t('pr.close'), on: { click: close } })
-    ]),
-    status
+      copyBtn
+    ])
   ]));
   dlg.setAttribute('aria-labelledby', 'prompt-title');
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
-  area.focus();
-  area.setSelectionRange(0, 0);
-  area.scrollTop = 0;
+  copyBtn.focus();
 }
 
-/* ---------- verification ---------- */
+/* ---------- checks ---------- */
 function checks() {
   var kids = [];
-  if (!D.checks.length || D.checks.every(function (c) { return c.status === 'skipped'; })) kids.push(el('div', { cls: 'empty', text: t('checks.none') }));
+  var none = !D.checks.length || D.checks.every(function (c) { return c.status === 'skipped'; });
+  if (!D.checks.length) kids.push(el('div', { cls: 'empty' }, [md(t('checks.none'))]));
   if (D.checks.length) {
     var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('checks.kind') }), el('th', { text: t('checks.result') }), el('th', { text: t('checks.tests') }), el('th', { cls: 'num', text: t('checks.duration') }), el('th', { text: t('checks.command') })])])]);
     var body = el('tbody');
@@ -26937,59 +26910,92 @@ function checks() {
       if (c.tests && c.tests.total) {
         var T = c.tests, tot = Math.max(T.total, T.passed + T.failed + T.skipped, 1);
         tests = el('div', null, [
-          el('div', { cls: 'track', style: { width: '140px' } }, [el('span', { style: { width: (T.passed / tot * 100) + '%', background: cssVar('pass') } }), el('span', { style: { width: (T.failed / tot * 100) + '%', background: cssVar('block') } }), el('span', { style: { width: (T.skipped / tot * 100) + '%', background: cssVar('na') } })]),
-          el('div', { cls: 'faint', style: { 'font-size': '11.5px' }, text: t('checks.testsLine', { p: num(T.passed), f: num(T.failed), s: num(T.skipped) }) })
+          el('div', { cls: 'track', style: { width: '140px' } }, [el('span', { cls: 'line-pass', style: { width: (T.passed / tot * 100) + '%' } }), el('span', { cls: 'line-block', style: { width: (T.failed / tot * 100) + '%' } }), el('span', { cls: 'line-na', style: { width: (T.skipped / tot * 100) + '%' } })]),
+          el('div', { cls: 'faint', style: { 'font-size': '12px', 'margin-top': '4px' }, text: t('checks.testsLine', { p: num(T.passed), f: num(T.failed), s: num(T.skipped) }) })
         ]);
       }
       body.appendChild(el('tr', null, [
-        el('td', null, [el('b', { text: t('check.' + c.kind) }), el('div', { cls: 'faint mono', style: { 'font-size': '11.5px' }, text: c.unit })]),
-        el('td', null, [el('span', { cls: 'pill st-' + tone }, [glyph(tone, 12), t('checks.' + c.status)]), c.reason ? el('div', { cls: 'faint', style: { 'font-size': '11.5px', 'margin-top': '4px' }, text: c.reason }) : null]),
+        el('td', null, [el('b', { text: t('check.' + c.kind) }), c.unit && c.unit !== '.' ? el('div', { cls: 'faint mono', style: { 'font-size': '12px' }, text: c.unit }) : null]),
+        el('td', null, [el('span', { cls: 'sev' }, [stGlyph(tone, 14), t('checks.' + c.status)]), c.reason ? el('div', { cls: 'faint', style: { 'font-size': '12px', 'margin-top': '4px' }, text: c.reason }) : null]),
         el('td', null, [tests || el('span', { cls: 'faint', text: c.diagnostics ? String(c.diagnostics) : '—' })]),
         el('td', { cls: 'num', text: c.status === 'skipped' ? '—' : dur(c.durationMs) }),
         el('td', null, [el('code', { text: c.command })])
       ]));
     });
     tb.appendChild(body);
-    kids.push(el('div', { cls: 'tbl' }, [tb]));
+    kids.push(el('div', { cls: 'panel', style: { padding: '6px 8px' } }, [el('div', { cls: 'tbl' }, [tb])]));
   }
   (D.coverage || []).forEach(function (c) {
-    kids.push(el('div', { style: { 'margin-top': '14px' } }, [
-      el('div', { cls: 'count' }, [el('b', { text: t('coverage.title') + ': ' + c.pct + '%' }), el('code', { text: c.file }), c.stale ? el('span', { cls: 'pill st-warn', text: t('coverage.stale') }) : null]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: c.pct + '%', background: cssVar('pass') } })])
+    kids.push(el('div', { cls: 'panel', style: { 'margin-top': '14px' } }, [
+      el('div', { cls: 'count', style: { margin: '0 0 10px' } }, [el('b', { style: { color: 'var(--text)' }, text: t('coverage.title') + ': ' + c.pct + '%' }), el('code', { text: c.file }), c.stale ? el('span', { cls: 'tag dash', text: t('coverage.stale') }) : null]),
+      el('div', { cls: 'track' }, [el('span', { cls: 'line-pass', style: { width: c.pct + '%' } })])
     ]));
   });
-  return card(t('checks.title'), t('checks.hint'), kids);
+  return band('verification', t('checks.title'), none ? t('checks.none') : t('checks.sub'), kids);
+}
+
+/* ---------- since last run, performance, test gaps ---------- */
+function compare() {
+  var C = X.comparison;
+  if (!C) return panel(t('compare.title'), [el('div', { cls: 'empty', text: t('compare.none') })]);
+  var kids = [el('p', { cls: 'faint', style: { margin: '-8px 0 14px', 'font-size': '12.5px' }, text: t('compare.base', { id: C.base.runId }) + ' · ' + when(C.base.startedAt) }), el('div', { cls: 'deltas' }, [
+    el('div', { cls: 'delta' }, [el('b', { text: '+' + num(C.introduced) }), el('div', { cls: 'muted', text: t('compare.introduced') })]),
+    el('div', { cls: 'delta' }, [el('b', { text: '−' + num(C.resolved) }), el('div', { cls: 'muted', text: t('compare.resolved') })]),
+    el('div', { cls: 'delta' }, [el('b', { text: num(C.persisting) }), el('div', { cls: 'muted', text: t('compare.persisting') })])
+  ])];
+  if (C.releaseChange) kids.push(el('p', { cls: 'muted', style: { 'font-size': '13.5px', margin: '14px 0 0' } }, [t('compare.release') + ': ' + t('hero.' + C.releaseChange.from) + ' (' + C.releaseChange.scoreFrom + ') → ' + t('hero.' + C.releaseChange.to) + ' (' + C.releaseChange.scoreTo + ')']));
+  var list = el('ul', { cls: 'mini' });
+  [['+', C.introducedTop || []], ['−', C.resolvedTop || []]].forEach(function (x) {
+    x[1].forEach(function (f) { list.appendChild(el('li', null, [el('b', { text: x[0] }), dot(f.severity), el('span', { text: f.title }), f.file ? el('code', { text: f.file }) : null])); });
+  });
+  if (list.childNodes.length) kids.push(list);
+  return panel(t('compare.title'), kids);
+}
+function perf() {
+  var B = X.bench || [];
+  if (!B.length) return panel(t('perf.title'), [el('div', { cls: 'empty' }, [md(t('perf.none'))])]);
+  var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('perf.name') }), el('th', { cls: 'num', text: t('perf.mean') }), el('th', { cls: 'num', text: t('perf.p95') }), el('th', { cls: 'num', text: t('perf.errors') }), el('th', { text: t('perf.measured') })])])]);
+  var body = el('tbody');
+  B.forEach(function (b) {
+    body.appendChild(el('tr', null, [el('td', null, [el('code', { text: b.name }), ' ', el('span', { cls: 'tag', text: b.kind })]), el('td', { cls: 'num', text: b.stats.meanMs.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.stats.p95Ms.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.kind === 'http' ? ((b.stats.errorRate || 0) * 100).toFixed(2) + '%' : '—' }), el('td', { cls: 'muted', text: when(b.measuredAt) })]));
+  });
+  tb.appendChild(body);
+  return panel(t('perf.title'), [el('div', { cls: 'tbl' }, [tb])]);
 }
 function gaps() {
   if (!D.testGaps || !D.testGaps.length) return null;
-  var top = D.testGaps.slice(0, 10), max = Math.max.apply(null, top.map(function (g) { return g.risk; }).concat([1]));
-  return card(t('gaps.title'), t('gaps.hint'), [el('div', { cls: 'bars hot' }, top.map(function (g) {
-    return el('div', { cls: 'barrow', title: g.reasons.join(', ') }, [
+  var top = D.testGaps.slice(0, 8), max = Math.max.apply(null, top.map(function (g) { return g.risk; }).concat([1]));
+  return band('gaps', t('gaps.title'), t('gaps.sub'), [el('div', { cls: 'panel' }, [el('div', { cls: 'bars hot' }, top.map(function (g) {
+    return el('div', { cls: 'barrow', style: { cursor: 'default' }, title: g.reasons.join(', ') }, [
       el('span', { cls: 'lbl' }, [el('bdi', { text: g.file })]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: (g.risk / max * 100).toFixed(1) + '%', background: cssVar('warn') } })]),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (g.risk / max * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: String(g.risk) })
     ]);
-  }))]);
+  }))])]);
 }
 
 /* ---------- project ---------- */
 function project() {
   var Pf = D.profile, dl = el('dl', { cls: 'pj' });
-  function row(k, v) { if (!v) return; dl.appendChild(el('dt', { text: t(k) })); dl.appendChild(el('dd', { text: v })); }
+  function row(k, v) { if (!v) return; dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: v })); }
   function tech(kinds) { return uniq(Pf.technologies.filter(function (x) { return kinds.indexOf(x.kind) >= 0; }).map(function (x) { return x.name; })).join(', '); }
-  row('project.languages', Pf.languages.slice(0, 8).map(function (l) { return l.name + ' (' + l.files + ')'; }).join(', '));
-  row('project.units', Pf.units.slice(0, 12).map(function (u) { return u.path + ' — ' + (u.frameworks.join(', ') || u.kind); }).join(' · '));
-  row('project.data', tech(['database', 'orm', 'cache', 'queue']));
-  row('project.tests', t('project.testsV', { t: num(Pf.tests.testFiles), s: num(Pf.tests.sourceFiles) }) + (Pf.tests.frameworks.length ? ' (' + Pf.tests.frameworks.join(', ') + ')' : ''));
-  row('project.ci', uniq(Pf.ci.map(function (c) { return c.system; })).join(', ') || t('project.none'));
-  row('project.deploy', uniq(Pf.deploy.map(function (d) { return d.kind; })).join(', '));
-  if (Pf.api && Pf.api.routes) row('project.api', t('project.apiV', { n: num(Pf.api.routes) }));
-  if (Pf.envVars.length) row('project.env', t('project.envV', { n: Pf.envVars.length, u: Pf.envVars.filter(function (v) { return v.required && !v.documented; }).length }));
+  row(t('project.languages'), Pf.languages.slice(0, 8).map(function (l) { return l.name + ' (' + l.files + ')'; }).join(', '));
+  row(t('project.units'), Pf.units.slice(0, 12).map(function (u) { return u.path + ' — ' + (u.frameworks.join(', ') || u.kind); }).join(' · '));
+  row(t('project.data'), tech(['database', 'orm', 'cache', 'queue']));
+  row(t('project.tests'), t('project.testsV', { t: num(Pf.tests.testFiles), s: num(Pf.tests.sourceFiles) }) + (Pf.tests.frameworks.length ? ' (' + Pf.tests.frameworks.join(', ') + ')' : ''));
+  row(t('project.ci'), uniq(Pf.ci.map(function (c) { return c.system; })).join(', ') || t('project.none'));
+  row(t('project.deploy'), uniq(Pf.deploy.map(function (d) { return d.kind; })).join(', '));
+  if (Pf.api && Pf.api.routes) row(t('project.api'), t('project.apiV', { n: num(Pf.api.routes) }));
+  if (Pf.envVars.length) row(t('project.env'), t('project.envV', { n: Pf.envVars.length, u: Pf.envVars.filter(function (v) { return v.required && !v.documented; }).length }));
   var all = D.limitations.length ? D.limitations : [t('limits.none')];
   function limits(items) { return el('ul', { cls: 'limits' }, items.map(function (l) { return el('li', null, [md(l)]); })); }
   var lim = [limits(all.slice(0, 3))];
-  if (all.length > 3) lim.push(el('details', { cls: 'more-lim' }, [el('summary', { text: t('limits.more', { n: num(all.length - 3) }) }), limits(all.slice(3))]));
-  return el('div', { cls: 'grid g-2' }, [card(t('project.title'), null, [dl]), card(t('limits.title'), t('disclaimer'), lim)]);
+  if (all.length > 3) lim.push(el('div', { style: { 'margin-top': '10px' } }, [more(t('limits.more', { n: num(all.length - 3) }), [limits(all.slice(3))], 'limits')]));
+  lim.push(el('p', { cls: 'faint', style: { 'font-size': '12.5px', margin: '16px 0 0' }, text: t('disclaimer') }));
+  return el('section', { id: 'project', cls: 'band' }, [el('div', { cls: 'grid g-2' }, [
+    el('div', null, [el('h2', { cls: 'band-title', style: { 'margin-bottom': '18px' }, text: t('project.title') }), el('div', { cls: 'panel' }, [dl])]),
+    el('div', null, [el('h2', { cls: 'band-title', style: { 'margin-bottom': '18px' }, text: t('limits.title') }), el('div', { cls: 'panel' }, lim)])
+  ])]);
 }
 
 /* ---------- page ---------- */
@@ -26997,28 +27003,18 @@ function render() {
   renderChrome();
   var app = document.getElementById('app');
   app.textContent = '';
-  var P2 = D.profile;
-  app.appendChild(el('div', { cls: 'head', id: 'overview' }, [
-    el('div', null, [el('div', { cls: 'eyebrow', lang: 'en', text: 'relivaro ' + D.command }), el('h1', { text: P2.name })]),
-    el('div', { cls: 'meta' }, [
-      el('span', null, [t('meta.run') + ' ', el('b', { cls: 'mono', text: D.runId })]),
-      el('span', null, [t('meta.started') + ' ', el('b', { text: when(D.startedAt) })]),
-      el('span', null, [t('meta.duration') + ' ', el('b', { text: dur(D.durationMs) })]),
-      el('span', null, [t('meta.version') + ' ', el('b', { text: D.tool.version })])
-    ])
-  ]));
-  app.appendChild(section('summary', [el('div', { cls: 'grid g-hero' }, [hero(), kpis()])]));
-  app.appendChild(section('actions', [actionCenter()]));
-  app.appendChild(section('flow', [flow()]));
-  app.appendChild(section('charts', [charts()]));
-  if (R) app.appendChild(section('gates', []));
-  app.appendChild(section('findings', []));
-  app.appendChild(section('verification', [checks()]));
+  app.appendChild(hero());
+  app.appendChild(stats());
+  app.appendChild(fixFirst());
+  app.appendChild(flow());
+  app.appendChild(charts());
+  if (R) app.appendChild(gates());
+  app.appendChild(el('section', { id: 'findings' }));
+  app.appendChild(checks());
+  app.appendChild(el('section', { id: 'trends', cls: 'band' }, [el('div', { cls: 'grid g-2' }, [compare(), perf()])]));
   var g = gaps();
-  app.appendChild(section('trends', [el('div', { cls: 'grid g-2' }, [compare(), perf()])]));
-  if (g) app.appendChild(section('gaps', [g]));
-  app.appendChild(section('project', [project()]));
-  renderGates();
+  if (g) app.appendChild(g);
+  app.appendChild(project());
   renderFindingsSection();
   renderActionBar();
 }
@@ -27034,157 +27030,126 @@ render();
 
 // src/report/html-i18n.ts
 var en = {
-  "lang.name": "English",
-  "ac.next": "From selection to fix",
-  "ff.title": "Fix first",
-  "ff.none": "Nothing to fix first: no open findings.",
-  "ff.show": "Show these findings",
-  "ff.where": "{w} and {n} more",
-  "ff.prompt": "Fix prompt for these {n} findings",
-  "theme.label": "Theme",
-  "theme.system": "System",
-  "limits.more": "{n} more",
-  "nav.actions": "Actions",
-  "ac.title": "Action center",
-  "ac.hint": "Start with the most severe root causes, then select findings and generate a fix prompt for your coding agent. This page never changes your repository.",
-  "ac.show": "Show these",
-  "ac.step1": "Select findings in the list (checkboxes, **Select visible**, or by severity).",
-  "ac.step2": "Press **Generate fix prompt**, review or edit the text, copy or download it.",
-  "ac.step3": "Paste it into Claude Code, Codex or another coding agent opened in this repository.",
-  "ac.reviewed": "{r} of {n} open findings were reviewed in code; the rest are scanner candidates.",
-  "ac.unreviewed": "No finding has been reviewed yet: every finding is a scanner candidate until someone checks the code (`relivaro review`).",
-  "rem.deterministic": "Deterministic fix",
-  "rem.agent": "Agent-assisted",
-  "rem.manual": "Manual review",
-  "rem.none": "No change",
-  "rem.deterministic.d": "A Relivaro fixer generates a concrete, reviewable patch (`relivaro fix plan`).",
-  "rem.agent.d": "No fixer. A coding agent investigates, makes a targeted change, adds a regression test and verifies it.",
-  "rem.manual.d": "Needs runtime evidence, an operational or architectural decision, or approval before any change.",
-  "rem.reason.fixer": "A Relivaro fixer generates a reviewable patch.",
-  "rem.reason.code": "Targeted code change with a regression test.",
-  "rem.reason.runtime": "Needs runtime evidence before any change.",
-  "rem.reason.operational": "Needs an operational decision (tooling, thresholds, environments).",
-  "rem.reason.architecture": "A refactoring decision, not a defect fix.",
-  "rem.reason.dependency": "Dependency changes need a compatibility assessment and approval.",
-  "rem.reason.secret": "Rotate the credential first; a code change alone does not remove the exposure.",
-  "rem.reason.data": "Affects production data or schema; needs a migration and backup plan.",
-  "rem.reason.payment": "Payment logic; needs human approval and end-to-end tests.",
-  "rem.reason.container": "Container runtime change; needs deployment testing and approval.",
-  "rem.reason.reviewed-runtime": "The reviewer asked for runtime verification first.",
-  "rem.reason.false-positive": "Reviewed as a false positive; no change needed.",
-  "rem.reason.accepted": "Risk accepted by a reviewer; no change planned.",
-  "vs.label": "Verification",
-  "vs.detected": "Detected",
-  "vs.confirmed": "Confirmed",
-  "vs.false-positive": "False positive",
-  "vs.needs-runtime": "Needs verification",
-  "vs.accepted": "Accepted risk",
-  "sel.label": "Selection",
-  "sel.visible": "Select visible",
-  "sel.severity": "Select by severity\u2026",
-  "sel.clear": "Clear selection",
-  "sel.count": "{n} selected",
-  "sel.hidden": "{n} hidden by filters",
-  "sel.row": "Select {id} {title}",
-  "sel.group": "Select all {n} findings of {rule}",
-  "group.toggle": "Group by root cause",
-  "group.count": "{n} findings",
-  "ab.generate": "Generate fix prompt",
-  "pr.title": "Fix prompt",
-  "pr.label": "Prompt text (editable)",
-  "pr.where": "Paste this into **Claude Code**, **Codex** or another coding agent opened in this repository. The agent re-checks every finding against the current code, rejects false positives and asks before applying changes. You can edit the text first.",
-  "pr.static": "This report cannot run commands or change your repository; the agent does the work.",
-  "pr.copy": "Copy prompt",
-  "pr.download": "Download .md",
-  "pr.close": "Close",
-  "pr.copied": "Copied. Paste it into your coding agent.",
-  "pr.copyBlocked": "The browser blocked the clipboard. The text is selected: press Ctrl+C (\u2318C on a Mac).",
-  "pr.downloaded": "Saved as {f}.",
-  "kpi.reviewed": "Reviewed in code",
-  "kpi.accepted": "{n} accepted",
-  "kpi.reviewedSub": "{c} confirmed \xB7 {f} false positive",
-  "findings.hint": "Raw scanner detections, with reviewed verdicts where someone checked the code.",
-  "finding.remediation": "Remediation",
-  "finding.reviewBy": "{kind} review by {name} \xB7 {when}",
-  "finding.reviewSeverity": "Reviewer severity: {s}",
-  "finding.carried": "recorded in run {run} for the same code",
-  "finding.notReviewed": "Scanner candidate, not reviewed yet. Check the code before changing it.",
-  "finding.acceptedInCode": "Accepted in code: {r}",
-  "finding.observed": "Observed by running a project tool (see the command output).",
-  "finding.copyFail": "Selected: press Ctrl+C",
-  "finding.reviewDiff": "changes behaviour, review the diff",
-  "reviewer.agent": "Agent",
-  "reviewer.human": "Human",
-  "nav.overview": "Overview",
-  "nav.gates": "Gates",
-  "nav.findings": "Findings",
-  "nav.checks": "Verification",
-  "nav.project": "Project",
   skip: "Skip to findings",
+  footer: "Generated offline by Relivaro {v}. No data leaves this file.",
+  "theme.label": "Theme",
   "theme.light": "Light",
   "theme.dark": "Dark",
-  "meta.run": "Run",
-  "meta.command": "Command",
-  "meta.started": "Started",
-  "meta.duration": "Duration",
-  "meta.version": "Relivaro",
-  "hero.release": "Release readiness",
-  "hero.audit": "Audit result",
-  "hero.score": "score",
-  "hero.capped": "Capped at 40 while blockers exist",
-  "hero.auditOpen": "{n} open findings",
-  "hero.auditClean": "No open findings",
-  "hero.auditHint": "This run did not assess release readiness. Run `relivaro release` for gates.",
-  "status.ready": "Ready",
-  "status.ready-with-warnings": "Ready with warnings",
-  "status.needs-verification": "Needs verification",
-  "status.not-ready": "Not ready",
-  "status.desc.ready": "Every applicable gate passed and was verified.",
-  "status.desc.ready-with-warnings": "No blockers. Some gates raised warnings or could not be verified.",
-  "status.desc.needs-verification": "No blockers found, but the build or tests were not verified.",
-  "status.desc.not-ready": "At least one gate blocks the release.",
-  "gate.pass": "Passed",
-  "gate.warn": "Warning",
-  "gate.block": "Blocker",
-  "gate.unverified": "Unverified",
-  "gate.n/a": "Not applicable",
+  "theme.system": "System",
+  "nav.overview": "Overview",
+  "nav.actions": "Fix first",
+  "nav.gates": "Gates",
+  "nav.findings": "Findings",
+  "nav.checks": "Checks",
+  "nav.project": "Project",
+  "hero.not-ready": "Not ready to ship.",
+  "hero.not-ready.sub": "{n} blocking gates. Fix these first.",
+  "hero.not-ready.sub.one": "1 blocking gate. Fix it first.",
+  "hero.ready-with-warnings": "Ready, with warnings.",
+  "hero.ready-with-warnings.sub": "{n} gates to review.",
+  "hero.ready-with-warnings.sub.one": "1 gate to review.",
+  "hero.needs-verification": "Not verified yet.",
+  "hero.needs-verification.sub": "{n} gates not verified.",
+  "hero.needs-verification.sub.one": "1 gate not verified.",
+  "hero.ready": "Ready to ship.",
+  "hero.ready.sub": "Every applicable gate passed.",
+  "hero.audit-open": "{n} open findings.",
+  "hero.audit-open.one": "1 open finding.",
+  "hero.audit-clean": "No open findings.",
+  "hero.audit.sub": "Audit only. Run `relivaro release` for gates.",
+  "hero.capped": "capped at 40 while blockers exist",
+  "cta.prompt": "Fix these first",
+  "cta.gates": "Review gates",
+  "cta.findings": "View findings",
+  "cta.fixfirst": "Start fixing",
+  "cta.allGates": "All gates",
+  "stat.score": "Readiness score",
+  "stat.critical": "Critical",
+  "stat.gates": "Gates passed",
+  "kpi.open": "Open findings",
+  "kpi.urgent": "Critical + high",
+  "kpi.files": "Files",
+  "kpi.loc": "{n} lines",
+  "kpi.checks": "Checks passed",
+  "kpi.checksNone": "none run",
+  "kpi.fixable": "Auto-fixable",
+  "kpi.reviewed": "Reviewed in code",
+  "kpi.reviewedSub": "{c} confirmed \xB7 {f} false positive",
+  "kpi.accepted": "{n} accepted",
+  "kpi.suppressed": "{n} suppressed",
+  "more.numbers": "More numbers",
+  "ff.title": "Fix first",
+  "ff.sub": "The most severe root causes.",
+  "ff.none": "Nothing to fix first.",
+  "ff.show": "Show these findings",
+  "ff.more": "+{n} more",
+  "ff.prompt": "Create fix prompt ({n})",
+  "more.how": "How fixes work",
+  "rem.deterministic": "Auto-fix",
+  "rem.agent": "Agent",
+  "rem.manual": "Manual review",
+  "rem.none": "No change",
+  "rem.deterministic.d": "**Auto-fix**: a Relivaro fixer writes a reviewable patch (`relivaro fix plan`).",
+  "rem.agent.d": "**Agent**: a coding agent makes a targeted change and adds a regression test.",
+  "rem.manual.d": "**Manual review**: needs runtime evidence, a decision or approval first.",
+  "ac.step1": "Select findings below.",
+  "ac.step2": "Create a fix prompt, edit it if you like.",
+  "ac.step3": "Paste it into Claude Code, Codex or another coding agent in this repository.",
+  "ac.reviewed": "{r} of {n} open findings were reviewed in code; the rest are scanner candidates.",
+  "ac.unreviewed": "No finding is reviewed yet: each one is a scanner candidate until checked (`relivaro review`).",
+  "rem.reason.fixer": "A Relivaro fixer writes a reviewable patch.",
+  "rem.reason.code": "Targeted code change with a regression test.",
+  "rem.reason.runtime": "Needs runtime evidence first.",
+  "rem.reason.operational": "Needs an operational decision.",
+  "rem.reason.architecture": "A refactoring decision, not a defect fix.",
+  "rem.reason.dependency": "Dependency change: check compatibility, get approval.",
+  "rem.reason.secret": "Rotate the credential first; a code change alone does not undo the exposure.",
+  "rem.reason.data": "Touches production data or schema: plan a migration and backup.",
+  "rem.reason.payment": "Payment logic: needs approval and end-to-end tests.",
+  "rem.reason.container": "Container runtime change: test the deployment, get approval.",
+  "rem.reason.reviewed-runtime": "The reviewer asked for runtime verification.",
+  "rem.reason.false-positive": "Reviewed as a false positive.",
+  "rem.reason.accepted": "Risk accepted by a reviewer.",
+  "flow.title": "This run",
+  "flow.audit": "Audit",
+  "flow.audit.v": "{files} files \xB7 {rules} rules",
+  "flow.evidence": "Evidence",
+  "flow.evidence.v": "{n} with evidence",
+  "flow.fix": "Fix",
+  "flow.fix.v": "{n} auto-fixable",
+  "flow.verify": "Verify",
+  "flow.verify.v": "{p}/{t} checks passed",
+  "flow.verify.none": "not run",
+  "flow.release": "Release",
+  "flow.release.none": "not assessed",
+  "chart.title": "Breakdown",
+  "chart.severity": "Severity",
+  "chart.category": "Category",
+  "chart.hotspots": "Hotspots",
+  "chart.empty": "No open findings.",
+  "gates.title": "Release gates",
+  "gates.sub": "{p} of {t} passed.",
+  "gates.findings": "{n} findings",
+  "gates.findings.one": "1 finding",
+  "more.gates": "What the labels mean",
+  "gates.hint": "Select a gate to filter the findings behind it. \u201CStatic analysis\u201D means the result rests on rules, not on running the software.",
+  "gg.block": "Blocking",
+  "gg.warn": "Warnings",
+  "gg.unverified": "Not verified",
+  "gg.pass": "Passed",
+  "gg.n/a": "Not applicable",
   "basis.executed": "executed",
   "basis.measured": "measured",
   "basis.advisory-db": "advisory database",
   "basis.static": "static analysis",
   "basis.not-run": "not run",
-  "kpi.open": "Open findings",
-  "kpi.urgent": "Critical + high",
-  "kpi.fixable": "Auto-fixable",
-  "kpi.files": "Files analysed",
-  "kpi.loc": "{n} lines",
-  "kpi.rules": "Rules run",
-  "kpi.checks": "Checks passed",
-  "kpi.checksNone": "none executed",
-  "kpi.time": "Analysis time",
-  "flow.title": "From audit to release",
-  "flow.audit": "Audit",
-  "flow.audit.v": "{files} files \xB7 {rules} rules",
-  "flow.evidence": "Evidence",
-  "flow.evidence.v": "{n} findings with evidence",
-  "flow.fix": "Fix",
-  "flow.fix.v": "{n} auto-fixable",
-  "flow.verify": "Verify",
-  "flow.verify.v": "{p}/{t} checks passed",
-  "flow.verify.none": "not executed",
-  "flow.release": "Release",
-  "flow.release.none": "not assessed",
-  "chart.severity": "Findings by severity",
-  "chart.category": "Findings by category",
-  "chart.hotspots": "Files with the most findings",
-  "chart.empty": "Nothing to chart: no open findings.",
-  "gates.title": "Release gates",
-  "gates.hint": 'Select a gate to see the findings behind it. "Static analysis" means the result rests on rules, not on running or measuring the software.',
-  "gates.findings": "{n} related findings",
-  "gates.none": "No release assessment in this run.",
   "findings.title": "Findings",
-  "findings.search": "Search title, message, rule or file",
+  "findings.sub": "Scanner candidates, with review verdicts.",
+  "findings.search": "Search findings",
+  "more.filters": "Filters",
   "findings.allCats": "All categories",
+  "findings.category": "Category",
+  "findings.status": "Status",
   "findings.status.open": "Open",
   "findings.status.all": "All statuses",
   "findings.status.suppressed": "Suppressed",
@@ -27194,25 +27159,54 @@ var en = {
   "findings.sort.severity": "Severity",
   "findings.sort.file": "File",
   "findings.sort.rule": "Rule",
-  "findings.count": "{n} of {t} findings",
+  "findings.count": "{n} of {t}",
   "findings.more": "Show {n} more",
   "findings.empty": "No findings match these filters.",
   "findings.gate": "Gate: {g}",
   "findings.clear": "Clear",
+  "vs.label": "Verification",
+  "vs.detected": "Detected",
+  "vs.confirmed": "Confirmed",
+  "vs.false-positive": "False positive",
+  "vs.needs-runtime": "Needs verification",
+  "vs.accepted": "Accepted risk",
+  "sel.label": "Selection",
+  "sel.visible": "Select visible",
+  "sel.severity": "Select by severity",
+  "sel.clear": "Clear",
+  "sel.count": "{n} selected",
+  "sel.hidden": "{n} hidden by filters",
+  "sel.row": "Select {id} {title}",
+  "sel.group": "Select all {n} findings of {rule}",
+  "sel.group.one": "Select the finding of {rule}",
+  "group.toggle": "Group by root cause",
+  "group.count": "{n} findings",
+  "group.count.one": "1 finding",
+  "finding.remediation": "Remediation",
   "finding.evidence": "Evidence",
-  "finding.facts": "Facts",
   "finding.output": "Command output",
   "finding.impact": "Impact",
-  "finding.fix": "Remediation",
-  "finding.verify": "How to verify",
+  "finding.fix": "Fix",
+  "finding.verify": "Verify",
   "finding.standards": "Standards",
   "finding.rule": "Rule",
   "finding.confidence": "Confidence",
-  "finding.autofix": "Automated fix",
+  "finding.facts": "Facts",
+  "finding.autofix": "Auto-fix",
   "finding.copy": "Copy",
   "finding.copied": "Copied",
+  "finding.copyFail": "Selected: press Ctrl+C",
   "finding.suppressed": "Suppressed",
-  "finding.fixable": "auto-fix",
+  "finding.reviewBy": "{kind} review by {name} \xB7 {when}",
+  "finding.reviewSeverity": "Reviewer severity: {s}",
+  "finding.carried": "recorded in run {run} for the same code",
+  "finding.notReviewed": "Scanner candidate, not reviewed.",
+  "finding.acceptedInCode": "Accepted in code: {r}",
+  "finding.observed": "Observed by running a project tool.",
+  "finding.reviewDiff": "changes behaviour, review the diff",
+  "more.details": "Details",
+  "reviewer.agent": "Agent",
+  "reviewer.human": "Human",
   "conf.high": "high confidence",
   "conf.medium": "medium confidence",
   "conf.low": "low confidence",
@@ -27220,11 +27214,27 @@ var en = {
   "prov.executed": "executed",
   "prov.measured": "measured",
   "prov.agent": "agent review",
-  "checks.title": "Verification",
-  "checks.hint": "Build, test, type-check and lint commands Relivaro executed in this run.",
-  "checks.none": "No checks were executed. Re-run with --allow-exec to run the project's build and tests.",
+  "ab.generate": "Create fix prompt",
+  "pr.title": "Fix prompt ready",
+  "pr.paste": "Paste it into Claude Code, Codex or any coding agent.",
+  "pr.more": "+{n} more",
+  "pr.steps": "Agent will:",
+  "pr.stepsList": "re-check \u203A fix \u203A add a test \u203A verify",
+  "pr.showText": "Show and edit text",
+  "pr.limits": "Permission limits",
+  "pr.where": "The agent re-checks every finding against the current code, rejects false positives and asks before changing anything.",
+  "pr.static": "This report cannot run commands or change your repository; the agent does the work.",
+  "pr.label": "Prompt text (editable)",
+  "pr.copy": "Copy",
+  "pr.download": "Download .md",
+  "pr.close": "Close",
+  "pr.copied": "Copied. Paste it into your coding agent.",
+  "pr.copyBlocked": "The browser blocked the clipboard. The text is selected: press Ctrl+C (\u2318C on a Mac).",
+  "pr.downloaded": "Saved as {f}.",
+  "checks.title": "Checks",
+  "checks.sub": "Commands Relivaro ran.",
+  "checks.none": "Nothing was executed. Re-run with `--allow-exec` to run build and tests.",
   "checks.kind": "Check",
-  "checks.unit": "Unit",
   "checks.result": "Result",
   "checks.tests": "Tests",
   "checks.duration": "Duration",
@@ -27240,25 +27250,23 @@ var en = {
   "check.typecheck": "Type check",
   "check.lint": "Lint",
   "coverage.title": "Line coverage",
-  "coverage.stale": "older than the latest source change",
-  "perf.title": "Performance measurements",
-  "perf.none": "No performance measurements. Use `relivaro bench` or `relivaro load` to measure.",
+  "coverage.stale": "older than the latest change",
+  "compare.title": "Since last run",
+  "compare.none": "No earlier run to compare.",
+  "compare.introduced": "new",
+  "compare.resolved": "resolved",
+  "compare.persisting": "still open",
+  "compare.release": "Release status",
+  "compare.base": "Previous run {id}",
+  "perf.title": "Performance",
+  "perf.none": "Not measured. Use `relivaro bench` or `relivaro load`.",
   "perf.name": "Benchmark",
   "perf.mean": "Mean",
   "perf.p95": "p95",
-  "perf.p99": "p99",
   "perf.errors": "Error rate",
   "perf.measured": "Measured",
-  "compare.title": "Compared with the previous run",
-  "compare.none": "No earlier run of this project to compare with.",
-  "compare.introduced": "introduced",
-  "compare.resolved": "resolved",
-  "compare.persisting": "persisting",
-  "compare.release": "Release status",
-  "compare.base": "Previous run {id}",
-  "gaps.title": "Untested high-risk code",
-  "gaps.hint": "Heuristic ranking of source files without matching tests.",
-  "gaps.risk": "risk {n}",
+  "gaps.title": "Untested risk",
+  "gaps.sub": "Risky files without matching tests (heuristic).",
   "project.title": "Project",
   "project.languages": "Languages",
   "project.units": "Units",
@@ -27272,10 +27280,10 @@ var en = {
   "project.envV": "{n} variables read, {u} required but undocumented",
   "project.data": "Data stores",
   "project.none": "none",
-  "limits.title": "What this run did not verify",
+  "limits.title": "Not verified",
   "limits.none": "No limitations were reported.",
-  disclaimer: "Automated checks have limits. Passing them does not prove the software is free of vulnerabilities or defects.",
-  footer: "Generated offline by Relivaro {v}. No data leaves this file.",
+  "limits.more": "{n} more",
+  disclaimer: "Passing automated checks does not prove the software is free of vulnerabilities or defects.",
   "sev.critical": "Critical",
   "sev.high": "High",
   "sev.medium": "Medium",
@@ -27308,135 +27316,87 @@ var en = {
   "gt.documentation": "Installation and usage documentation"
 };
 var tr = {
-  "lang.name": "T\xFCrk\xE7e",
-  "ac.next": "Se\xE7imden d\xFCzeltmeye",
-  "ff.title": "\xD6nce bunlar\u0131 d\xFCzeltin",
-  "ff.none": "\xD6ncelikli i\u015F yok: a\xE7\u0131k bulgu bulunmuyor.",
-  "ff.show": "Bu bulgular\u0131 g\xF6ster",
-  "ff.where": "{w} ve {n} konum daha",
-  "ff.prompt": "Bu {n} bulgu i\xE7in d\xFCzeltme promptu",
-  "theme.label": "Tema",
-  "theme.system": "Sistem",
-  "limits.more": "{n} s\u0131n\u0131rlama daha",
-  "nav.actions": "Eylemler",
-  "ac.title": "Eylem merkezi",
-  "ac.hint": "En \xF6nemli k\xF6k nedenlerle ba\u015Flay\u0131n; ard\u0131ndan bulgular\u0131 se\xE7ip kodlama ajan\u0131n\u0131z i\xE7in bir d\xFCzeltme promptu olu\u015Fturun. Bu sayfa deponuzu hi\xE7bir zaman de\u011Fi\u015Ftirmez.",
-  "ac.show": "Bunlar\u0131 g\xF6ster",
-  "ac.step1": "Listeden bulgular\u0131 se\xE7in (onay kutular\u0131, **G\xF6r\xFCnenleri se\xE7** veya \xF6nem derecesine g\xF6re).",
-  "ac.step2": "**D\xFCzeltme promptu olu\u015Ftur** d\xFC\u011Fmesine bas\u0131n; metni g\xF6zden ge\xE7irip d\xFCzenleyin, ard\u0131ndan kopyalay\u0131n ya da indirin.",
-  "ac.step3": "Metni, bu depoda a\xE7\u0131k olan Claude Code, Codex veya ba\u015Fka bir kodlama ajan\u0131na yap\u0131\u015Ft\u0131r\u0131n.",
-  "ac.reviewed": "{n} a\xE7\u0131k bulgudan {r} tanesi kodda incelendi; di\u011Ferleri hen\xFCz aday.",
-  "ac.unreviewed": "Hen\xFCz hi\xE7bir bulgu incelenmedi: kod kontrol edilene kadar her bulgu bir adayd\u0131r (`relivaro review`).",
-  "rem.deterministic": "Otomatik d\xFCzeltme",
-  "rem.agent": "Ajan destekli",
-  "rem.manual": "Manuel inceleme",
-  "rem.none": "De\u011Fi\u015Fiklik yok",
-  "rem.deterministic.d": "Bir Relivaro d\xFCzelticisi somut ve incelenebilir bir yama \xFCretir (`relivaro fix plan`).",
-  "rem.agent.d": "Haz\u0131r d\xFCzeltici yok. Bir kodlama ajan\u0131 sorunu ara\u015Ft\u0131r\u0131r, hedefli bir de\u011Fi\u015Fiklik yapar, regresyon testi ekler ve do\u011Frular.",
-  "rem.manual.d": "De\u011Fi\u015Fiklikten \xF6nce \xE7al\u0131\u015Fma zaman\u0131 kan\u0131t\u0131, operasyonel ya da mimari bir karar veya onay gerekir.",
-  "rem.reason.fixer": "Bir Relivaro d\xFCzelticisi incelenebilir bir yama \xFCretir.",
-  "rem.reason.code": "Regresyon testiyle birlikte hedefli kod de\u011Fi\u015Fikli\u011Fi.",
-  "rem.reason.runtime": "De\u011Fi\u015Fiklikten \xF6nce \xE7al\u0131\u015Fma zaman\u0131 kan\u0131t\u0131 gerekir.",
-  "rem.reason.operational": "Operasyonel bir karar gerekir (ara\xE7lar, e\u015Fikler, ortamlar).",
-  "rem.reason.architecture": "Hata d\xFCzeltmesi de\u011Fil, yeniden yap\u0131land\u0131rma karar\u0131.",
-  "rem.reason.dependency": "Ba\u011F\u0131ml\u0131l\u0131k de\u011Fi\u015Fiklikleri uyumluluk de\u011Ferlendirmesi ve onay gerektirir.",
-  "rem.reason.secret": "\xD6nce kimlik bilgisini yenileyin; yaln\u0131zca kodu de\u011Fi\u015Ftirmek s\u0131z\u0131nt\u0131y\u0131 geri almaz.",
-  "rem.reason.data": "\xDCretim verisini veya \u015Femay\u0131 etkiler; migration ve yedekleme plan\u0131 gerekir.",
-  "rem.reason.payment": "\xD6deme mant\u0131\u011F\u0131; insan onay\u0131 ve u\xE7tan uca testler gerekir.",
-  "rem.reason.container": "Konteyner \xE7al\u0131\u015Fma ortam\u0131 de\u011Fi\u015Fikli\u011Fi; da\u011F\u0131t\u0131m testi ve onay gerekir.",
-  "rem.reason.reviewed-runtime": "\u0130nceleyen \xF6nce \xE7al\u0131\u015Fma zaman\u0131nda do\u011Frulama istedi.",
-  "rem.reason.false-positive": "Yanl\u0131\u015F pozitif olarak incelendi; de\u011Fi\u015Fiklik gerekmez.",
-  "rem.reason.accepted": "Risk inceleyen taraf\u0131ndan kabul edildi; de\u011Fi\u015Fiklik planlanm\u0131yor.",
-  "vs.label": "Do\u011Frulama",
-  "vs.detected": "Tespit edildi",
-  "vs.confirmed": "Do\u011Fruland\u0131",
-  "vs.false-positive": "Yanl\u0131\u015F pozitif",
-  "vs.needs-runtime": "Do\u011Frulama gerekli",
-  "vs.accepted": "Kabul edilen risk",
-  "sel.label": "Se\xE7im",
-  "sel.visible": "G\xF6r\xFCnenleri se\xE7",
-  "sel.severity": "\xD6nem derecesine g\xF6re se\xE7\u2026",
-  "sel.clear": "Se\xE7imi temizle",
-  "sel.count": "{n} se\xE7ili",
-  "sel.hidden": "{n} tanesi filtrelerle gizlendi",
-  "sel.row": "{id} {title} bulgusunu se\xE7",
-  "sel.group": "{rule} kural\u0131n\u0131n {n} bulgusunun t\xFCm\xFCn\xFC se\xE7",
-  "group.toggle": "K\xF6k nedene g\xF6re grupla",
-  "group.count": "{n} bulgu",
-  "ab.generate": "D\xFCzeltme promptu olu\u015Ftur",
-  "pr.title": "D\xFCzeltme promptu",
-  "pr.label": "Prompt metni (d\xFCzenlenebilir)",
-  "pr.where": "Bunu, bu depoda a\xE7\u0131k olan **Claude Code**, **Codex** veya ba\u015Fka bir kodlama ajan\u0131na yap\u0131\u015Ft\u0131r\u0131n. Ajan her bulguyu g\xFCncel koda g\xF6re yeniden kontrol eder, yanl\u0131\u015F pozitifleri ay\u0131klar ve de\u011Fi\u015Fiklik yapmadan \xF6nce onay ister. Metni \xF6nce d\xFCzenleyebilirsiniz.",
-  "pr.static": "Bu rapor komut \xE7al\u0131\u015Ft\u0131ramaz ve deponuzu de\u011Fi\u015Ftiremez; i\u015Fi ajan yapar.",
-  "pr.copy": "Promptu kopyala",
-  "pr.download": ".md olarak indir",
-  "pr.close": "Kapat",
-  "pr.copied": "Kopyaland\u0131. Kodlama ajan\u0131n\u0131za yap\u0131\u015Ft\u0131r\u0131n.",
-  "pr.copyBlocked": "Taray\u0131c\u0131 panoyu engelledi. Metin se\xE7ili: Ctrl+C (Mac\u2019te \u2318C) tu\u015Flar\u0131na bas\u0131n.",
-  "pr.downloaded": "{f} olarak kaydedildi.",
-  "kpi.reviewed": "Kodda incelenen",
-  "kpi.accepted": "{n} kabul edildi",
-  "kpi.reviewedSub": "{c} do\u011Fruland\u0131 \xB7 {f} yanl\u0131\u015F pozitif",
-  "findings.hint": "Taraman\u0131n ham tespitleri; kodu incelenen bulgularda inceleme karar\u0131yla birlikte.",
-  "finding.remediation": "\xC7\xF6z\xFCm yolu",
-  "finding.reviewBy": "{kind} incelemesi: {name} \xB7 {when}",
-  "finding.reviewSeverity": "\u0130nceleyenin \xF6nem derecesi: {s}",
-  "finding.carried": "ayn\u0131 kod i\xE7in {run} \xE7al\u0131\u015Ft\u0131rmas\u0131nda kaydedildi",
-  "finding.acceptedInCode": "Kodda kabul edildi: {r}",
-  "finding.notReviewed": "Taraman\u0131n buldu\u011Fu bir aday; hen\xFCz incelenmedi. De\u011Fi\u015Ftirmeden \xF6nce kodu kontrol edin.",
-  "finding.observed": "Bir proje arac\u0131 \xE7al\u0131\u015Ft\u0131r\u0131l\u0131rken g\xF6zlemlendi (komut \xE7\u0131kt\u0131s\u0131na bak\u0131n).",
-  "finding.copyFail": "Se\xE7ildi: Ctrl+C\u2019ye bas\u0131n",
-  "finding.reviewDiff": "davran\u0131\u015F\u0131 de\u011Fi\u015Ftirir, fark\u0131 inceleyin",
-  "reviewer.agent": "Ajan",
-  "reviewer.human": "\u0130nsan",
-  "nav.overview": "Genel bak\u0131\u015F",
-  "nav.gates": "Kap\u0131lar",
-  "nav.findings": "Bulgular",
-  "nav.checks": "Do\u011Frulama",
-  "nav.project": "Proje",
   skip: "Bulgulara ge\xE7",
+  footer: "Relivaro {v} ile \xE7evrimd\u0131\u015F\u0131 olu\u015Fturuldu. Hi\xE7bir veri bu dosyan\u0131n d\u0131\u015F\u0131na \xE7\u0131kmaz.",
+  "theme.label": "Tema",
   "theme.light": "A\xE7\u0131k",
   "theme.dark": "Koyu",
-  "meta.run": "\xC7al\u0131\u015Ft\u0131rma",
-  "meta.command": "Komut",
-  "meta.started": "Ba\u015Flang\u0131\xE7",
-  "meta.duration": "S\xFCre",
-  "meta.version": "Relivaro",
-  "hero.release": "Yay\u0131na haz\u0131rl\u0131k",
-  "hero.audit": "Denetim sonucu",
-  "hero.score": "puan",
-  "hero.capped": "Engel varken puan en fazla 40 olabilir",
-  "hero.auditOpen": "{n} a\xE7\u0131k bulgu",
-  "hero.auditClean": "A\xE7\u0131k bulgu yok",
-  "hero.auditHint": "Bu \xE7al\u0131\u015Ft\u0131rmada yay\u0131na haz\u0131rl\u0131k de\u011Ferlendirilmedi. Kap\u0131lar i\xE7in `relivaro release` \xE7al\u0131\u015Ft\u0131r\u0131n.",
-  "status.ready": "Haz\u0131r",
-  "status.ready-with-warnings": "Uyar\u0131larla haz\u0131r",
-  "status.needs-verification": "Do\u011Frulama gerekiyor",
-  "status.not-ready": "Haz\u0131r de\u011Fil",
-  "status.desc.ready": "Uygulanabilir t\xFCm kap\u0131lar ge\xE7ti ve do\u011Fruland\u0131.",
-  "status.desc.ready-with-warnings": "Engel yok. Baz\u0131 kap\u0131lar uyar\u0131 verdi ya da do\u011Frulanamad\u0131.",
-  "status.desc.needs-verification": "Engel bulunmad\u0131, ancak derleme veya testler do\u011Frulanmad\u0131.",
-  "status.desc.not-ready": "En az bir kap\u0131 yay\u0131n\u0131 engelliyor.",
-  "gate.pass": "Ge\xE7ti",
-  "gate.warn": "Uyar\u0131",
-  "gate.block": "Engel",
-  "gate.unverified": "Do\u011Frulanmad\u0131",
-  "gate.n/a": "Uygulanamaz",
-  "basis.executed": "\xE7al\u0131\u015Ft\u0131r\u0131ld\u0131",
-  "basis.measured": "\xF6l\xE7\xFCld\xFC",
-  "basis.advisory-db": "g\xFCvenlik a\xE7\u0131\u011F\u0131 veritaban\u0131",
-  "basis.static": "statik analiz",
-  "basis.not-run": "\xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131",
-  "kpi.open": "A\xE7\u0131k bulgular",
+  "theme.system": "Sistem",
+  "nav.overview": "\xD6zet",
+  "nav.actions": "\xD6nce d\xFCzelt",
+  "nav.gates": "Kap\u0131lar",
+  "nav.findings": "Bulgular",
+  "nav.checks": "Kontroller",
+  "nav.project": "Proje",
+  "hero.not-ready": "Yay\u0131na haz\u0131r de\u011Fil.",
+  "hero.not-ready.sub": "{n} kap\u0131 yay\u0131n\u0131 engelliyor. \xD6nce bunlar\u0131 d\xFCzelt.",
+  "hero.not-ready.sub.one": "1 kap\u0131 yay\u0131n\u0131 engelliyor. \xD6nce onu d\xFCzelt.",
+  "hero.ready-with-warnings": "Haz\u0131r, ama uyar\u0131lar var.",
+  "hero.ready-with-warnings.sub": "{n} kap\u0131 incelenmeli.",
+  "hero.ready-with-warnings.sub.one": "1 kap\u0131 incelenmeli.",
+  "hero.needs-verification": "Hen\xFCz do\u011Frulanmad\u0131.",
+  "hero.needs-verification.sub": "{n} kap\u0131 do\u011Frulanmad\u0131.",
+  "hero.needs-verification.sub.one": "1 kap\u0131 do\u011Frulanmad\u0131.",
+  "hero.ready": "Yay\u0131na haz\u0131r.",
+  "hero.ready.sub": "Uygulanabilir t\xFCm kap\u0131lar ge\xE7ti.",
+  "hero.audit-open": "{n} a\xE7\u0131k bulgu.",
+  "hero.audit-open.one": "1 a\xE7\u0131k bulgu.",
+  "hero.audit-clean": "A\xE7\u0131k bulgu yok.",
+  "hero.audit.sub": "Yaln\u0131zca denetim. Kap\u0131lar i\xE7in `relivaro release`.",
+  "hero.capped": "engel varken en fazla 40",
+  "cta.prompt": "\xD6nce bunlar\u0131 d\xFCzelt",
+  "cta.gates": "Kap\u0131lar\u0131 incele",
+  "cta.findings": "Bulgulara bak",
+  "cta.fixfirst": "D\xFCzeltmeye ba\u015Fla",
+  "cta.allGates": "T\xFCm kap\u0131lar",
+  "stat.score": "Haz\u0131rl\u0131k puan\u0131",
+  "stat.critical": "Kritik",
+  "stat.gates": "Ge\xE7en kap\u0131",
+  "kpi.open": "A\xE7\u0131k bulgu",
   "kpi.urgent": "Kritik + y\xFCksek",
-  "kpi.fixable": "Otomatik d\xFCzeltilebilir",
-  "kpi.files": "\u0130ncelenen dosya",
+  "kpi.files": "Dosya",
   "kpi.loc": "{n} sat\u0131r",
-  "kpi.rules": "\xC7al\u0131\u015Fan kural",
   "kpi.checks": "Ge\xE7en kontrol",
-  "kpi.checksNone": "hi\xE7biri \xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131",
-  "kpi.time": "Analiz s\xFCresi",
-  "flow.title": "Denetimden yay\u0131na",
+  "kpi.checksNone": "\xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131",
+  "kpi.fixable": "Otomatik d\xFCzeltilebilir",
+  "kpi.reviewed": "Kodda incelenen",
+  "kpi.reviewedSub": "{c} do\u011Fruland\u0131 \xB7 {f} yanl\u0131\u015F pozitif",
+  "kpi.accepted": "{n} kabul edildi",
+  "kpi.suppressed": "{n} yok say\u0131ld\u0131",
+  "more.numbers": "Di\u011Fer rakamlar",
+  "ff.title": "\xD6nce d\xFCzelt",
+  "ff.sub": "En ciddi k\xF6k nedenler.",
+  "ff.none": "\xD6ncelikli i\u015F yok.",
+  "ff.show": "Bu bulgular\u0131 g\xF6ster",
+  "ff.more": "+{n} daha",
+  "ff.prompt": "Fix prompt olu\u015Ftur ({n})",
+  "more.how": "D\xFCzeltme nas\u0131l i\u015Fler",
+  "rem.deterministic": "Otomatik d\xFCzeltme",
+  "rem.agent": "Ajan",
+  "rem.manual": "Manuel inceleme",
+  "rem.none": "De\u011Fi\u015Fiklik yok",
+  "rem.deterministic.d": "**Otomatik d\xFCzeltme**: Relivaro incelenebilir bir yama yazar (`relivaro fix plan`).",
+  "rem.agent.d": "**Ajan**: bir kodlama ajan\u0131 hedefli bir de\u011Fi\u015Fiklik yapar ve regresyon testi ekler.",
+  "rem.manual.d": "**Manuel inceleme**: \xF6nce \xE7al\u0131\u015Fma zaman\u0131 kan\u0131t\u0131, bir karar ya da onay gerekir.",
+  "ac.step1": "A\u015Fa\u011F\u0131dan bulgular\u0131 se\xE7.",
+  "ac.step2": "Fix prompt olu\u015Ftur, istersen d\xFCzenle.",
+  "ac.step3": "Bu depoda a\xE7\u0131k olan Claude Code, Codex veya ba\u015Fka bir kodlama ajan\u0131na yap\u0131\u015Ft\u0131r.",
+  "ac.reviewed": "{n} a\xE7\u0131k bulgudan {r} tanesi kodda incelendi; di\u011Ferleri tarama aday\u0131.",
+  "ac.unreviewed": "Hen\xFCz incelenen bulgu yok: kod kontrol edilene kadar her biri bir tarama aday\u0131 (`relivaro review`).",
+  "rem.reason.fixer": "Relivaro incelenebilir bir yama yazar.",
+  "rem.reason.code": "Regresyon testiyle hedefli kod de\u011Fi\u015Fikli\u011Fi.",
+  "rem.reason.runtime": "\xD6nce \xE7al\u0131\u015Fma zaman\u0131 kan\u0131t\u0131 gerekir.",
+  "rem.reason.operational": "Operasyonel bir karar gerekir.",
+  "rem.reason.architecture": "Hata d\xFCzeltmesi de\u011Fil, yeniden yap\u0131land\u0131rma karar\u0131.",
+  "rem.reason.dependency": "Ba\u011F\u0131ml\u0131l\u0131k de\u011Fi\u015Fikli\u011Fi: uyumlulu\u011Fu kontrol et, onay al.",
+  "rem.reason.secret": "\xD6nce kimlik bilgisini yenile; yaln\u0131zca kodu de\u011Fi\u015Ftirmek s\u0131z\u0131nt\u0131y\u0131 geri almaz.",
+  "rem.reason.data": "\xDCretim verisine veya \u015Femaya dokunur: migration ve yedek planla.",
+  "rem.reason.payment": "\xD6deme mant\u0131\u011F\u0131: onay ve u\xE7tan uca test gerekir.",
+  "rem.reason.container": "Konteyner de\u011Fi\u015Fikli\u011Fi: da\u011F\u0131t\u0131m\u0131 test et, onay al.",
+  "rem.reason.reviewed-runtime": "\u0130nceleyen \xE7al\u0131\u015Fma zaman\u0131nda do\u011Frulama istedi.",
+  "rem.reason.false-positive": "Yanl\u0131\u015F pozitif olarak incelendi.",
+  "rem.reason.accepted": "Risk inceleyen taraf\u0131ndan kabul edildi.",
+  "flow.title": "Bu \xE7al\u0131\u015Ft\u0131rma",
   "flow.audit": "Denetim",
   "flow.audit.v": "{files} dosya \xB7 {rules} kural",
   "flow.evidence": "Kan\u0131t",
@@ -27448,45 +27408,91 @@ var tr = {
   "flow.verify.none": "\xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131",
   "flow.release": "Yay\u0131n",
   "flow.release.none": "de\u011Ferlendirilmedi",
-  "chart.severity": "\xD6nem derecesine g\xF6re bulgular",
-  "chart.category": "Kategoriye g\xF6re bulgular",
-  "chart.hotspots": "En \xE7ok bulgu i\xE7eren dosyalar",
-  "chart.empty": "Grafik i\xE7in veri yok: a\xE7\u0131k bulgu bulunmuyor.",
+  "chart.title": "Da\u011F\u0131l\u0131m",
+  "chart.severity": "\xD6nem",
+  "chart.category": "Kategori",
+  "chart.hotspots": "Yo\u011Fun dosyalar",
+  "chart.empty": "A\xE7\u0131k bulgu yok.",
   "gates.title": "Yay\u0131n kap\u0131lar\u0131",
-  "gates.hint": 'Arkas\u0131ndaki bulgular\u0131 g\xF6rmek i\xE7in bir kap\u0131 se\xE7in. "Statik analiz", sonucun yaz\u0131l\u0131m\u0131 \xE7al\u0131\u015Ft\u0131rmaya ya da \xF6l\xE7meye de\u011Fil kurallara dayand\u0131\u011F\u0131n\u0131 belirtir.',
-  "gates.findings": "{n} ilgili bulgu",
-  "gates.none": "Bu \xE7al\u0131\u015Ft\u0131rmada yay\u0131n de\u011Ferlendirmesi yok.",
+  "gates.sub": "{t} kap\u0131dan {p} tanesi ge\xE7ti.",
+  "gates.findings": "{n} bulgu",
+  "gates.findings.one": "1 bulgu",
+  "more.gates": "Etiketler ne anlama gelir",
+  "gates.hint": "Bir kap\u0131y\u0131 se\xE7ince arkas\u0131ndaki bulgular filtrelenir. \u201CStatik analiz\u201D, sonucun yaz\u0131l\u0131m\u0131 \xE7al\u0131\u015Ft\u0131rmaya de\u011Fil kurallara dayand\u0131\u011F\u0131n\u0131 g\xF6sterir.",
+  "gg.block": "Engelleyen",
+  "gg.warn": "Uyar\u0131lar",
+  "gg.unverified": "Do\u011Frulanmayan",
+  "gg.pass": "Ge\xE7en",
+  "gg.n/a": "Uygulanamaz",
+  "basis.executed": "\xE7al\u0131\u015Ft\u0131r\u0131ld\u0131",
+  "basis.measured": "\xF6l\xE7\xFCld\xFC",
+  "basis.advisory-db": "g\xFCvenlik a\xE7\u0131\u011F\u0131 veritaban\u0131",
+  "basis.static": "statik analiz",
+  "basis.not-run": "\xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131",
   "findings.title": "Bulgular",
-  "findings.search": "Ba\u015Fl\u0131k, mesaj, kural veya dosyada ara",
+  "findings.sub": "Tarama adaylar\u0131 ve inceleme kararlar\u0131.",
+  "findings.search": "Bulgularda ara",
+  "more.filters": "Filtreler",
   "findings.allCats": "T\xFCm kategoriler",
+  "findings.category": "Kategori",
+  "findings.status": "Durum",
   "findings.status.open": "A\xE7\u0131k",
   "findings.status.all": "T\xFCm durumlar",
   "findings.status.suppressed": "Yok say\u0131lan",
-  "findings.status.baseline": "Kabul edilmi\u015F (baseline)",
+  "findings.status.baseline": "Baseline",
   "findings.fixable": "Yaln\u0131zca otomatik d\xFCzeltilebilir",
   "findings.sort": "S\u0131rala",
-  "findings.sort.severity": "\xD6nem derecesi",
+  "findings.sort.severity": "\xD6nem",
   "findings.sort.file": "Dosya",
   "findings.sort.rule": "Kural",
-  "findings.count": "{n} / {t} bulgu",
+  "findings.count": "{n} / {t}",
   "findings.more": "{n} tane daha g\xF6ster",
   "findings.empty": "Bu filtrelere uyan bulgu yok.",
   "findings.gate": "Kap\u0131: {g}",
   "findings.clear": "Temizle",
+  "vs.label": "Do\u011Frulama",
+  "vs.detected": "Tespit edildi",
+  "vs.confirmed": "Do\u011Fruland\u0131",
+  "vs.false-positive": "Yanl\u0131\u015F pozitif",
+  "vs.needs-runtime": "Do\u011Frulama gerekli",
+  "vs.accepted": "Kabul edilen risk",
+  "sel.label": "Se\xE7im",
+  "sel.visible": "G\xF6r\xFCnenleri se\xE7",
+  "sel.severity": "\xD6nem derecesine g\xF6re se\xE7",
+  "sel.clear": "Temizle",
+  "sel.count": "{n} se\xE7ili",
+  "sel.hidden": "{n} tanesi filtrelerle gizli",
+  "sel.row": "{id} {title} bulgusunu se\xE7",
+  "sel.group": "{rule} kural\u0131n\u0131n {n} bulgusunun t\xFCm\xFCn\xFC se\xE7",
+  "sel.group.one": "{rule} kural\u0131n\u0131n bulgusunu se\xE7",
+  "group.toggle": "K\xF6k nedene g\xF6re grupla",
+  "group.count": "{n} bulgu",
+  "group.count.one": "1 bulgu",
+  "finding.remediation": "\xC7\xF6z\xFCm yolu",
   "finding.evidence": "Kan\u0131t",
-  "finding.facts": "Tespit verileri",
   "finding.output": "Komut \xE7\u0131kt\u0131s\u0131",
   "finding.impact": "Etki",
-  "finding.fix": "\xC7\xF6z\xFCm",
-  "finding.verify": "Nas\u0131l do\u011Frulan\u0131r",
+  "finding.fix": "D\xFCzeltme",
+  "finding.verify": "Do\u011Frulama",
   "finding.standards": "Standartlar",
   "finding.rule": "Kural",
   "finding.confidence": "G\xFCven",
+  "finding.facts": "Tespit verileri",
   "finding.autofix": "Otomatik d\xFCzeltme",
   "finding.copy": "Kopyala",
   "finding.copied": "Kopyaland\u0131",
+  "finding.copyFail": "Se\xE7ildi: Ctrl+C\u2019ye bas",
   "finding.suppressed": "Yok say\u0131ld\u0131",
-  "finding.fixable": "otomatik d\xFCzeltme",
+  "finding.reviewBy": "{kind} incelemesi: {name} \xB7 {when}",
+  "finding.reviewSeverity": "\u0130nceleyenin \xF6nem derecesi: {s}",
+  "finding.carried": "ayn\u0131 kod i\xE7in {run} \xE7al\u0131\u015Ft\u0131rmas\u0131nda kaydedildi",
+  "finding.notReviewed": "Tarama aday\u0131, incelenmedi.",
+  "finding.acceptedInCode": "Kodda kabul edildi: {r}",
+  "finding.observed": "Bir proje arac\u0131 \xE7al\u0131\u015Ft\u0131r\u0131l\u0131rken g\xF6zlemlendi.",
+  "finding.reviewDiff": "davran\u0131\u015F\u0131 de\u011Fi\u015Ftirir, fark\u0131 incele",
+  "more.details": "Ayr\u0131nt\u0131lar",
+  "reviewer.agent": "Ajan",
+  "reviewer.human": "\u0130nsan",
   "conf.high": "y\xFCksek g\xFCven",
   "conf.medium": "orta g\xFCven",
   "conf.low": "d\xFC\u015F\xFCk g\xFCven",
@@ -27494,11 +27500,27 @@ var tr = {
   "prov.executed": "\xE7al\u0131\u015Ft\u0131r\u0131ld\u0131",
   "prov.measured": "\xF6l\xE7\xFCld\xFC",
   "prov.agent": "ajan incelemesi",
-  "checks.title": "Do\u011Frulama",
-  "checks.hint": "Relivaro'nun bu \xE7al\u0131\u015Ft\u0131rmada y\xFCr\xFCtt\xFC\u011F\xFC derleme, test, tip denetimi ve lint komutlar\u0131.",
-  "checks.none": "Hi\xE7bir kontrol \xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131. Projenin derleme ve testlerini \xE7al\u0131\u015Ft\u0131rmak i\xE7in --allow-exec ile yeniden \xE7al\u0131\u015Ft\u0131r\u0131n.",
+  "ab.generate": "Fix prompt olu\u015Ftur",
+  "pr.title": "Fix prompt haz\u0131r",
+  "pr.paste": "Claude Code, Codex veya ba\u015Fka bir kodlama ajan\u0131na yap\u0131\u015Ft\u0131r.",
+  "pr.more": "+{n} daha",
+  "pr.steps": "Ajan \u015Funlar\u0131 yapar:",
+  "pr.stepsList": "yeniden kontrol \u203A d\xFCzeltme \u203A test ekleme \u203A do\u011Frulama",
+  "pr.showText": "Metni g\xF6ster ve d\xFCzenle",
+  "pr.limits": "\u0130zin s\u0131n\u0131rlar\u0131",
+  "pr.where": "Ajan her bulguyu g\xFCncel koda g\xF6re yeniden kontrol eder, yanl\u0131\u015F pozitifleri ay\u0131klar ve bir \u015Feyi de\u011Fi\u015Ftirmeden \xF6nce sorar.",
+  "pr.static": "Bu rapor komut \xE7al\u0131\u015Ft\u0131ramaz ve deponu de\u011Fi\u015Ftiremez; i\u015Fi ajan yapar.",
+  "pr.label": "Prompt metni (d\xFCzenlenebilir)",
+  "pr.copy": "Kopyala",
+  "pr.download": ".md indir",
+  "pr.close": "Kapat",
+  "pr.copied": "Kopyaland\u0131. Kodlama ajan\u0131na yap\u0131\u015Ft\u0131r.",
+  "pr.copyBlocked": "Taray\u0131c\u0131 panoyu engelledi. Metin se\xE7ili: Ctrl+C (Mac\u2019te \u2318C) tu\u015Flar\u0131na bas.",
+  "pr.downloaded": "{f} olarak kaydedildi.",
+  "checks.title": "Kontroller",
+  "checks.sub": "Relivaro\u2019nun \xE7al\u0131\u015Ft\u0131rd\u0131\u011F\u0131 komutlar.",
+  "checks.none": "Hi\xE7bir \u015Fey \xE7al\u0131\u015Ft\u0131r\u0131lmad\u0131. Derleme ve testler i\xE7in `--allow-exec` ile yeniden \xE7al\u0131\u015Ft\u0131r.",
   "checks.kind": "Kontrol",
-  "checks.unit": "Birim",
   "checks.result": "Sonu\xE7",
   "checks.tests": "Testler",
   "checks.duration": "S\xFCre",
@@ -27514,28 +27536,26 @@ var tr = {
   "check.typecheck": "Tip denetimi",
   "check.lint": "Lint",
   "coverage.title": "Sat\u0131r kapsam\u0131",
-  "coverage.stale": "son kaynak de\u011Fi\u015Fikli\u011Finden eski",
-  "perf.title": "Performans \xF6l\xE7\xFCmleri",
-  "perf.none": "Performans \xF6l\xE7\xFCm\xFC yok. \xD6l\xE7mek i\xE7in `relivaro bench` veya `relivaro load` kullan\u0131n.",
+  "coverage.stale": "son de\u011Fi\u015Fiklikten eski",
+  "compare.title": "Son \xE7al\u0131\u015Ft\u0131rmadan beri",
+  "compare.none": "Kar\u015F\u0131la\u015Ft\u0131r\u0131lacak \xF6nceki \xE7al\u0131\u015Ft\u0131rma yok.",
+  "compare.introduced": "yeni",
+  "compare.resolved": "\xE7\xF6z\xFCld\xFC",
+  "compare.persisting": "h\xE2l\xE2 a\xE7\u0131k",
+  "compare.release": "Yay\u0131n durumu",
+  "compare.base": "\xD6nceki \xE7al\u0131\u015Ft\u0131rma {id}",
+  "perf.title": "Performans",
+  "perf.none": "\xD6l\xE7\xFClmedi. `relivaro bench` veya `relivaro load` kullan.",
   "perf.name": "\xD6l\xE7\xFCm",
   "perf.mean": "Ortalama",
   "perf.p95": "p95",
-  "perf.p99": "p99",
   "perf.errors": "Hata oran\u0131",
   "perf.measured": "\xD6l\xE7\xFCm zaman\u0131",
-  "compare.title": "\xD6nceki \xE7al\u0131\u015Ft\u0131rmayla kar\u015F\u0131la\u015Ft\u0131rma",
-  "compare.none": "Bu proje i\xE7in kar\u015F\u0131la\u015Ft\u0131r\u0131lacak \xF6nceki \xE7al\u0131\u015Ft\u0131rma yok.",
-  "compare.introduced": "yeni",
-  "compare.resolved": "\xE7\xF6z\xFCld\xFC",
-  "compare.persisting": "devam ediyor",
-  "compare.release": "Yay\u0131n durumu",
-  "compare.base": "\xD6nceki \xE7al\u0131\u015Ft\u0131rma {id}",
-  "gaps.title": "Test edilmemi\u015F y\xFCksek riskli kod",
-  "gaps.hint": "E\u015Fle\u015Fen testi olmayan kaynak dosyalar\u0131n sezgisel s\u0131ralamas\u0131.",
-  "gaps.risk": "risk {n}",
+  "gaps.title": "Test edilmemi\u015F risk",
+  "gaps.sub": "Testi olmayan riskli dosyalar (sezgisel).",
   "project.title": "Proje",
   "project.languages": "Diller",
-  "project.units": "Proje birimleri",
+  "project.units": "Birimler",
   "project.tests": "Testler",
   "project.testsV": "{t} test dosyas\u0131 / {s} kaynak dosyas\u0131",
   "project.ci": "CI/CD",
@@ -27546,10 +27566,10 @@ var tr = {
   "project.envV": "{n} de\u011Fi\u015Fken okunuyor, {u} tanesi zorunlu ama belgelenmemi\u015F",
   "project.data": "Veri depolar\u0131",
   "project.none": "yok",
-  "limits.title": "Bu \xE7al\u0131\u015Ft\u0131rman\u0131n do\u011Frulamad\u0131klar\u0131",
+  "limits.title": "Do\u011Frulanmayanlar",
   "limits.none": "Bildirilen bir s\u0131n\u0131rlama yok.",
-  disclaimer: "Otomatik kontrollerin s\u0131n\u0131rlar\u0131 vard\u0131r. Bunlar\u0131 ge\xE7mek, yaz\u0131l\u0131m\u0131n g\xFCvenlik a\xE7\u0131\u011F\u0131 veya hata i\xE7ermedi\u011Fini kan\u0131tlamaz.",
-  footer: "Relivaro {v} taraf\u0131ndan \xE7evrimd\u0131\u015F\u0131 olu\u015Fturuldu. Hi\xE7bir veri bu dosyan\u0131n d\u0131\u015F\u0131na \xE7\u0131kmaz.",
+  "limits.more": "{n} tane daha",
+  disclaimer: "Otomatik kontrolleri ge\xE7mek, yaz\u0131l\u0131m\u0131n a\xE7\u0131k veya hata i\xE7ermedi\u011Fini kan\u0131tlamaz.",
   "sev.critical": "Kritik",
   "sev.high": "Y\xFCksek",
   "sev.medium": "Orta",
@@ -27573,7 +27593,7 @@ var tr = {
   "gt.reproducible-builds": "Tekrarlanabilir ba\u011F\u0131ml\u0131l\u0131k kurulumu",
   "gt.ci": "CI her de\u011Fi\u015Fiklikte testleri \xE7al\u0131\u015Ft\u0131r\u0131yor",
   "gt.reliability": "Y\xFCksek riskli g\xFCvenilirlik hatas\u0131 yok",
-  "gt.migrations": "Veritaban\u0131 migration'lar\u0131 g\xFCvenli",
+  "gt.migrations": "Veritaban\u0131 migration\u2019lar\u0131 g\xFCvenli",
   "gt.configuration": "Zorunlu ortam de\u011Fi\u015Fkenleri belgelenmi\u015F",
   "gt.runtime-support": "Desteklenen \xE7al\u0131\u015Fma ortamlar\u0131 ve \xE7at\u0131lar",
   "gt.operability": "Operasyonel haz\u0131rl\u0131k",
@@ -27582,6 +27602,66 @@ var tr = {
   "gt.documentation": "Kurulum ve kullan\u0131m belgeleri"
 };
 var I18N = { en, tr };
+
+// src/report/html-model.ts
+var MODEL_JS = String.raw`var RelivaroModel = (function () {
+'use strict';
+var SEV = ['critical', 'high', 'medium', 'low', 'info'];
+
+/* Verification state: reviewed verdicts, findings observed by running a tool, or a scanner candidate. */
+function vstate(f, review) {
+  var r = review && review[f.id];
+  if (r) return r.verdict;
+  if (f.accepted) return 'accepted';
+  return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
+}
+function actionable(f, review) {
+  var v = vstate(f, review);
+  return f.status === 'open' && v !== 'false-positive' && v !== 'accepted';
+}
+function bySeverity(a, b) { return SEV.indexOf(a.severity) - SEV.indexOf(b.severity); }
+
+/* The three most severe root causes (rules) among open findings not reviewed as false positives or accepted risks. */
+function priorities(open, review) {
+  var groups = {}, order = [];
+  open.forEach(function (f) {
+    if (!actionable(f, review)) return;
+    if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); }
+    groups[f.ruleId].push(f);
+  });
+  return order.map(function (r) {
+    var g = groups[r].slice().sort(bySeverity);
+    return { rule: r, list: g, worst: SEV.indexOf(g[0].severity) };
+  }).sort(function (a, b) { return a.worst - b.worst || b.list.length - a.list.length || a.rule.localeCompare(b.rule); }).slice(0, 3);
+}
+
+/*
+ * Headline of the report. The primary action always matches what the sentence counts: for blockers it selects the
+ * findings behind the blocking gates, and when no such finding is left it sends the reader to the gates instead.
+ */
+function hero(run, review) {
+  var R = run.release;
+  var open = run.findings.filter(function (f) { return f.status === 'open'; });
+  if (!R) return open.length
+    ? { kind: 'audit-open', count: open.length, action: 'fixfirst', ids: [] }
+    : { kind: 'audit-clean', count: 0, action: null, ids: [] };
+  var tally = R.tally || {};
+  if (R.status === 'not-ready') {
+    var wanted = {};
+    R.gates.forEach(function (g) { if (g.status === 'block') (g.findings || []).forEach(function (id) { wanted[id] = true; }); });
+    var ids = run.findings.filter(function (f) { return wanted[f.id] && actionable(f, review); })
+      .map(function (f, i) { return { f: f, i: i }; })
+      .sort(function (a, b) { return bySeverity(a.f, b.f) || a.i - b.i; })
+      .map(function (x) { return x.f.id; });
+    return { kind: 'not-ready', count: tally.block || 0, action: ids.length ? 'prompt' : 'gates', ids: ids };
+  }
+  if (R.status === 'ready-with-warnings') return { kind: R.status, count: (tally.warn || 0) + (tally.unverified || 0), action: 'gates', ids: [] };
+  if (R.status === 'needs-verification') return { kind: R.status, count: tally.unverified || 0, action: 'gates', ids: [] };
+  return { kind: 'ready', count: 0, action: 'findings', ids: [] };
+}
+
+return { vstate: vstate, priorities: priorities, hero: hero };
+})();`;
 
 // src/report/html-prompt.ts
 var PROMPT_JS = String.raw`var RelivaroPrompt = (function () {
@@ -27708,296 +27788,318 @@ return { build: build, redact: redact, line: line, fence: fence };
 // src/report/html-style.ts
 var REPORT_CSS = String.raw`
 :root{
-  --font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  /* Cairn identity: teal #0b7285, ink #121620, paper #f6f4f0, stone #8c8278 (assets/brand/tokens.css). */
-  --bg:#f6f4f0;--surface:#ffffff;--surface-2:#efece7;--line:#e3dfd8;--line-strong:#cbc4ba;
-  --text:#121620;--muted:#5b5650;--faint:#6e665e;
-  --brand:#BRAND_LIGHT;--on-brand:#fff;--brand-ink:#BRAND_INK_LIGHT;--brand-soft:#BRAND_SOFT_LIGHT;
-  --pass:#17784a;--pass-bg:#e4f3ea;--warn:#965800;--warn-bg:#fbefd9;--block:#bf2a2f;--block-bg:#fbe5e4;
-  --unv:#58599a;--unv-bg:#ecebf7;--na:#6a625a;--na-bg:#efece7;
-  --critical:#a3122c;--high:#bd3d12;--medium:#8f6000;--low:#2f6bc0;--info:#776d63;
-  --code-bg:#f4f2ee;--hl:#fff0bd;
-  --shadow:0 1px 2px rgba(18,22,32,.05),0 4px 14px rgba(18,22,32,.04);
-  --radius:12px;color-scheme:light}
+  --radius:16px;--radius-s:10px;
+  --bg:#f6f4f0;--surface:#ffffff;--sunk:#efece7;--line:#e4dfd8;--line-strong:#d0c9c0;
+  --text:#121620;--muted:#6b6157;--faint:#8c8278;
+  --accent:#BRAND_LIGHT;--accent-ink:#BRAND_INK_LIGHT;--accent-soft:#BRAND_SOFT_LIGHT;--on-accent:#ffffff;
+  --crit:#c0283f;--high:#c2571a;--med:#a87a12;--low:#5d7fa8;--info:#8c8278;
+  --ok:#2f8a5b;--warn:#a87a12;--block:#c0283f;--unv:#6b6fb0;--na:#a0968c;
+  --hl:#fbf1cf;--shadow:0 1px 2px rgba(18,22,32,.04),0 8px 24px rgba(18,22,32,.05);
+  --pill:#121620;--on-pill:#f6f4f0;color-scheme:light}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#0d1017;--surface:#141922;--surface-2:#1b212c;--line:#262d39;--line-strong:#38404d;
-  --text:#ecebe7;--muted:#aca69e;--faint:#958f87;
-  --brand:#BRAND_DARK;--on-brand:#0d1017;--brand-ink:#BRAND_INK_DARK;--brand-soft:#BRAND_SOFT_DARK;
-  --pass:#4cc488;--pass-bg:#10291d;--warn:#f0b54a;--warn-bg:#2c2312;--block:#ff6b6e;--block-bg:#331719;
-  --unv:#a9aaf0;--unv-bg:#1e1f36;--na:#968f86;--na-bg:#1d2129;
-  --critical:#ff5c7a;--high:#ff8a5c;--medium:#f2c14e;--low:#6aa8ff;--info:#a39b91;
-  --code-bg:#10141b;--hl:#3a3315;--shadow:none;color-scheme:dark}}
+  --bg:#0e1113;--surface:#161a1c;--sunk:#1d2224;--line:#272d30;--line-strong:#363d41;
+  --text:#f2f0ec;--muted:#a69c92;--faint:#857c73;
+  --accent:#BRAND_DARK;--accent-ink:#BRAND_INK_DARK;--accent-soft:#BRAND_SOFT_DARK;--on-accent:#0e1113;
+  --crit:#ff5f78;--high:#ff9160;--med:#e9bd52;--low:#8fb2db;--info:#a69c92;
+  --ok:#5cc893;--warn:#e9bd52;--block:#ff5f78;--unv:#a9aaf0;--na:#857c73;
+  --hl:#2f2a17;--shadow:none;--pill:#f2f0ec;--on-pill:#0e1113;color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0d1017;--surface:#141922;--surface-2:#1b212c;--line:#262d39;--line-strong:#38404d;
-  --text:#ecebe7;--muted:#aca69e;--faint:#958f87;
-  --brand:#BRAND_DARK;--on-brand:#0d1017;--brand-ink:#BRAND_INK_DARK;--brand-soft:#BRAND_SOFT_DARK;
-  --pass:#4cc488;--pass-bg:#10291d;--warn:#f0b54a;--warn-bg:#2c2312;--block:#ff6b6e;--block-bg:#331719;
-  --unv:#a9aaf0;--unv-bg:#1e1f36;--na:#968f86;--na-bg:#1d2129;
-  --critical:#ff5c7a;--high:#ff8a5c;--medium:#f2c14e;--low:#6aa8ff;--info:#a39b91;
-  --code-bg:#10141b;--hl:#3a3315;--shadow:none;color-scheme:dark}
+  --bg:#0e1113;--surface:#161a1c;--sunk:#1d2224;--line:#272d30;--line-strong:#363d41;
+  --text:#f2f0ec;--muted:#a69c92;--faint:#857c73;
+  --accent:#BRAND_DARK;--accent-ink:#BRAND_INK_DARK;--accent-soft:#BRAND_SOFT_DARK;--on-accent:#0e1113;
+  --crit:#ff5f78;--high:#ff9160;--med:#e9bd52;--low:#8fb2db;--info:#a69c92;
+  --ok:#5cc893;--warn:#e9bd52;--block:#ff5f78;--unv:#a9aaf0;--na:#857c73;
+  --hl:#2f2a17;--shadow:none;--pill:#f2f0ec;--on-pill:#0e1113;color-scheme:dark}
 *{box-sizing:border-box}
-html{scroll-behavior:smooth;scroll-padding-top:76px}
-@media (max-width:640px){html{scroll-padding-top:104px}}
-body{margin:0;background:var(--bg);color:var(--text);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
-a{color:var(--brand-ink)}
-:focus-visible{outline:2px solid var(--brand);outline-offset:2px;border-radius:6px}
+[hidden]{display:none!important}
+html{scroll-behavior:smooth;scroll-padding-top:72px}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
+a{color:var(--accent-ink);text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:6px}
 .skip{position:absolute;left:-999px;top:8px;background:var(--surface);padding:8px 12px;border-radius:8px;z-index:10}
 .skip:focus{left:8px}
-.wrap{max-width:1240px;margin:0 auto;padding:0 20px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 32px}
 code,pre,.mono{font-family:var(--mono)}
-code{font-size:12px;background:var(--code-bg);padding:1px 5px;border-radius:5px;word-break:break-word}
-h1,h2,h3{margin:0;letter-spacing:-.01em}
-h2{font-size:18px;font-weight:650}h3{font-size:14px}
+code{font-size:.85em;background:var(--sunk);padding:1px 6px;border-radius:6px;word-break:break-word}
+h1,h2,h3,h4{margin:0;font-weight:650}
 .muted{color:var(--muted)}.faint{color:var(--faint)}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+bdi{unicode-bidi:isolate}
 
-/* header */
-.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(1.4) blur(10px);border-bottom:1px solid var(--line)}
-.top-in{display:flex;align-items:center;gap:20px;min-height:60px}
-.brand{flex:none;display:flex;color:var(--text)}.brand svg{display:block;height:22px;width:auto;fill:currentColor}.brand .cairn{fill:#0b7285}
-.tabs{display:flex;gap:2px;overflow-x:auto;scrollbar-width:none;flex:1}
-.tabs a{color:var(--muted);text-decoration:none;padding:6px 10px;border-radius:8px;font-weight:500;white-space:nowrap}
-.tabs a:hover{color:var(--text);background:var(--surface-2)}
-.tabs a:active{color:var(--brand-ink)}
-.tools{display:flex;gap:8px;align-items:center;flex:none}
-.seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;padding:2px;background:var(--surface)}
+/* top bar */
+.top{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:saturate(1.6) blur(16px);-webkit-backdrop-filter:saturate(1.6) blur(16px);border-bottom:1px solid var(--line)}
+.top-in{display:flex;align-items:center;gap:28px;min-height:56px}
+.brand{flex:none;display:flex;color:var(--text)}.brand svg{display:block;height:19px;width:auto;fill:currentColor}.brand .cairn{fill:var(--accent)}
+.tabs{display:flex;gap:22px;overflow-x:auto;scrollbar-width:none;flex:1}
+.tabs a{color:var(--muted);font-size:13px;white-space:nowrap;padding:4px 0}
+.tabs a:hover{color:var(--text);text-decoration:none}
+.tools{display:flex;gap:10px;align-items:center;flex:none}
+.seg{display:inline-flex;gap:2px;border-radius:9px;padding:2px;background:var(--sunk)}
 .seg button{border:0;background:none;color:var(--muted);font:600 12px/1 var(--font);padding:6px 9px;border-radius:7px;cursor:pointer}
 .seg button:hover{color:var(--text)}
-.seg button[aria-pressed="true"]{background:var(--brand);color:var(--on-brand)}
+.seg button[aria-pressed="true"]{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08)}
 .seg-icons button{display:grid;place-items:center;padding:5px 7px}
-.icon-btn{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:9px;width:32px;height:30px;display:grid;place-items:center;cursor:pointer}
+
+/* buttons, tags, marks */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);border-radius:999px;padding:8px 16px;font:600 13.5px/1.2 var(--font);cursor:pointer;white-space:nowrap;text-decoration:none}
+.btn:hover{border-color:var(--accent);color:var(--accent-ink);text-decoration:none}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:var(--on-accent)}
+.btn.pri:hover{filter:brightness(1.08);color:var(--on-accent)}
+.btn.lg{padding:12px 22px;font-size:15px}
+.btn.sm{padding:5px 12px;font-size:12.5px}
+.btn[disabled]{opacity:.45;cursor:default;pointer-events:none}
+.link{all:unset;cursor:pointer;color:var(--accent-ink);font-weight:600;font-size:14px;border-radius:4px}
+.link:hover{text-decoration:underline;text-underline-offset:3px}
+.link::after{content:" \203A"}
+.link.plain::after{content:none}
+.icon-btn{border:0;background:var(--sunk);color:var(--muted);border-radius:999px;width:32px;height:32px;display:grid;place-items:center;cursor:pointer;font-size:18px;line-height:1}
 .icon-btn:hover{color:var(--text)}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;background:var(--na)}
+.d-critical{background:var(--crit)}.d-high{background:var(--high)}.d-medium{background:var(--med)}.d-low{background:var(--low)}.d-info{background:var(--info)}
+.d-pass{background:var(--ok)}.d-warn{background:var(--warn)}.d-block{background:var(--block)}.d-unverified{background:var(--unv)}.d-na{background:var(--na)}
+.line-pass{background:var(--ok)}.line-block{background:var(--block)}.line-na{background:var(--na)}
+.tag{display:inline-flex;align-items:center;gap:6px;font-size:12px;line-height:1.4;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 10px;white-space:nowrap;background:var(--surface)}
+.tag.dash{border-style:dashed}
+.tag.strike{text-decoration:line-through}
+.sev{display:inline-flex;align-items:center;gap:7px;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.c-pass{color:var(--ok)}.c-warn{color:var(--warn)}.c-block{color:var(--block)}.c-unverified{color:var(--unv)}.c-na{color:var(--na)}
+.glyph{display:inline-flex;flex:none}
 
-/* page head */
-.head{padding:30px 0 6px;display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px}
-.head h1{font-size:28px;font-weight:700;letter-spacing:-.02em}
-.eyebrow{font:600 11px/1 var(--font);text-transform:uppercase;letter-spacing:.09em;color:var(--brand-ink);margin-bottom:8px}
-.meta{display:flex;flex-wrap:wrap;gap:6px 18px;color:var(--muted);font-size:12.5px}
-.meta b{color:var(--text);font-weight:600}
-
-/* cards */
-section{margin:20px 0}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:20px}
-.card-h{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:16px}
-.hint{color:var(--muted);font-size:12.5px;margin:4px 0 0;max-width:80ch}
-.grid{display:grid;gap:14px}
-.g-hero{grid-template-columns:minmax(300px,5fr) 7fr}
-.g-3{grid-template-columns:repeat(3,minmax(0,1fr))}
-.g-2{grid-template-columns:repeat(2,minmax(0,1fr))}
-@media (max-width:980px){.g-hero,.g-3,.g-2{grid-template-columns:1fr}}
+/* disclosures */
+details.more>summary{list-style:none;cursor:pointer;color:var(--accent-ink);font-weight:600;font-size:13.5px;display:inline-flex;align-items:center;gap:6px;border-radius:6px;padding:2px 0}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::after{content:"";width:7px;height:7px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg) translateY(-2px);transition:transform .15s}
+details.more[open]>summary::after{transform:rotate(225deg) translate(-2px,0)}
+details.more>summary:hover{text-decoration:underline;text-underline-offset:3px}
+details.more>.more-body{margin-top:14px}
+.prose{color:var(--muted);font-size:14px;max-width:70ch}
+.prose p{margin:0 0 8px}.prose ol,.prose ul{margin:0;padding-left:20px}.prose li{margin:4px 0}
 
 /* hero */
-.hero{display:flex;gap:22px;align-items:center}
-.ring{flex:none;position:relative;width:132px;height:132px}
-.ring svg{transform:rotate(-90deg);width:100%;height:100%}
-.ring .val{position:absolute;inset:0;display:grid;place-content:center;text-align:center}
-.ring .val b{font-size:34px;line-height:1;font-weight:700;letter-spacing:-.02em}
-.ring .val span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.status-name{font-size:22px;font-weight:700;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
-.tally{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
-.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:12px;font-weight:600;white-space:nowrap;border:1px solid transparent}
-.st-pass{color:var(--pass);background:var(--pass-bg)}
-.st-warn{color:var(--warn);background:var(--warn-bg)}
-.st-block{color:var(--block);background:var(--block-bg)}
-.st-unverified{color:var(--unv);background:var(--unv-bg);border:1px dashed currentColor}
-.st-na{color:var(--na);background:var(--na-bg)}
-.c-pass{color:var(--pass)}.c-warn{color:var(--warn)}.c-block{color:var(--block)}.c-unverified{color:var(--unv)}.c-na{color:var(--na)}
+.hero{text-align:center;padding:72px 0 56px}
+.hero-meta{font-size:13px;color:var(--muted);display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.hero-meta .sep{color:var(--line-strong)}
+.hero-title{font-size:56px;line-height:1.05;letter-spacing:-.04em;font-weight:700;margin:14px auto 14px;max-width:16ch;display:flex;align-items:center;justify-content:center;gap:14px}
+.hero-sub{font-size:21px;line-height:1.4;color:var(--muted);letter-spacing:-.01em;margin:0}
+.hero-sub b{color:var(--text);font-weight:600}
+.hero-cta{display:flex;justify-content:center;gap:22px;align-items:center;margin-top:30px;flex-wrap:wrap}
 
-/* KPIs */
-.kpis{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-@media (max-width:560px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}}
-.kpi{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--surface)}
-.kpi .k{font-size:12px;color:var(--muted)}
-.kpi .v{font-size:24px;font-weight:700;letter-spacing:-.02em;line-height:1.25;font-variant-numeric:tabular-nums}
-.kpi .s{font-size:11.5px;color:var(--faint)}
+/* stats band */
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.stat{padding:24px 26px;border-left:1px solid var(--line);min-width:0}
+.stat:first-child{border-left:0}
+.stat b{display:flex;align-items:center;gap:10px;font-size:36px;line-height:1.1;letter-spacing:-.03em;font-weight:650;font-variant-numeric:tabular-nums}
+.stat span{font-size:13px;color:var(--muted)}
+.stat .s{display:block;font-size:12px;color:var(--faint);margin-top:2px}
+.stats-more{text-align:center;margin-top:16px}
+.stats-more .stats{margin-top:14px;text-align:left;box-shadow:none}
+.stats-more .stat b{font-size:24px}
+.stats-2{grid-template-columns:repeat(2,minmax(0,1fr))}.stats-5{grid-template-columns:repeat(5,minmax(0,1fr))}
 
-/* flow */
-.flow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:0;align-items:stretch}
-.step{position:relative;padding:14px 16px 14px 18px;border:1px solid var(--line);background:var(--surface);min-height:84px}
-.step:first-child{border-radius:var(--radius) 0 0 var(--radius)}
-.step:last-child{border-radius:0 var(--radius) var(--radius) 0}
-.step+.step{border-left:0}
-.step:not(:last-child)::after{content:"";position:absolute;right:-9px;top:50%;width:16px;height:16px;transform:translateY(-50%) rotate(45deg);background:inherit;border-top:1px solid var(--line);border-right:1px solid var(--line);z-index:1}
-.step .n{font:600 11px/1 var(--mono);color:var(--faint)}
-.step .t{font-weight:700;margin:6px 0 2px;display:flex;align-items:center;gap:6px}
-.step .v{font-size:12.5px;color:var(--muted)}
-.step .bar{position:absolute;left:0;top:0;bottom:0;width:3px}
-.step:first-child .bar{border-radius:var(--radius) 0 0 var(--radius)}
-.step.s-todo{background:repeating-linear-gradient(135deg,var(--surface),var(--surface) 8px,var(--surface-2) 8px,var(--surface-2) 16px)}
-@media (max-width:820px){.flow{grid-template-columns:1fr}.step,.step:first-child,.step:last-child{border-radius:0;border-left:1px solid var(--line)}.step:first-child{border-radius:var(--radius) var(--radius) 0 0}.step:last-child{border-radius:0 0 var(--radius) var(--radius)}.step+.step{border-top:0}.step:not(:last-child)::after{display:none}}
+/* bands */
+.band{padding:72px 0 0}
+.band-h{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:22px;flex-wrap:wrap}
+.band-title{font-size:32px;line-height:1.15;letter-spacing:-.03em;font-weight:700}
+.band-sub{color:var(--muted);margin:6px 0 0;font-size:16px}
+.band-foot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:18px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:22px 24px;box-shadow:var(--shadow);min-width:0}
+.panel h3{font-size:14px;color:var(--muted);font-weight:600;margin-bottom:14px}
+.grid{display:grid;gap:16px}
+.g-3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.g-2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.empty{color:var(--muted);font-size:14px;padding:22px;border:1px dashed var(--line-strong);border-radius:var(--radius-s);text-align:center}
+
+/* list rows */
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 16px;align-items:center;padding:16px 22px;border-top:1px solid var(--line)}
+.row:first-child{border-top:0}
+.row .t{font-weight:600;letter-spacing:-.005em;min-width:0}
+.row .p{grid-column:2;font:12.5px/1.4 var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.row .side{display:flex;gap:8px;align-items:center;grid-row:1/3;grid-column:3}
+.row-btn{all:unset;cursor:pointer;border-radius:4px}
+.row-btn:hover{color:var(--accent-ink)}
+.remsum{display:flex;gap:6px 18px;flex-wrap:wrap;font-size:13.5px;color:var(--muted)}
+.remsum button{all:unset;cursor:pointer;border-radius:4px}
+.remsum button b{color:var(--text);font-weight:650;margin-left:4px;font-variant-numeric:tabular-nums}
+.remsum button:hover{color:var(--accent-ink)}
+.remsum button[disabled]{opacity:.5;cursor:default}
+
+/* run flow */
+.flow{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));position:relative}
+.flow li{position:relative;padding:26px 12px 0 0;min-width:0}
+.flow li::before{content:"";position:absolute;left:0;right:0;top:9px;height:2px;background:var(--line-strong)}
+.flow li.todo::before{background:none;border-top:2px dashed var(--line-strong);height:0}
+.flow .knot{position:absolute;left:0;top:2px;width:16px;height:16px;border-radius:50%;background:var(--bg);display:grid;place-items:center}
+.flow .ft{font-weight:650;font-size:14px}
+.flow .fv{font-size:13px;color:var(--muted)}
 
 /* charts */
-.donut-wrap{display:flex;align-items:center;gap:18px}
-.legend{list-style:none;margin:0;padding:0;flex:1;min-width:0}
-.legend li{display:flex;align-items:center;gap:8px;padding:3px 0}
-.legend button{all:unset;cursor:pointer;display:flex;align-items:center;gap:8px;width:100%;border-radius:6px;padding:2px 4px}
-.legend button:hover{background:var(--surface-2)}
-.legend .sw{width:10px;height:10px;border-radius:3px;flex:none}
-.legend .lbl{flex:1}
-.legend .num{font-variant-numeric:tabular-nums;font-weight:600}
-.bars{display:flex;flex-direction:column;gap:9px}
-.barrow{display:grid;grid-template-columns:minmax(90px,140px) 1fr 38px;gap:10px;align-items:center;cursor:pointer;border-radius:6px;padding:1px 2px}
-.barrow:hover{background:var(--surface-2)}
-.barrow .lbl{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.barrow .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:12.5px}
-.track{height:10px;background:var(--surface-2);border-radius:5px;overflow:hidden;display:flex}
-.track span{height:100%;display:block}
-.hot .barrow{grid-template-columns:minmax(120px,42%) 1fr 38px}
-.hot .lbl{font-family:var(--mono);font-size:11.5px;direction:rtl;text-align:left}
-.empty{color:var(--muted);font-size:13px;padding:14px;border:1px dashed var(--line-strong);border-radius:10px;text-align:center}
+.bars{display:flex;flex-direction:column;gap:10px}
+.barrow{all:unset;box-sizing:border-box;display:grid;grid-template-columns:minmax(80px,130px) 1fr 34px;gap:12px;align-items:center;cursor:pointer;border-radius:6px;padding:2px}
+.barrow:hover .lbl{color:var(--accent-ink)}
+.barrow .lbl{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.barrow .num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.track{height:6px;background:var(--sunk);border-radius:3px;overflow:hidden;display:flex}
+.track span{height:100%;display:block;background:var(--line-strong)}
+.track span.acc{background:var(--accent)}
+.hot .barrow{grid-template-columns:minmax(110px,46%) 1fr 34px}
+.hot .lbl{font-family:var(--mono);font-size:12px;direction:rtl;text-align:left}
+.sevlist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+.sevlist button{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;padding:6px 4px;border-radius:6px;cursor:pointer;font-size:14px}
+.sevlist button:hover{background:var(--sunk)}
+.sevlist b{font-variant-numeric:tabular-nums;font-weight:650}
+.sevbar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:var(--sunk);margin-bottom:14px;gap:2px}
+.sevbar span{display:block;height:100%}
 
 /* gates */
-.gates{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px}
-.gate{all:unset;box-sizing:border-box;display:flex;flex-direction:column;gap:6px;border:1px solid var(--line);border-left-width:4px;border-radius:10px;padding:11px 12px;background:var(--surface);cursor:pointer}
-.gate:hover{border-color:var(--line-strong)}
-.gate[aria-pressed="true"]{outline:2px solid var(--brand);outline-offset:1px}
-.gate.b-pass{border-left-color:var(--pass)}.gate.b-warn{border-left-color:var(--warn)}.gate.b-block{border-left-color:var(--block)}
-.gate.b-unverified{border-left-color:var(--unv);border-style:dashed;border-left-style:solid}.gate.b-na{border-left-color:var(--line-strong);opacity:.75}
-.gate .gt{font-weight:600;font-size:13px;line-height:1.35}
-.gate .gd{font-size:12px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
-.gate .gm{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
-.basis{font-size:11px;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:0 7px}
+.ggroup+.ggroup{margin-top:22px}
+.ggroup h3{font-size:13px;color:var(--muted);font-weight:600;margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.gate{all:unset;box-sizing:border-box;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:2px 14px;align-items:center;width:100%;padding:15px 22px;border-top:1px solid var(--line);cursor:pointer}
+.gate:first-child{border-top:0}
+.gate:hover{background:var(--sunk)}
+.gate[aria-pressed="true"]{background:var(--accent-soft);box-shadow:inset 3px 0 0 var(--accent)}
+.gate .gt{font-weight:600;min-width:0}
+.gate .gd{grid-column:2;font-size:13px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.gate .gside{grid-column:3;grid-row:1/3;display:flex;gap:8px;align-items:center}
 
-/* compare & perf */
-.deltas{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.delta{border:1px solid var(--line);border-radius:10px;padding:10px 12px}
-.delta b{font-size:22px;font-variant-numeric:tabular-nums}
-.mini{list-style:none;padding:0;margin:10px 0 0;font-size:12.5px}
-.mini li{display:flex;gap:8px;padding:4px 0;border-top:1px solid var(--line);align-items:baseline}
-table{width:100%;border-collapse:collapse;font-size:13px}
-th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
-th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);font-weight:600}
-td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+/* tables */
 .tbl{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:14px}
+th,td{text-align:left;padding:12px 16px;border-bottom:1px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:0}
+th{font-size:12px;color:var(--muted);font-weight:600}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+.deltas{display:grid;grid-template-columns:repeat(3,1fr);gap:0}
+.delta{padding:4px 18px;border-left:1px solid var(--line)}.delta:first-child{border-left:0;padding-left:0}
+.delta b{font-size:28px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-weight:650}
+.mini{list-style:none;padding:0;margin:16px 0 0;font-size:13.5px}
+.mini li{display:flex;gap:10px;padding:8px 0;border-top:1px solid var(--line);align-items:center;min-width:0}
+.mini li span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* findings */
-.filters{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
-.search{flex:1 1 260px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:0 10px}
-.search input{flex:1;border:0;background:none;color:var(--text);font:inherit;padding:8px 0;min-width:0}
+.ftools{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
+.search{flex:1 1 280px;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:0 14px;color:var(--muted)}
+.search input{flex:1;border:0;background:none;color:var(--text);font:inherit;font-size:14px;padding:9px 0;min-width:0}
 .search input:focus{outline:none}
-.search:focus-within{border-color:var(--brand)}
-select,.chk{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:9px;padding:7px 9px;font:inherit;font-size:13px}
-.chk{display:inline-flex;gap:6px;align-items:center;cursor:pointer}
+.search:focus-within{border-color:var(--accent)}
 .chips{display:flex;flex-wrap:wrap;gap:6px}
-.chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:4px 10px;font:600 12px/1.2 var(--font);cursor:pointer;display:inline-flex;gap:6px;align-items:center}
-.chip .dot{width:8px;height:8px;border-radius:50%}
-.chip[aria-pressed="true"]{color:var(--text);border-color:var(--text)}
-.count{font-size:12.5px;color:var(--muted);margin:2px 0 10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-.flist{display:flex;flex-direction:column;gap:8px}
-details.f{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden}
-details.f[open]{border-color:var(--line-strong)}
-details.f>summary{list-style:none;cursor:pointer;padding:11px 14px;display:grid;grid-template-columns:auto 1fr auto;gap:4px 12px;align-items:center}
+.chip{border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:999px;padding:5px 12px;font:600 12.5px/1.2 var(--font);cursor:pointer;display:inline-flex;gap:7px;align-items:center}
+.chip:hover{color:var(--text)}
+.chip[aria-pressed="true"]{color:var(--accent-ink);border-color:var(--accent);background:var(--accent-soft)}
+.chip[disabled]{opacity:.4;cursor:default}
+.fpanel{display:flex;flex-direction:column;gap:12px;padding:16px 18px;margin-top:10px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-s)}
+.fline{display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center}
+.flabel{font-size:12.5px;color:var(--muted);font-weight:600;min-width:96px}
+select{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:999px;padding:6px 12px;font:inherit;font-size:13px}
+.chk{display:inline-flex;gap:7px;align-items:center;cursor:pointer;font-size:13px;color:var(--muted)}
+.selrow{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:14px 0 6px;font-size:13px}
+.selrow .link::after{content:none}
+.selrow select{padding:4px 10px;font-size:12.5px}
+.count{font-size:13px;color:var(--muted);margin:6px 0 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.flist{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow)}
+.frow{display:grid;grid-template-columns:44px minmax(0,1fr);align-items:start;border-top:1px solid var(--line)}
+.flist>.frow:first-child,.flist>.group:first-child{border-top:0}
+.frow.is-sel{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
+.fsel-wrap{display:flex;justify-content:flex-end;padding:19px 0 0 16px;cursor:pointer}
+.fsel{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;margin:0}
+details.f>summary{list-style:none;cursor:pointer;padding:15px 22px 15px 14px;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:3px 12px;align-items:center}
 details.f>summary::-webkit-details-marker{display:none}
-details.f>summary:hover{background:var(--surface-2)}
-.sev{display:inline-flex;align-items:center;gap:6px;font:700 11px/1 var(--font);text-transform:uppercase;letter-spacing:.05em;padding:4px 8px;border-radius:6px;min-width:76px}
+details.f>summary:hover .ttl{color:var(--accent-ink)}
 .f .ttl{font-weight:600;min-width:0}
-.f .loc{grid-column:2/4;font-family:var(--mono);font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.f .side{display:flex;gap:6px;align-items:center;color:var(--faint);font-size:12px}
-.f .body{padding:4px 16px 16px;border-top:1px solid var(--line)}
-.f .msg{margin:12px 0}
-.snip{background:var(--code-bg);border:1px solid var(--line);border-radius:8px;overflow:auto;font:12px/1.55 var(--mono);margin:8px 0}
+.f .loc{grid-column:2;font:12.5px/1.4 var(--mono);color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.f .side{grid-column:3;grid-row:1/3;display:flex;gap:6px;align-items:center}
+.f .body{padding:2px 22px 22px 14px}
+.vline{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;font-size:13.5px;color:var(--muted);margin:0 0 12px}
+.vline b{color:var(--text);font-weight:600}
+.f .msg{margin:0 0 14px;max-width:80ch}
+.snip{background:var(--sunk);border-radius:var(--radius-s);overflow:auto;font:12.5px/1.7 var(--mono);margin:0 0 16px;padding:8px 0}
 .snip .ln{display:grid;grid-template-columns:52px 1fr;white-space:pre}
-.snip .no{color:var(--faint);text-align:right;padding-right:12px;user-select:none;border-right:1px solid var(--line)}
-.snip .tx{padding-left:12px;padding-right:12px}
+.snip .no{color:var(--faint);text-align:right;padding-right:16px;user-select:none}
+.snip .tx{padding-right:16px}
 .snip .ln.at{background:var(--hl)}
-.snip pre{margin:0;padding:10px 12px;white-space:pre-wrap}
-.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px;margin-top:12px}
-.kv h4{margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.kv p{margin:0}
-.facts{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
-.cmd{display:flex;gap:8px;align-items:center;margin-top:12px;background:var(--brand-soft);border-radius:8px;padding:8px 10px}
-.cmd code{background:none;flex:1;padding:0}
-.btn{border:1px solid var(--line);background:var(--surface);color:var(--text);border-radius:8px;padding:5px 10px;font:600 12px/1.2 var(--font);cursor:pointer}
-.btn:hover{border-color:var(--line-strong)}
-.more{display:flex;justify-content:center;margin-top:10px}
-
-/* action center */
-.ac-tiles{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
-.ac-tile{border:1px solid var(--line);border-top:3px solid var(--line-strong);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
-.ac-tile .hint{margin:0;flex:1}
-.ac-deterministic{border-top-color:var(--pass)}.ac-agent{border-top-color:var(--brand)}.ac-manual{border-top-color:var(--unv)}
-.ac-h{display:flex;align-items:center;justify-content:space-between;width:100%;gap:8px}
-.ac-n{font-size:24px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
-.ac-foot{display:grid;grid-template-columns:3fr 2fr;gap:14px;margin-top:14px;align-items:stretch}
-.ac-foot h3{font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);margin-bottom:10px}
-.ff-box,.ac-next{border:1px solid var(--line);border-radius:10px;padding:14px 16px}
-.ff-box{background:var(--brand-soft);border-color:color-mix(in srgb,var(--brand) 28%,var(--line))}
-.ff-box h3{color:var(--brand-ink)}
-.ff{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:8px}
-.ff li{display:grid;grid-template-columns:auto 1fr;gap:12px;align-items:start;background:var(--surface);border:1px solid var(--line);border-radius:9px;padding:10px 12px}
-.ff-main{min-width:0;display:flex;flex-direction:column;gap:5px}
-.ff-t{all:unset;cursor:pointer;font-weight:600;line-height:1.35;border-radius:4px}
-.ff-t:hover{color:var(--brand-ink);text-decoration:underline;text-underline-offset:3px}
-.ff-t:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.ff-m{display:flex;gap:8px;align-items:center;min-width:0}
-.ff-m .loc{font-family:var(--mono);font-size:11.5px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
-.ff-box .btn.primary{padding:8px 14px;font-size:13px}
-.ac-next .hint{margin:10px 0 0}
-.ac-steps{margin:0;padding-left:20px;font-size:13px}.ac-steps li{margin:3px 0}
-@media (max-width:820px){.ac-tiles,.ac-foot{grid-template-columns:1fr}}
-.rb,.vs{display:inline-flex;align-items:center;border-radius:6px;padding:2px 7px;font:600 11.5px/1.3 var(--font);white-space:nowrap}
-.rb-deterministic{color:var(--pass);background:var(--pass-bg)}
-.rb-agent{color:var(--brand-ink);background:var(--brand-soft)}
-.rb-manual{color:var(--unv);background:var(--unv-bg)}
-.rb-none{color:var(--na);background:var(--na-bg)}
-.vs-detected{color:var(--muted);border:1px dashed var(--line-strong)}
-.vs-confirmed{color:var(--block);background:var(--block-bg)}
-.vs-false-positive{color:var(--na);background:var(--na-bg);text-decoration:line-through}
-.vs-needs-runtime{color:var(--warn);background:var(--warn-bg)}
-.vs-accepted{color:var(--na);background:var(--na-bg)}
-.flabel{font-size:12px;color:var(--muted);font-weight:600}
-.chip[disabled]{opacity:.45;cursor:default}
-.selbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:8px 10px;margin:0 0 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface-2)}
-.selbar select{padding:5px 8px}
-.frow{display:grid;grid-template-columns:34px 1fr;align-items:start}
-.fsel-wrap{display:flex;justify-content:center;padding-top:13px;cursor:pointer}
-.fsel{width:17px;height:17px;accent-color:var(--brand);cursor:pointer;margin:0}
-.frow.is-sel details.f{border-color:var(--brand);box-shadow:0 0 0 1px var(--brand)}
-.group{border-left:3px solid var(--line);padding-left:6px;display:flex;flex-direction:column;gap:8px}
-.ghead{display:grid;grid-template-columns:34px 1fr auto;align-items:center;gap:6px;padding:6px 0}
+.snip pre{margin:0;padding:4px 16px;white-space:pre-wrap}
+.facts3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;margin:4px 0 16px}
+.facts3 h4,.kv h4{margin:0 0 4px;font-size:12px;color:var(--muted);font-weight:600}
+.facts3 p,.kv p{margin:0;font-size:14px}
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px 20px}
+.facts{display:flex;flex-wrap:wrap;gap:6px}
+.cmd{display:flex;gap:10px;align-items:center;margin:0 0 14px;background:var(--sunk);border-radius:var(--radius-s);padding:8px 8px 8px 14px}
+.cmd code{background:none;flex:1;padding:0;font-size:12.5px}
+.more-row{display:flex;justify-content:center;margin-top:16px}
+.group{border-top:1px solid var(--line)}
+.ghead{display:grid;grid-template-columns:44px minmax(0,1fr) auto;align-items:center;gap:12px;padding:14px 22px 14px 0;background:var(--sunk)}
 .ghead .fsel-wrap{padding-top:0}
-.gtitle{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap;min-width:0}
+.gtitle{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;min-width:0}
 .ghead .side{display:flex;gap:6px;align-items:center}
-.verdict{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin:12px 0 0;background:var(--surface-2)}
-.verdict p{margin:6px 0 0}
-.verdict .vh{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:12px}
-.remline{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px;font-size:13px}
-.btn.primary{background:var(--brand);border-color:var(--brand);color:var(--on-brand)}
-.btn.primary:hover{filter:brightness(1.08)}
-.btn[disabled]{opacity:.5;cursor:default}
-.actionbar{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:2px solid var(--brand);box-shadow:0 -6px 20px rgba(16,22,32,.12)}
-.ab-in{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between;padding-top:10px;padding-bottom:10px}
-.ab-txt{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
-.ab-mix{display:flex;flex-wrap:wrap;gap:8px}
-.ab-btns{display:flex;gap:8px}
-.ab-btns .primary{padding:8px 14px;font-size:13px}
-body.has-bar footer{padding-bottom:110px}
-.pdlg{border:1px solid var(--line-strong);border-radius:14px;padding:0;width:min(920px,calc(100vw - 24px));max-height:calc(100vh - 24px);background:var(--surface);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.35)}
-.pdlg::backdrop{background:rgba(10,14,20,.55)}
-.pr{display:flex;flex-direction:column;gap:8px;padding:16px 18px;max-height:calc(100vh - 26px)}
-.pr-h{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.pr .hint{margin:0;max-width:none}
-.pr textarea{width:100%;min-height:min(56vh,560px);flex:1;resize:vertical;font:12px/1.5 var(--mono);color:var(--text);background:var(--code-bg);border:1px solid var(--line);border-radius:8px;padding:10px 12px}
-.pr textarea:focus{outline:2px solid var(--brand);outline-offset:1px}
-.pr-btns{display:flex;flex-wrap:wrap;gap:8px}
-.pr-status{margin:0;font-size:12.5px;color:var(--muted);min-height:1.2em}
-@media (max-width:640px){.frow{grid-template-columns:30px 1fr}.ghead{grid-template-columns:30px 1fr}.ghead .side{grid-column:2}.ab-btns{width:100%}.ab-mix,.ab-txt .faint{display:none}.ab-btns .btn{flex:1}.pr textarea{min-height:200px}}
+
+/* floating selection bar */
+.actionbar{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:6;width:min(760px,calc(100vw - 24px));background:var(--pill);color:var(--on-pill);border-radius:999px;box-shadow:0 16px 40px rgba(0,0,0,.28)}
+.ab-in{display:flex;gap:14px;align-items:center;padding:8px 8px 8px 24px}
+.ab-txt{display:flex;gap:12px;align-items:baseline;flex:1;min-width:0;overflow:hidden;white-space:nowrap}
+.ab-txt .x{color:color-mix(in srgb,var(--on-pill) 62%,transparent);font-size:13px;overflow:hidden;text-overflow:ellipsis}
+.ab-btns{display:flex;gap:6px;align-items:center;flex:none}
+.ab-btns .ghost{all:unset;cursor:pointer;color:color-mix(in srgb,var(--on-pill) 70%,transparent);font-weight:600;font-size:13.5px;padding:8px 12px;border-radius:999px}
+.ab-btns .ghost:hover{color:var(--on-pill)}
+body.has-bar footer{padding-bottom:120px}
+.link:focus-visible,.row-btn:focus-visible,.remsum button:focus-visible,.barrow:focus-visible,.sevlist button:focus-visible,.gate:focus-visible,.ab-btns .ghost:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* fix-prompt sheet */
+.pdlg{border:0;border-radius:22px;padding:0;width:min(640px,calc(100vw - 24px));max-height:calc(100vh - 32px);background:var(--surface);color:var(--text);box-shadow:0 30px 90px rgba(0,0,0,.35);overflow:auto}
+.pdlg::backdrop{background:rgba(14,17,19,.5);backdrop-filter:blur(4px)}
+.pr{display:flex;flex-direction:column;padding:28px 30px 26px}
+.pr-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.pr-h h2{font-size:24px;letter-spacing:-.02em;font-weight:700}
+.pr-h p{margin:4px 0 0;color:var(--muted);font-size:14px}
+.pr-list{margin:20px 0 14px;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.pr-list div{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:12px;align-items:center;padding:11px 16px;border-top:1px solid var(--line);font-size:14px}
+.pr-list div:first-child{border-top:0}
+.pr-list .t{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pr-list .p{font:12px var(--mono);color:var(--muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.pr-steps{font-size:13.5px;color:var(--muted);margin:0 0 16px}
+.pr-steps b{color:var(--text);font-weight:600}
+.pr-more{border-top:1px solid var(--line);padding-top:14px;display:flex;flex-direction:column;gap:10px}
+.pr textarea{width:100%;min-height:min(46vh,440px);resize:vertical;font:12px/1.55 var(--mono);color:var(--text);background:var(--sunk);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.pr textarea:focus{outline:2px solid var(--accent);outline-offset:1px}
+.pr-btns{display:flex;gap:10px;justify-content:flex-end;align-items:center;margin-top:22px;flex-wrap:wrap}
+.pr-status{margin:0 auto 0 0;font-size:13px;color:var(--muted);min-height:1.2em}
 
 /* project */
-dl.pj{display:grid;grid-template-columns:140px 1fr;gap:8px 14px;margin:0}
+dl.pj{display:grid;grid-template-columns:150px 1fr;gap:10px 16px;margin:0;font-size:14px}
 dl.pj dt{color:var(--muted)}dl.pj dd{margin:0;min-width:0;overflow-wrap:anywhere}
-ul.limits{margin:0;padding:0;list-style:none}
-ul.limits li{padding:8px 0 8px 26px;border-top:1px solid var(--line);position:relative}
-ul.limits li:first-child{border-top:0}
-ul.limits li::before{content:"";position:absolute;left:4px;top:13px;width:10px;height:10px;border-radius:50%;border:2px dashed var(--unv)}
-.more-lim>summary{cursor:pointer;color:var(--brand-ink);font-weight:600;font-size:12.5px;padding:8px 0 2px;border-top:1px solid var(--line)}
-.more-lim[open]>summary{margin-bottom:2px}
+ul.limits{margin:0;padding:0;list-style:none;font-size:14px}
+ul.limits li{padding:10px 0 10px 24px;border-top:1px solid var(--line);position:relative}
+ul.limits li:first-child{border-top:0;padding-top:0}
+ul.limits li::before{content:"";position:absolute;left:2px;top:17px;width:9px;height:9px;border-radius:50%;border:1.6px dashed var(--unv)}
+ul.limits li:first-child::before{top:7px}
 .gap-file{font-family:var(--mono);font-size:12px}
-footer{padding:28px 0 40px;color:var(--faint);font-size:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-@media (max-width:640px){.wrap{padding:0 16px}.top-in{gap:4px 10px;justify-content:space-between;flex-wrap:wrap;padding-top:8px}.tabs{order:3;flex:1 0 100%;margin:0 -6px;padding-bottom:6px}.tabs a{padding:5px 8px;font-size:13px}.head{padding-top:20px}.head h1{font-size:24px}.card{padding:16px}.ff li{grid-template-columns:1fr}.ff .sev{justify-self:start}.ac-tile{flex-direction:row;flex-wrap:wrap;align-items:center;padding:10px 12px}.ac-tile .ac-h{width:auto;flex:1}.ac-tile .hint{display:none}.step{min-height:0;padding:10px 14px 10px 18px}.step .n{display:none}.step .t{margin-top:0}.gate .gd{-webkit-line-clamp:2}.hero{gap:16px;align-items:flex-start}.hero .ring{width:92px;height:92px}.hero .ring .val b{font-size:26px}.status-name{font-size:19px}dl.pj{grid-template-columns:1fr}dl.pj dt{margin-top:6px}.deltas{grid-template-columns:1fr 1fr 1fr}.f .side{grid-column:2/3;flex-wrap:wrap}details.f>summary{grid-template-columns:auto 1fr}}
-@media print{.top,.filters,.more,.tools,.skip,.selbar,.actionbar,.fsel-wrap{display:none!important}body{background:#fff}.card{box-shadow:none}details.f{break-inside:avoid}}
-@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+footer{padding:64px 0 48px;color:var(--faint);font-size:12.5px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:center}
+
+@media (max-width:900px){.g-3,.g-2{grid-template-columns:1fr}.stats,.stats-5{grid-template-columns:repeat(2,minmax(0,1fr))}.stat:nth-child(3){border-left:0}.stat:nth-child(n+3){border-top:1px solid var(--line)}.flow{grid-template-columns:1fr;gap:14px}.flow li{padding:0 0 0 28px}.flow li::before{left:7px;right:auto;top:18px;bottom:-14px;width:2px;height:auto}.flow li.todo::before{border-top:0;border-left:2px dashed var(--line-strong);width:0}.flow li:last-child::before{display:none}.flow .knot{top:1px}.facts3{grid-template-columns:1fr;gap:12px}}
+@media (max-width:640px){
+  html{scroll-padding-top:100px}
+  body{font-size:14.5px}
+  .wrap{padding:0 16px}
+  .top-in{gap:6px 12px;justify-content:space-between;flex-wrap:wrap;padding-top:8px}
+  .tabs{order:3;flex:1 0 100%;gap:16px;padding-bottom:8px}
+  .hero{padding:44px 0 36px}.hero-title{font-size:38px;gap:10px}.hero-sub{font-size:17px}
+  .stat{padding:16px 18px}.stat b{font-size:28px}
+  .band{padding-top:52px}.band-title{font-size:26px}.band-sub{font-size:15px}
+  .row,.gate{padding:14px 16px;grid-template-columns:auto minmax(0,1fr)}
+  .row .side,.gate .gside{grid-column:2;grid-row:auto;flex-wrap:wrap}
+  .frow{grid-template-columns:36px minmax(0,1fr)}.fsel-wrap{padding-left:12px}
+  details.f>summary{grid-template-columns:auto minmax(0,1fr);padding-right:14px}
+  .f .side{grid-column:2;grid-row:auto;flex-wrap:wrap}
+  .f .body{padding:2px 14px 18px 10px}
+  .ghead{grid-template-columns:36px minmax(0,1fr);padding-right:14px}.ghead .side{grid-column:2}
+  .panel{padding:18px}
+  dl.pj{grid-template-columns:1fr}dl.pj dt{margin-top:6px}
+  .actionbar{bottom:12px;border-radius:20px}.ab-in{padding:10px 10px 10px 18px}.ab-txt .x{display:none}
+  .pr{padding:22px 18px}.pr textarea{min-height:220px}.pr-list .p{display:none}
+}
+@media print{.top,.ftools,.fpanel,.selrow,.more-row,.tools,.skip,.actionbar,.fsel-wrap,.hero-cta{display:none!important}body{background:#fff}.panel,.list,.flist,.stats{box-shadow:none}details.f{break-inside:avoid}.band{padding-top:32px}}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}details.more>summary::after{transition:none}}
 `;
 
 // src/report/remediation.ts
@@ -28135,7 +28237,8 @@ function toHtml(run2, extras = {}) {
 <div id="actionbar" class="actionbar" role="region" aria-label="Selection" hidden></div>
 <dialog id="prompt" class="pdlg"></dialog>
 <script type="application/json" id="data">${payload}</script>
-<script>${PROMPT_JS}</script>
+<script>${PROMPT_JS}
+${MODEL_JS}</script>
 <script>${REPORT_JS}</script>
 </body>
 </html>
