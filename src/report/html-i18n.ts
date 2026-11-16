@@ -8,7 +8,6 @@
 export type Lang = 'en' | 'tr';
 
 const en = {
-  'lang.name': 'English',
   skip: 'Skip to findings',
   footer: 'Generated offline by Relivaro {v}. No data leaves this file.',
   'theme.label': 'Theme',
@@ -121,11 +120,6 @@ const en = {
   'more.gates': 'What the labels mean',
   'gates.hint':
     'Select a gate to filter the findings behind it. “Static analysis” means the result rests on rules, not on running the software.',
-  'gate.pass': 'Passed',
-  'gate.warn': 'Warning',
-  'gate.block': 'Blocker',
-  'gate.unverified': 'Not run',
-  'gate.n/a': 'Not applicable',
   'gg.block': 'Blocking',
   'gg.warn': 'Warnings',
   'gg.unverified': 'Not verified',
@@ -317,7 +311,6 @@ const en = {
 export type I18nKey = keyof typeof en;
 
 const tr: Record<I18nKey, string> = {
-  'lang.name': 'Türkçe',
   skip: 'Bulgulara geç',
   footer: 'Relivaro {v} ile çevrimdışı oluşturuldu. Hiçbir veri bu dosyanın dışına çıkmaz.',
   'theme.label': 'Tema',
@@ -431,11 +424,6 @@ const tr: Record<I18nKey, string> = {
   'more.gates': 'Etiketler ne anlama gelir',
   'gates.hint':
     'Bir kapıyı seçince arkasındaki bulgular filtrelenir. “Statik analiz”, sonucun yazılımı çalıştırmaya değil kurallara dayandığını gösterir.',
-  'gate.pass': 'Geçti',
-  'gate.warn': 'Uyarı',
-  'gate.block': 'Engel',
-  'gate.unverified': 'Çalıştırılmadı',
-  'gate.n/a': 'Uygulanamaz',
   'gg.block': 'Engelleyen',
   'gg.warn': 'Uyarılar',
   'gg.unverified': 'Doğrulanmayan',

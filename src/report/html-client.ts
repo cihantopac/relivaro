@@ -2,6 +2,9 @@
  * Client-side renderer of the HTML report. It reads the JSON payload and builds the page with DOM APIs only:
  * every repository-derived string is assigned through `textContent` / `setAttribute`, never parsed as markup.
  * Written as plain ES2017 without template literals so it can live in a string constant.
+ *
+ * Layout: a centered headline, a band of four numbers, then sections as wide bands. Long explanations sit in
+ * disclosures; colour is reserved for actions (accent) and small severity/status marks.
  */
 export const REPORT_JS = String.raw`(function () {
 'use strict';
@@ -12,6 +15,7 @@ var REM_KINDS = ['deterministic', 'agent', 'manual'];
 var VSTATES = ['detected', 'confirmed', 'false-positive', 'needs-runtime', 'accepted'];
 var SEV = ['critical', 'high', 'medium', 'low', 'info'];
 var CATS = ['security', 'supply-chain', 'reliability', 'performance', 'quality', 'testing', 'release'];
+var GATE_ORDER = ['block', 'warn', 'unverified', 'pass', 'n/a'];
 var SEV_W = { critical: 16, high: 8, medium: 4, low: 2, info: 1 };
 var NS = 'http://www.w3.org/2000/svg';
 var store = {
@@ -36,6 +40,8 @@ function t(k, v) {
   if (v) for (var n in v) s = s.split('{' + n + '}').join(String(v[n]));
   return s;
 }
+/* Count-aware string: the ".one" variant when the count is 1. */
+function tn(k, n, v) { return t(n === 1 && I.en[k + '.one'] ? k + '.one' : k, v); }
 function el(tag, o, kids) {
   var e = document.createElement(tag);
   if (o) for (var k in o) {
@@ -85,10 +91,8 @@ function when(iso) {
   catch (e) { return iso; }
 }
 function uniq(a) { return a.filter(function (x, i) { return x && a.indexOf(x) === i; }); }
-var VAR_ALIAS = { unverified: 'unv', 'n/a': 'na' };
-function cssVar(name) { return 'var(--' + (VAR_ALIAS[name] || name) + ')'; }
 function stKey(st) { return st === 'n/a' ? 'na' : st; }
-function sevStyle(sev) { return { color: cssVar(sev), background: 'color-mix(in srgb, ' + cssVar(sev) + ' 13%, transparent)' }; }
+function where(f) { return f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : ''; }
 
 /* Status glyphs: drawn shapes, so status never relies on colour alone. */
 function glyph(st, size) {
@@ -99,17 +103,24 @@ function glyph(st, size) {
   if (st === 'unverified') return s('svg', o, [s('circle', { cx: 8, cy: 8, r: 6.2, 'stroke-dasharray': '2.4 2' }), s('path', { d: 'M6.3 6.3a1.8 1.8 0 1 1 2.4 1.7c-.5.2-.7.6-.7 1.1M8 11.3v.1' })]);
   return s('svg', o, [s('path', { d: 'M4.5 8h7' })]);
 }
+function stGlyph(st, size) { return el('span', { cls: 'glyph c-' + stKey(st) }, [glyph(st, size)]); }
 var searchIcon = function () { return s('svg', { width: 15, height: 15, viewBox: '0 0 16 16', fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8', 'aria-hidden': 'true' }, [s('circle', { cx: 7, cy: 7, r: 4.8 }), s('path', { d: 'M10.6 10.6L14 14' })]); };
+function dot(cls) { return el('span', { cls: 'dot d-' + cls, 'aria-hidden': 'true' }); }
 
 var open = D.findings.filter(function (f) { return f.status === 'open'; });
 var R = D.release;
-var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false };
+var TONE = { 'not-ready': 'block', 'ready-with-warnings': 'warn', 'needs-verification': 'unverified', ready: 'pass' };
+var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false, fOpen: false, gOpen: {} };
 
 function vstate(f) { return RelivaroModel.vstate(f, REV); }
 function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
-function remBadge(k) { return el('span', { cls: 'rb rb-' + k, text: t('rem.' + k) }); }
-function vsBadge(v) { return el('span', { cls: 'vs vs-' + v, text: t('vs.' + v) }); }
+function remTag(k) { return el('span', { cls: 'tag', text: t('rem.' + k) }); }
+function vsTag(v) {
+  var mark = v === 'confirmed' ? dot('block') : v === 'needs-runtime' ? dot('warn') : null;
+  return el('span', { cls: 'tag' + (v === 'detected' ? ' dash' : v === 'false-positive' ? ' strike' : '') }, [mark, t('vs.' + v)]);
+}
 function selectedList() { return D.findings.filter(function (f) { return state.sel[f.id]; }); }
+function scrollToId(id) { var e = document.getElementById(id); if (e) e.scrollIntoView(); }
 
 /* Clipboard with fallbacks: file:// pages may not expose the async clipboard API. */
 function copyText(text, area, done) {
@@ -130,21 +141,27 @@ function copyText(text, area, done) {
   } catch (e) { fallback(); }
 }
 
-function card(title, hint, kids, extraHead) {
-  return el('div', { cls: 'card' }, [
-    el('div', { cls: 'card-h' }, [el('div', null, [el('h2', { text: title }), hint ? el('p', { cls: 'hint' }, [md(hint)]) : null]), extraHead || null]),
+/* A disclosure; with a key, its open state survives re-rendering (language switch, filtering). */
+function more(label, kids, key) {
+  var d = el('details', { cls: 'more' }, [el('summary', { text: label }), el('div', { cls: 'more-body' }, kids)]);
+  if (key && state.gOpen[key]) d.open = true;
+  if (key) d.addEventListener('toggle', function () { state.gOpen[key] = d.open; });
+  return d;
+}
+function band(id, title, sub, kids) {
+  return el('section', { id: id, cls: 'band' }, [
+    el('div', { cls: 'band-h' }, [el('div', null, [el('h2', { cls: 'band-title', text: title }), sub ? el('p', { cls: 'band-sub' }, [md(sub)]) : null])])
   ].concat(kids));
 }
-function section(id, kids) { return el('section', { id: id }, kids); }
+function panel(title, kids) { return el('div', { cls: 'panel' }, [title ? el('h3', { text: title }) : null].concat(kids)); }
 
 /* ---------- header ---------- */
 function renderChrome() {
   document.documentElement.lang = lang;
   var nav = document.getElementById('nav');
   nav.textContent = '';
-  [['overview', 'nav.overview'], ['actions', 'nav.actions'], ['gates', 'nav.gates'], ['findings', 'nav.findings'], ['verification', 'nav.checks'], ['project', 'nav.project']].forEach(function (x) {
-    if (x[0] === 'gates' && !R) return;
-    nav.appendChild(el('a', { href: '#' + x[0], text: t(x[1]) }));
+  [['overview', t('nav.overview')], ['actions', t('nav.actions')], R ? ['gates', t('nav.gates')] : null, ['findings', t('nav.findings')], ['verification', t('nav.checks')], ['project', t('nav.project')]].forEach(function (x) {
+    if (x) nav.appendChild(el('a', { href: '#' + x[0], text: x[1] }));
   });
   var seg = document.getElementById('lang');
   seg.setAttribute('aria-label', 'Language / Dil');
@@ -158,80 +175,120 @@ function renderChrome() {
     b.setAttribute('title', t('theme.label') + ': ' + t('theme.' + m));
   });
   document.getElementById('skip').textContent = t('skip');
-  var foot = document.getElementById('foot-text');
-  foot.textContent = t('footer', { v: D.tool.version });
+  document.getElementById('foot-text').textContent = t('footer', { v: D.tool.version });
 }
 
-/* ---------- overview ---------- */
-function ring(score, color) {
-  var r = 56, c = 2 * Math.PI * r, frac = Math.max(0, Math.min(1, score / 100));
-  return s('svg', { width: 132, height: 132, viewBox: '0 0 132 132', 'aria-hidden': 'true' }, [
-    s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: cssVar('surface-2'), 'stroke-width': 12 }),
-    frac > 0 ? s('circle', { cx: 66, cy: 66, r: r, fill: 'none', stroke: color, 'stroke-width': 12, 'stroke-linecap': 'round', 'stroke-dasharray': (c * frac).toFixed(1) + ' ' + c.toFixed(1) }) : null
-  ]);
+/* ---------- headline ---------- */
+function selectIds(ids) {
+  state.sel = {};
+  ids.forEach(function (id) { state.sel[id] = true; });
+  renderFindingsList();
+  renderActionBar();
 }
-var STATUS_TONE = { ready: 'pass', 'ready-with-warnings': 'warn', 'needs-verification': 'unverified', 'not-ready': 'block' };
-
 function hero() {
-  if (R) {
-    var tone = STATUS_TONE[R.status] || 'na';
-    var tally = R.tally || {};
-    var chips = el('div', { cls: 'tally' });
-    ['block', 'warn', 'unverified', 'pass', 'n/a'].forEach(function (k) {
-      if (tally[k] === undefined) return;
-      chips.appendChild(el('span', { cls: 'pill st-' + stKey(k) }, [glyph(k, 12), num(tally[k]) + ' ' + t('gate.' + k)]));
-    });
-    return el('div', { cls: 'card hero' }, [
-      el('div', { cls: 'ring' }, [ring(R.score, cssVar(tone)), el('div', { cls: 'val' }, [el('b', { text: String(R.score) }), el('span', { text: t('hero.score') })])]),
-      el('div', null, [
-        el('div', { cls: 'eyebrow', text: t('hero.release') }),
-        el('div', { cls: 'status-name c-' + tone }, [glyph(tone, 20), t('status.' + R.status)]),
-        el('p', { cls: 'hint', text: t('status.desc.' + R.status) + (R.scoreCapped ? ' ' + t('hero.capped') + '.' : '') }),
-        chips
-      ])
-    ]);
-  }
-  var worst = SEV.filter(function (x) { return D.summary.bySeverity[x]; })[0];
-  var segs = SEV.map(function (x) { return { v: D.summary.bySeverity[x], c: cssVar(x) }; });
-  return el('div', { cls: 'card hero' }, [
-    el('div', { cls: 'ring' }, [donut(segs, 132, 12), el('div', { cls: 'val' }, [el('b', { text: num(open.length) }), el('span', { text: t('nav.findings') })])]),
-    el('div', null, [
-      el('div', { cls: 'eyebrow', text: t('hero.audit') }),
-      el('div', { cls: 'status-name' + (worst ? '' : ' c-pass') }, [open.length ? t('hero.auditOpen', { n: num(open.length) }) : t('hero.auditClean')]),
-      el('p', { cls: 'hint' }, [md(t('hero.auditHint'))])
-    ])
+  var h = RelivaroModel.hero(D, REV);
+  var meta = el('div', { cls: 'hero-meta' });
+  [D.profile.name, el('span', { cls: 'mono', text: D.runId }), when(D.startedAt), dur(D.durationMs), 'Relivaro ' + D.tool.version].forEach(function (x, i) {
+    if (i) meta.appendChild(el('span', { cls: 'sep', 'aria-hidden': 'true', text: '·' }));
+    meta.appendChild(typeof x === 'string' ? el('span', { text: x }) : x);
+  });
+  var title = h.kind === 'audit-open' ? tn('hero.audit-open', h.count, { n: num(h.count) }) : t('hero.' + h.kind);
+  var sub = h.kind === 'audit-open' || h.kind === 'audit-clean' ? t('hero.audit.sub')
+    : h.kind === 'ready' ? t('hero.ready.sub') : tn('hero.' + h.kind + '.sub', h.count, { n: num(h.count) });
+  var cta = el('div', { cls: 'hero-cta' });
+  var go = {
+    prompt: [t('cta.prompt'), function () { selectIds(h.ids); openPrompt(); }],
+    gates: [t('cta.gates'), function () { scrollToId('gates'); }],
+    findings: [t('cta.findings'), function () { scrollToId('findings'); }],
+    fixfirst: [t('cta.fixfirst'), function () { scrollToId('actions'); }]
+  }[h.action];
+  if (go) cta.appendChild(el('button', { type: 'button', cls: 'btn pri lg', text: go[0], on: { click: go[1] } }));
+  if (R && h.action !== 'gates') cta.appendChild(el('button', { type: 'button', cls: 'link', text: t('cta.allGates'), on: { click: function () { scrollToId('gates'); } } }));
+  return el('section', { id: 'overview', cls: 'hero' }, [
+    meta,
+    el('h1', { cls: 'hero-title' }, [R ? stGlyph(TONE[R.status] || 'na', 34) : null, el('span', { text: title })]),
+    el('p', { cls: 'hero-sub' }, [md(sub)]),
+    cta.childNodes.length ? cta : null
   ]);
 }
 
-function kpis() {
+function stat(label, value, sub, mark) {
+  return el('div', { cls: 'stat' }, [el('b', null, [mark || null, value]), el('span', { text: label }), sub ? el('span', { cls: 's', text: sub }) : null]);
+}
+function stats() {
   var urgent = D.summary.bySeverity.critical + D.summary.bySeverity.high;
   var fixable = open.filter(function (f) { return f.fixer; }).length;
   var ran = D.checks.filter(function (c) { return c.status !== 'skipped'; });
   var passed = ran.filter(function (c) { return c.status === 'passed'; }).length;
-  function k(label, value, sub, tone) {
-    return el('div', { cls: 'kpi' }, [el('div', { cls: 'k', text: label }), el('div', { cls: 'v' + (tone ? ' c-' + tone : ''), text: value }), sub ? el('div', { cls: 's', text: sub }) : null]);
-  }
-  return el('div', { cls: 'kpis' }, [
-    k(t('kpi.open'), num(open.length), (function () {
-      var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
-      var parts = [];
-      if (accepted) parts.push(t('kpi.accepted', { n: num(accepted) }));
-      if (D.summary.suppressed) parts.push(D.summary.suppressed + ' ' + t('findings.status.suppressed').toLowerCase());
-      return parts.length ? parts.join(' · ') : null;
-    })()),
-    k(t('kpi.urgent'), num(urgent), null, urgent ? 'block' : 'pass'),
-    k(t('kpi.fixable'), num(fixable)),
-    k(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) })),
-    k(t('kpi.checks'), ran.length ? passed + '/' + ran.length : '—', ran.length ? null : t('kpi.checksNone'), ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified'),
-    (function () {
-      var c = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'confirmed'; }).length;
-      var fp = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'false-positive'; }).length;
-      var n = open.filter(function (f) { return REV[f.id]; }).length;
-      return k(t('kpi.reviewed'), open.length ? num(n) + '/' + num(open.length) : '—', t('kpi.reviewedSub', { c: num(c), f: num(fp) }), n ? null : 'unverified');
-    })()
+  var accepted = open.filter(function (f) { return vstate(f) === 'accepted'; }).length;
+  var openSub = [accepted ? t('kpi.accepted', { n: num(accepted) }) : null, D.summary.suppressed ? t('kpi.suppressed', { n: num(D.summary.suppressed) }) : null].filter(Boolean).join(' · ') || null;
+  var files = stat(t('kpi.files'), num(D.metrics.files), t('kpi.loc', { n: num(D.metrics.linesOfCode) }));
+  var checks = stat(t('kpi.checks'), ran.length ? passed + '/' + ran.length : '—', ran.length ? null : t('kpi.checksNone'));
+  var main;
+  if (R) {
+    var applicable = R.gates.filter(function (g) { return g.status !== 'n/a'; });
+    var crit = D.summary.bySeverity.critical;
+    main = [
+      stat(t('stat.score'), String(R.score), R.scoreCapped ? t('hero.capped') : null),
+      stat(t('kpi.open'), num(open.length), openSub),
+      stat(t('stat.critical'), num(crit), null, crit ? dot('critical') : null),
+      stat(t('stat.gates'), num(R.tally.pass || 0) + '/' + num(applicable.length))
+    ];
+  } else main = [stat(t('kpi.open'), num(open.length), openSub), stat(t('kpi.urgent'), num(urgent), null, urgent ? dot('critical') : null), files, checks];
+  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
+  var conf = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'confirmed'; }).length;
+  var fp = open.filter(function (f) { return REV[f.id] && REV[f.id].verdict === 'false-positive'; }).length;
+  var extra = [
+    stat(t('kpi.fixable'), num(fixable)),
+    stat(t('kpi.reviewed'), open.length ? num(reviewed) + '/' + num(open.length) : '—', t('kpi.reviewedSub', { c: num(conf), f: num(fp) }))
+  ].concat(R ? [stat(t('kpi.urgent'), num(urgent)), files, checks] : []);
+  return el('section', { id: 'summary' }, [
+    el('div', { cls: 'stats' }, main),
+    el('div', { cls: 'stats-more' }, [more(t('more.numbers'), [el('div', { cls: 'stats stats-' + extra.length }, extra)], 'numbers')])
   ]);
 }
 
+/* ---------- fix first ---------- */
+function showRule(rule) {
+  state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
+  renderGates(); renderFindingsSection(); scrollToId('findings');
+}
+function filterRem(k) { state.rem = k; state.status = 'open'; state.limit = 50; renderFindingsSection(); scrollToId('findings'); }
+function fixFirst() {
+  var top = RelivaroModel.priorities(open, REV);
+  var kids = [];
+  if (!top.length) kids.push(el('div', { cls: 'empty', text: t('ff.none') }));
+  else {
+    kids.push(el('div', { cls: 'list' }, top.map(function (g) {
+      var f = g.list[0], sev = SEV[g.worst];
+      return el('div', { cls: 'row' }, [
+        dot(sev),
+        el('button', { type: 'button', cls: 'row-btn t', title: t('ff.show'), on: { click: function () { showRule(g.rule); } } }, [el('span', { cls: 'sr', text: t('sev.' + sev) + ': ' }), md(f.title)]),
+        el('span', { cls: 'side' }, [remTag(remOf(f).kind)]),
+        el('span', { cls: 'p' }, [el('bdi', { text: where(f) || g.rule }), g.list.length > 1 ? ' ' + t('ff.more', { n: num(g.list.length - 1) }) : null])
+      ]);
+    })));
+  }
+  var all = [].concat.apply([], top.map(function (g) { return g.list; }));
+  var sum = el('div', { cls: 'remsum' }, REM_KINDS.map(function (k) {
+    var n = open.filter(function (f) { return remOf(f).kind === k; }).length;
+    return el('button', { type: 'button', disabled: n ? null : true, on: { click: function () { filterRem(k); } } }, [t('rem.' + k), el('b', { text: num(n) })]);
+  }));
+  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
+  var how = more(t('more.how'), [el('div', { cls: 'prose' }, [
+    el('p', null, [md(t('rem.deterministic.d'))]), el('p', null, [md(t('rem.agent.d'))]), el('p', null, [md(t('rem.manual.d'))]),
+    el('ol', null, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]),
+    el('p', { style: { 'margin-top': '10px' } }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])
+  ])], 'how');
+  kids.push(el('div', { cls: 'band-foot' }, [
+    all.length ? el('button', { type: 'button', cls: 'btn pri', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { selectIds(all.map(function (f) { return f.id; })); openPrompt(); } } }) : null,
+    sum
+  ]));
+  kids.push(el('div', { style: { 'margin-top': '16px' } }, [how]));
+  return band('actions', t('ff.title'), top.length ? t('ff.sub') : null, kids);
+}
+
+/* ---------- run flow ---------- */
 function flow() {
   var ran = D.checks.filter(function (c) { return c.status !== 'skipped'; });
   var passed = ran.filter(function (c) { return c.status === 'passed'; }).length;
@@ -239,171 +296,88 @@ function flow() {
   var fixable = open.filter(function (f) { return f.fixer; }).length;
   var fx = X.fixes;
   var steps = [
-    { t: 'flow.audit', v: t('flow.audit.v', { files: num(D.metrics.files), rules: num(D.metrics.rulesRun) }), st: 'pass' },
-    { t: 'flow.evidence', v: t('flow.evidence.v', { n: num(withEvidence) }), st: 'pass' },
-    { t: 'flow.fix', v: t('flow.fix.v', { n: num(fixable) }) + (fx && fx.applied ? ' · ' + fx.applied + ' ✓' : ''), st: fixable ? 'warn' : 'pass' },
-    { t: 'flow.verify', v: ran.length ? t('flow.verify.v', { p: passed, t: ran.length }) : t('flow.verify.none'), st: ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified' },
-    { t: 'flow.release', v: R ? t('status.' + R.status) : t('flow.release.none'), st: R ? STATUS_TONE[R.status] : 'na' }
+    [t('flow.audit'), t('flow.audit.v', { files: num(D.metrics.files), rules: num(D.metrics.rulesRun) }), 'pass'],
+    [t('flow.evidence'), t('flow.evidence.v', { n: num(withEvidence) }), 'pass'],
+    [t('flow.fix'), t('flow.fix.v', { n: num(fixable) }) + (fx && fx.applied ? ' · ' + fx.applied + ' ✓' : ''), fixable ? 'warn' : 'pass'],
+    [t('flow.verify'), ran.length ? t('flow.verify.v', { p: passed, t: ran.length }) : t('flow.verify.none'), ran.length ? (passed === ran.length ? 'pass' : 'block') : 'unverified'],
+    [t('flow.release'), R ? t('hero.' + R.status) : t('flow.release.none'), R ? TONE[R.status] : 'na']
   ];
-  return el('div', { cls: 'flow', role: 'list', 'aria-label': t('flow.title') }, steps.map(function (x, i) {
-    return el('div', { cls: 'step' + (x.st === 'unverified' || x.st === 'na' ? ' s-todo' : ''), role: 'listitem' }, [
-      el('span', { cls: 'bar', style: { background: cssVar(stKey(x.st)) } }),
-      el('div', { cls: 'n', text: '0' + (i + 1) }),
-      el('div', { cls: 't' }, [el('span', { cls: 'c-' + stKey(x.st) }, [glyph(x.st, 14)]), t(x.t)]),
-      el('div', { cls: 'v', text: x.v })
+  return band('flow', t('flow.title'), null, [el('ol', { cls: 'flow' }, steps.map(function (x) {
+    return el('li', { cls: x[2] === 'unverified' || x[2] === 'na' ? 'todo' : null }, [
+      el('span', { cls: 'knot' }, [stGlyph(x[2], 15)]),
+      el('div', { cls: 'ft', text: x[0] }),
+      el('div', { cls: 'fv', text: x[1] })
     ]);
-  }));
+  }))]);
 }
 
-/* ---------- action center ---------- */
-function actionCenter() {
-  var tiles = el('div', { cls: 'ac-tiles' });
-  REM_KINDS.forEach(function (k) {
-    var n = open.filter(function (f) { return remOf(f).kind === k; }).length;
-    tiles.appendChild(el('div', { cls: 'ac-tile ac-' + k }, [
-      el('div', { cls: 'ac-h' }, [remBadge(k), el('b', { cls: 'ac-n', text: num(n) })]),
-      el('p', { cls: 'hint' }, [md(t('rem.' + k + '.d'))]),
-      el('button', { type: 'button', cls: 'btn', disabled: n ? null : true, text: t('ac.show'), on: { click: function () { state.rem = k; state.status = 'open'; state.limit = 50; renderFindingsSection(); focusFindings(); } } })
-    ]));
-  });
-  var reviewed = open.filter(function (f) { return REV[f.id]; }).length;
-  var steps = el('div', { cls: 'ac-next' }, [
-    el('h3', { text: t('ac.next') }),
-    el('ol', { cls: 'ac-steps' }, [el('li', null, [md(t('ac.step1'))]), el('li', null, [md(t('ac.step2'))]), el('li', null, [md(t('ac.step3'))])]),
-    el('p', { cls: 'hint' }, [md(reviewed ? t('ac.reviewed', { r: num(reviewed), n: num(open.length) }) : t('ac.unreviewed'))])
-  ]);
-  return card(t('ac.title'), t('ac.hint'), [tiles, el('div', { cls: 'ac-foot' }, [fixFirst(), steps])]);
-}
-
-function priorities() { return RelivaroModel.priorities(open, REV); }
-function showRule(rule) {
-  state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
-  renderGates(); renderFindingsSection(); focusFindings();
-}
-function fixFirst() {
-  var top = priorities();
-  var box = el('div', { cls: 'ff-box' }, [el('h3', { text: t('ff.title') })]);
-  if (!top.length) { box.appendChild(el('div', { cls: 'empty', text: t('ff.none') })); return box; }
-  var list = el('ol', { cls: 'ff' });
-  top.forEach(function (g) {
-    var f = g.list[0], sev = SEV[g.worst];
-    var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : g.rule;
-    list.appendChild(el('li', null, [
-      el('span', { cls: 'sev', style: sevStyle(sev) }, [t('sev.' + sev)]),
-      el('div', { cls: 'ff-main' }, [
-        el('button', { type: 'button', cls: 'ff-t', title: t('ff.show'), on: { click: function () { showRule(g.rule); } } }, [md(f.title)]),
-        el('div', { cls: 'ff-m' }, [remBadge(remOf(f).kind), el('span', { cls: 'loc' }, [el('bdi', { text: g.list.length > 1 ? t('ff.where', { n: num(g.list.length - 1), w: where }) : where })])])
-      ])
-    ]));
-  });
-  var all = [].concat.apply([], top.map(function (g) { return g.list; }));
-  box.appendChild(list);
-  box.appendChild(el('button', { type: 'button', cls: 'btn primary', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { state.sel = {}; setSel(all, true); renderFindingsList(); openPrompt(); } } }));
-  return box;
-}
-
-function donut(segs, size, width) {
-  var r = (size - width) / 2, c = 2 * Math.PI * r, total = segs.reduce(function (a, x) { return a + x.v; }, 0), off = 0;
-  var kids = [s('circle', { cx: size / 2, cy: size / 2, r: r, fill: 'none', stroke: cssVar('surface-2'), 'stroke-width': width })];
-  if (total) segs.forEach(function (x) {
-    if (!x.v) return;
-    var len = (x.v / total) * c;
-    kids.push(s('circle', { cx: size / 2, cy: size / 2, r: r, fill: 'none', stroke: x.c, 'stroke-width': width, 'stroke-dasharray': Math.max(len - 1.5, 0.5).toFixed(2) + ' ' + c.toFixed(2), 'stroke-dashoffset': (-off).toFixed(2) }));
-    off += len;
-  });
-  return s('svg', { width: size, height: size, viewBox: '0 0 ' + size + ' ' + size, 'aria-hidden': 'true', style: 'transform:rotate(-90deg)' }, kids);
-}
-
-function focusFindings() { var f = document.getElementById('findings'); if (f) f.scrollIntoView(); }
-
+/* ---------- breakdown ---------- */
 function charts() {
   var bySev = D.summary.bySeverity;
-  var sevCard;
-  if (!open.length) sevCard = card(t('chart.severity'), null, [el('div', { cls: 'empty', text: t('chart.empty') })]);
-  else {
-    var legend = el('ul', { cls: 'legend' });
-    SEV.forEach(function (x) {
-      legend.appendChild(el('li', null, [el('button', { type: 'button', on: { click: function () { state.sev = {}; state.sev[x] = true; state.limit = 50; renderFindingsSection(); focusFindings(); } } }, [
-        el('span', { cls: 'sw', style: { background: cssVar(x) } }), el('span', { cls: 'lbl', text: t('sev.' + x) }), el('span', { cls: 'num', text: num(bySev[x]) })
-      ])]));
-    });
-    var d = el('div', { cls: 'ring', style: { width: '120px', height: '120px' } }, [donut(SEV.map(function (x) { return { v: bySev[x], c: cssVar(x) }; }), 120, 16), el('div', { cls: 'val' }, [el('b', { text: num(open.length), style: { 'font-size': '26px' } })])]);
-    sevCard = card(t('chart.severity'), null, [el('div', { cls: 'donut-wrap' }, [d, legend])]);
-  }
-  var cats = CATS.map(function (c) {
-    var fs = open.filter(function (f) { return f.category === c; });
-    return { c: c, n: fs.length, by: SEV.map(function (x) { return fs.filter(function (f) { return f.severity === x; }).length; }) };
-  }).filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; });
+  if (!open.length) return band('charts', t('chart.title'), null, [el('div', { cls: 'empty', text: t('chart.empty') })]);
+  var bar = el('div', { cls: 'sevbar', 'aria-hidden': 'true' }, SEV.map(function (x) { return bySev[x] ? el('span', { cls: 'd-' + x, style: { width: (bySev[x] / open.length * 100).toFixed(2) + '%' } }) : null; }));
+  var sevList = el('ul', { cls: 'sevlist' }, SEV.map(function (x) {
+    return el('li', null, [el('button', { type: 'button', on: { click: function () { state.sev = {}; state.sev[x] = true; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [dot(x), el('span', { text: t('sev.' + x) }), el('b', { text: num(bySev[x]) })])]);
+  }));
+  var cats = CATS.map(function (c) { return { c: c, n: open.filter(function (f) { return f.category === c; }).length }; })
+    .filter(function (x) { return x.n; }).sort(function (a, b) { return b.n - a.n; });
   var maxC = Math.max.apply(null, cats.map(function (x) { return x.n; }).concat([1]));
-  var catCard = card(t('chart.category'), null, [cats.length ? el('div', { cls: 'bars' }, cats.map(function (x) {
-    return el('div', { cls: 'barrow', role: 'button', tabindex: '0', on: { click: function () { state.cat = x.c; state.limit = 50; renderFindingsSection(); focusFindings(); }, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); } } } }, [
+  var catBars = el('div', { cls: 'bars' }, cats.map(function (x) {
+    return el('button', { type: 'button', cls: 'barrow', on: { click: function () { state.cat = x.c; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [
       el('span', { cls: 'lbl', text: t('cat.' + x.c) }),
-      el('div', { cls: 'track', style: { width: (x.n / maxC * 100).toFixed(1) + '%' } }, x.by.map(function (v, i) { return v ? el('span', { style: { width: (v / x.n * 100).toFixed(2) + '%', background: cssVar(SEV[i]) } }) : null; })),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (x.n / maxC * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: num(x.n) })
     ]);
-  })) : el('div', { cls: 'empty', text: t('chart.empty') })]);
+  }));
   var files = {};
   open.forEach(function (f) { if (!f.location) return; var k = f.location.file; files[k] = files[k] || { n: 0, w: 0 }; files[k].n++; files[k].w += SEV_W[f.severity]; });
-  var hot = Object.keys(files).map(function (k) { return { f: k, n: files[k].n, w: files[k].w }; }).sort(function (a, b) { return b.w - a.w || b.n - a.n; }).slice(0, 7);
+  var hot = Object.keys(files).map(function (k) { return { f: k, n: files[k].n, w: files[k].w }; }).sort(function (a, b) { return b.w - a.w || b.n - a.n; }).slice(0, 6);
   var maxW = Math.max.apply(null, hot.map(function (x) { return x.w; }).concat([1]));
-  var hotCard = card(t('chart.hotspots'), null, [hot.length ? el('div', { cls: 'bars hot' }, hot.map(function (x) {
-    return el('div', { cls: 'barrow', role: 'button', tabindex: '0', title: x.f, on: { click: function () { state.q = x.f; state.limit = 50; renderFindingsSection(); focusFindings(); }, keydown: function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); this.click(); } } } }, [
+  var hotBars = hot.length ? el('div', { cls: 'bars hot' }, hot.map(function (x) {
+    return el('button', { type: 'button', cls: 'barrow', title: x.f, on: { click: function () { state.q = x.f; state.limit = 50; renderFindingsSection(); scrollToId('findings'); } } }, [
       el('span', { cls: 'lbl' }, [el('bdi', { text: x.f })]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: (x.w / maxW * 100).toFixed(1) + '%', background: cssVar('brand') } })]),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (x.w / maxW * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: num(x.n) })
     ]);
-  })) : el('div', { cls: 'empty', text: t('chart.empty') })]);
-  return el('div', { cls: 'grid g-3' }, [sevCard, catCard, hotCard]);
+  })) : el('div', { cls: 'empty', text: t('chart.empty') });
+  return band('charts', t('chart.title'), null, [el('div', { cls: 'grid g-3' }, [
+    panel(t('chart.severity'), [bar, sevList]), panel(t('chart.category'), [catBars]), panel(t('chart.hotspots'), [hotBars])
+  ])]);
 }
 
 /* ---------- gates ---------- */
+function gateTitle(g) { return I[lang]['gt.' + g.id] && lang !== 'en' ? t('gt.' + g.id) : g.title; }
 function gates() {
   if (!R) return null;
-  var grid = el('div', { cls: 'gates' });
-  var ORDER = ['block', 'warn', 'unverified', 'pass', 'n/a'];
-  R.gates.slice().sort(function (a, b) { return ORDER.indexOf(a.status) - ORDER.indexOf(b.status); }).forEach(function (g) {
-    var title = I[lang]['gt.' + g.id] && lang !== 'en' ? t('gt.' + g.id) : g.title;
-    var n = g.findings ? g.findings.length : 0;
-    grid.appendChild(el('button', {
-      type: 'button', cls: 'gate b-' + stKey(g.status), 'aria-pressed': String(state.gate === g.id), title: g.detail,
-      on: { click: function () { state.gate = state.gate === g.id ? null : g.id; state.status = 'all'; state.limit = 50; renderGates(); renderFindingsSection(); if (state.gate && n) focusFindings(); } }
-    }, [
-      el('div', { cls: 'gm' }, [el('span', { cls: 'pill st-' + stKey(g.status) }, [glyph(g.status, 12), t('gate.' + g.status)]), g.basis && g.status !== 'n/a' ? el('span', { cls: 'basis', text: t('basis.' + g.basis) }) : null]),
-      el('div', { cls: 'gt', text: title }),
-      el('div', { cls: 'gd' }, [md(g.detail)]),
-      n ? el('div', { cls: 'faint', style: { 'font-size': '11.5px' }, text: t('gates.findings', { n: n }) }) : null
-    ]));
+  var applicable = R.gates.filter(function (g) { return g.status !== 'n/a'; });
+  var groups = GATE_ORDER.map(function (st) {
+    var list = R.gates.filter(function (g) { return g.status === st; });
+    if (!list.length) return null;
+    var rows = el('div', { cls: 'list' }, list.map(function (g) {
+      var n = g.findings ? g.findings.length : 0;
+      return el('button', {
+        type: 'button', cls: 'gate', 'aria-pressed': String(state.gate === g.id), title: g.detail,
+        on: { click: function () { state.gate = state.gate === g.id ? null : g.id; state.status = 'all'; state.limit = 50; renderGates(); renderFindingsSection(); if (state.gate && n) scrollToId('findings'); } }
+      }, [
+        stGlyph(g.status, 16),
+        el('span', { cls: 'gt', text: gateTitle(g) }),
+        el('span', { cls: 'gside' }, [
+          n ? el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: tn('gates.findings', n, { n: num(n) }) }) : null,
+          g.basis && g.status !== 'n/a' ? el('span', { cls: 'tag' + (g.basis === 'not-run' ? ' dash' : ''), text: t('basis.' + g.basis) }) : null
+        ]),
+        el('span', { cls: 'gd' }, [md(g.detail)])
+      ]);
+    }));
+    if (st === 'pass' || st === 'n/a') return el('div', { cls: 'ggroup' }, [more(t('gg.' + st) + ' · ' + num(list.length), [rows], 'gates-' + st)]);
+    return el('div', { cls: 'ggroup' }, [el('h3', null, [stGlyph(st, 14), t('gg.' + st), el('span', { cls: 'faint', text: num(list.length) })]), rows]);
   });
-  return card(t('gates.title'), t('gates.hint'), [grid]);
+  return band('gates', t('gates.title'), t('gates.sub', { p: num(R.tally.pass || 0), t: num(applicable.length) }), groups.concat([
+    el('div', { style: { 'margin-top': '18px' } }, [more(t('more.gates'), [el('p', { cls: 'prose' }, [md(t('gates.hint'))])], 'gates-hint')])
+  ]));
 }
-function renderGates() { var host = document.getElementById('gates'); if (!host) return; host.textContent = ''; var g = gates(); if (g) host.appendChild(g); }
-
-/* ---------- compare + perf ---------- */
-function compare() {
-  var C = X.comparison;
-  if (!C) return card(t('compare.title'), null, [el('div', { cls: 'empty', text: t('compare.none') })]);
-  var kids = [el('div', { cls: 'deltas' }, [
-    el('div', { cls: 'delta' }, [el('b', { cls: C.introduced ? 'c-block' : '', text: '+' + num(C.introduced) }), el('div', { cls: 'muted', text: t('compare.introduced') })]),
-    el('div', { cls: 'delta' }, [el('b', { cls: C.resolved ? 'c-pass' : '', text: '−' + num(C.resolved) }), el('div', { cls: 'muted', text: t('compare.resolved') })]),
-    el('div', { cls: 'delta' }, [el('b', { text: num(C.persisting) }), el('div', { cls: 'muted', text: t('compare.persisting') })])
-  ])];
-  if (C.releaseChange) kids.push(el('p', { cls: 'hint' }, [t('compare.release') + ': ' + t('status.' + C.releaseChange.from) + ' (' + C.releaseChange.scoreFrom + ') → ' + t('status.' + C.releaseChange.to) + ' (' + C.releaseChange.scoreTo + ')']));
-  var list = el('ul', { cls: 'mini' });
-  (C.introducedTop || []).forEach(function (f) { list.appendChild(el('li', null, [el('span', { cls: 'pill st-block', text: '+' }), el('span', { cls: 'sev', style: { color: cssVar(f.severity), 'min-width': '0', padding: '0' }, text: t('sev.' + f.severity) }), el('span', { text: f.title }), el('code', { text: f.file || '' })])); });
-  (C.resolvedTop || []).forEach(function (f) { list.appendChild(el('li', null, [el('span', { cls: 'pill st-pass', text: '−' }), el('span', { cls: 'sev', style: { color: cssVar(f.severity), 'min-width': '0', padding: '0' }, text: t('sev.' + f.severity) }), el('span', { text: f.title }), el('code', { text: f.file || '' })])); });
-  if (list.childNodes.length) kids.push(list);
-  return card(t('compare.title'), t('compare.base', { id: C.base.runId }) + ' · ' + when(C.base.startedAt), kids);
-}
-function perf() {
-  var B = X.bench || [];
-  if (!B.length) return card(t('perf.title'), null, [el('div', { cls: 'empty' }, [md(t('perf.none'))])]);
-  var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('perf.name') }), el('th', { cls: 'num', text: t('perf.mean') }), el('th', { cls: 'num', text: t('perf.p95') }), el('th', { cls: 'num', text: t('perf.errors') }), el('th', { text: t('perf.measured') })])])]);
-  var body = el('tbody');
-  B.forEach(function (b) {
-    body.appendChild(el('tr', null, [el('td', null, [el('code', { text: b.name }), ' ', el('span', { cls: 'basis', text: b.kind })]), el('td', { cls: 'num', text: b.stats.meanMs.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.stats.p95Ms.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.kind === 'http' ? ((b.stats.errorRate || 0) * 100).toFixed(2) + '%' : '—' }), el('td', { cls: 'muted', text: when(b.measuredAt) })]));
-  });
-  tb.appendChild(body);
-  return card(t('perf.title'), null, [el('div', { cls: 'tbl' }, [tb])]);
+function renderGates() {
+  var host = document.getElementById('gates');
+  if (host && R) host.parentNode.replaceChild(gates(), host);
 }
 
 /* ---------- findings ---------- */
@@ -443,39 +417,20 @@ function snippet(text, line) {
   });
   return box;
 }
+function output(ev) { return el('div', { cls: 'snip', role: 'region', 'aria-label': t('finding.output'), tabindex: '0' }, [el('pre', { text: (ev.command ? '$ ' + ev.command + '\n' : '') + ev.output })]); }
 function findingBody(f) {
   var b = el('div', { cls: 'body' });
-  var r = REV[f.id], rm = remOf(f);
-  b.appendChild(el('div', { cls: 'verdict v-' + vstate(f) }, [
-    el('div', { cls: 'vh' }, [vsBadge(vstate(f)), r ? el('span', { cls: 'faint', text: t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') }) : null]),
-    r ? el('p', { text: r.justification }) : f.accepted ? el('p', { text: t('finding.acceptedInCode', { r: f.accepted.reason }) }) : el('p', { cls: 'muted' }, [md(vstate(f) === 'confirmed' ? t('finding.observed') : t('finding.notReviewed'))]),
-    r && r.severity ? el('p', { cls: 'faint', text: t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) }) : null,
-    r && r.evidence && r.evidence.length ? el('div', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); })) : null
-  ]));
+  var r = REV[f.id], rm = remOf(f), v = vstate(f), ev = f.evidence || {};
+  b.appendChild(el('p', { cls: 'vline' }, [vsTag(v), el('span', { text: r ? r.justification : f.accepted ? t('finding.acceptedInCode', { r: f.accepted.reason }) : v === 'confirmed' ? t('finding.observed') : t('finding.notReviewed') })]));
   b.appendChild(el('p', { cls: 'msg' }, [md(f.message)]));
-  var ev = f.evidence || {};
   if (ev.snippet) b.appendChild(snippet(ev.snippet, f.location && f.location.line));
-  if (ev.facts) {
-    var facts = el('div', { cls: 'facts' });
-    Object.keys(ev.facts).forEach(function (k) { facts.appendChild(el('code', { text: k + ': ' + ev.facts[k] })); });
-    b.appendChild(facts);
-  }
-  if (ev.output) { b.appendChild(el('h4', { cls: 'muted', style: { margin: '10px 0 0', 'font-size': '11px' }, text: t('finding.output') })); b.appendChild(el('div', { cls: 'snip' }, [el('pre', { text: (ev.command ? '$ ' + ev.command + '\n' : '') + ev.output })])); }
-  function kv(k, v, mono) { return v ? el('div', null, [el('h4', { text: t(k) }), mono ? el('p', { cls: 'mono', style: { 'font-size': '12px' }, text: v }) : el('p', null, [md(v)])]) : null; }
-  b.appendChild(el('div', { cls: 'kv' }, [
-    kv('finding.impact', f.impact),
-    kv('finding.fix', f.recommendation),
-    kv('finding.verify', f.verification),
-    kv('finding.standards', [].concat(f.cwe || [], f.owasp || []).join(' · ')),
-    kv('finding.rule', f.ruleId + ' · ' + f.id, true),
-    kv('finding.confidence', t('conf.' + f.confidence) + ' · ' + (I.en['prov.' + f.provenance] ? t('prov.' + f.provenance) : f.provenance)),
-    f.suppression ? kv('finding.suppressed', f.suppression.kind + (f.suppression.reason ? ': ' + f.suppression.reason : '')) : null
-  ]));
-  b.appendChild(el('div', { cls: 'remline' }, [el('span', { cls: 'muted', text: t('finding.remediation') }), remBadge(rm.kind), el('span', { text: t('rem.reason.' + rm.reason) })]));
+  else if (ev.output) b.appendChild(output(ev));
+  var three = [[t('finding.impact'), f.impact], [t('finding.fix'), f.recommendation], [t('finding.verify'), f.verification]].filter(function (x) { return x[1]; });
+  if (three.length) b.appendChild(el('div', { cls: 'facts3' }, three.map(function (x) { return el('div', null, [el('h4', { text: x[0] }), el('p', null, [md(x[1])])]); })));
   if (rm.kind === 'deterministic') {
     var cmd = 'relivaro fix plan --finding ' + f.id + (rm.online ? ' --online' : '');
     var cmdCode = el('code', { text: cmd });
-    var btn = el('button', { type: 'button', cls: 'btn', text: t('finding.copy') });
+    var btn = el('button', { type: 'button', cls: 'btn sm', text: t('finding.copy') });
     btn.addEventListener('click', function () {
       copyText(cmd, null, function (ok) {
         btn.textContent = ok ? t('finding.copied') : t('finding.copyFail');
@@ -483,12 +438,26 @@ function findingBody(f) {
         setTimeout(function () { btn.textContent = t('finding.copy'); }, 1800);
       });
     });
-    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12px', 'font-weight': '600' }, text: t('finding.autofix') + (rm.safety === 'review' ? ' · ' + t('finding.reviewDiff') : '') }), cmdCode, btn]));
+    b.appendChild(el('div', { cls: 'cmd' }, [el('span', { cls: 'muted', style: { 'font-size': '12.5px', 'font-weight': '600' }, text: t('finding.autofix') + (rm.safety === 'review' ? ' · ' + t('finding.reviewDiff') : '') }), cmdCode, btn]));
   }
+  function kv(label, val, mono) { return val ? el('div', null, [el('h4', { text: label }), mono ? el('p', { cls: 'mono', style: { 'font-size': '12.5px' }, text: val }) : el('p', null, [typeof val === 'string' ? md(val) : val])]) : null; }
+  var details = el('div', { cls: 'kv' }, [
+    kv(t('finding.remediation'), el('span', null, [remTag(rm.kind), ' ', t('rem.reason.' + rm.reason)])),
+    kv(t('finding.standards'), [].concat(f.cwe || [], f.owasp || []).join(' · ')),
+    kv(t('finding.rule'), f.ruleId + ' · ' + f.id, true),
+    kv(t('finding.confidence'), t('conf.' + f.confidence) + ' · ' + (I.en['prov.' + f.provenance] ? t('prov.' + f.provenance) : f.provenance)),
+    r ? kv(t('vs.label'), t('finding.reviewBy', { kind: t('reviewer.' + r.reviewer.kind), name: r.reviewer.name, when: when(r.reviewedAt) }) + (r.carriedFrom ? ' · ' + t('finding.carried', { run: r.carriedFrom }) : '') + (r.severity ? ' · ' + t('finding.reviewSeverity', { s: t('sev.' + r.severity) }) : '')) : null,
+    r && r.evidence && r.evidence.length ? kv(t('finding.evidence'), el('span', { cls: 'facts' }, r.evidence.map(function (e) { return el('code', { text: e.file + (e.line ? ':' + e.line : '') }); }))) : null,
+    ev.facts ? kv(t('finding.facts'), el('span', { cls: 'facts' }, Object.keys(ev.facts).map(function (k) { return el('code', { text: k + ': ' + ev.facts[k] }); }))) : null,
+    f.suppression ? kv(t('finding.suppressed'), f.suppression.kind + (f.suppression.reason ? ': ' + f.suppression.reason : '')) : null
+  ]);
+  var dkids = [details];
+  if (ev.snippet && ev.output) dkids.push(el('div', { style: { 'margin-top': '14px' } }, [el('h4', { cls: 'muted', style: { margin: '0 0 6px', 'font-size': '12px' }, text: t('finding.output') }), output(ev)]));
+  b.appendChild(more(t('more.details'), dkids));
   return b;
 }
 function findingRow(f) {
-  var where = f.location ? f.location.file + (f.location.line ? ':' + f.location.line : '') : '';
+  var loc = where(f);
   var row = el('div', { cls: 'frow' + (state.sel[f.id] ? ' is-sel' : '') });
   var cb = el('input', { type: 'checkbox', cls: 'fsel', 'aria-label': t('sel.row', { id: f.id, title: f.title }) });
   cb.checked = !!state.sel[f.id];
@@ -497,10 +466,10 @@ function findingRow(f) {
   var d = el('details', { cls: 'f' });
   if (state.opened[f.id]) d.open = true;
   d.appendChild(el('summary', null, [
-    el('span', { cls: 'sev', style: sevStyle(f.severity) }, [t('sev.' + f.severity)]),
-    el('span', { cls: 'ttl' }, [md(f.title)]),
-    el('span', { cls: 'side' }, [vsBadge(vstate(f)), remBadge(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'pill st-na', text: t('findings.status.' + f.status) }) : null]),
-    where ? el('span', { cls: 'loc', title: where }, [el('bdi', { text: where })]) : null
+    dot(f.severity),
+    el('span', { cls: 'ttl' }, [el('span', { cls: 'sr', text: t('sev.' + f.severity) + ': ' }), md(f.title)]),
+    el('span', { cls: 'side' }, [vstate(f) !== 'detected' ? vsTag(vstate(f)) : null, remTag(remOf(f).kind), f.status !== 'open' ? el('span', { cls: 'tag', text: t('findings.status.' + f.status) }) : null]),
+    loc ? el('span', { cls: 'loc', title: loc }, [el('bdi', { text: loc })]) : null
   ]));
   var filled = false;
   d.addEventListener('toggle', function () {
@@ -526,54 +495,55 @@ function groupHead(rule, list) {
   cb.addEventListener('change', function () { setSel(list, cb.checked); renderFindingsList(); var again = document.querySelector('[data-group="' + rule.replace(/[^\w\/-]/g, '') + '"]'); if (again) again.focus(); });
   cb.setAttribute('data-group', rule.replace(/[^\w\/-]/g, ''));
   state.groupBoxes.push({ cb: cb, list: list });
-  var kinds = uniq(list.map(function (f) { return remOf(f).kind; }));
   return el('div', { cls: 'ghead' }, [
     el('label', { cls: 'fsel-wrap' }, [cb]),
-    el('div', { cls: 'gtitle' }, [el('b', { text: list[0].title }), el('code', { text: rule })]),
-    el('span', { cls: 'side' }, kinds.map(remBadge).concat([el('span', { cls: 'faint', text: t('group.count', { n: num(list.length) }) })]))
+    el('div', { cls: 'gtitle' }, [dot(list[0].severity), el('b', null, [md(list[0].title)]), el('code', { text: rule })]),
+    el('span', { cls: 'side' }, uniq(list.map(function (f) { return remOf(f).kind; })).map(remTag).concat([el('span', { cls: 'faint', style: { 'font-size': '12.5px' }, text: t('group.count', { n: num(list.length) }) })]))
   ]);
 }
 function renderFindingsList() {
   var host = document.getElementById('flist'), cnt = document.getElementById('fcount');
+  if (!host) return;
   host.textContent = ''; cnt.textContent = '';
   var list = sorted(D.findings.filter(matches));
   cnt.appendChild(el('span', { text: t('findings.count', { n: num(list.length), t: num(D.findings.length) }) }));
   if (state.gate) {
     var g = R.gates.filter(function (x) { return x.id === state.gate; })[0];
-    cnt.appendChild(el('span', { cls: 'chip', 'aria-pressed': 'true' }, [t('findings.gate', { g: lang !== 'en' && I[lang]['gt.' + g.id] ? t('gt.' + g.id) : g.title }), el('button', { type: 'button', cls: 'btn', style: { padding: '1px 6px' }, text: t('findings.clear'), on: { click: function () { state.gate = null; state.status = 'open'; renderGates(); renderFindingsSection(); } } })]));
+    cnt.appendChild(el('span', { cls: 'chip', 'aria-pressed': 'true' }, [t('findings.gate', { g: gateTitle(g) }), el('button', { type: 'button', cls: 'link plain', style: { 'font-size': '12.5px' }, text: t('findings.clear'), on: { click: function () { state.gate = null; state.status = 'open'; renderGates(); renderFindingsSection(); } } })]));
   }
-  var more = document.getElementById('fmore');
-  more.textContent = '';
+  var moreHost = document.getElementById('fmore');
+  moreHost.textContent = '';
   state.visible = list;
   state.groupBoxes = [];
-  if (!list.length) { host.appendChild(el('div', { cls: 'empty', text: t('findings.empty') })); return; }
+  host.hidden = !list.length;
+  if (!list.length) { moreHost.appendChild(el('div', { cls: 'empty', style: { width: '100%' }, text: t('findings.empty') })); return; }
   if (state.group) {
     var groups = {}, order = [];
     list.forEach(function (f) { if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); } groups[f.ruleId].push(f); });
     var shown = 0;
     order.forEach(function (rule) {
       if (shown >= state.limit) return;
-      var g = groups[rule], box = el('div', { cls: 'group' }, [groupHead(rule, g)]);
-      g.slice(0, Math.max(state.limit - shown, 1)).forEach(function (f) { box.appendChild(findingRow(f)); });
-      shown += g.length;
+      var gl = groups[rule], box = el('div', { cls: 'group' }, [groupHead(rule, gl)]);
+      gl.slice(0, Math.max(state.limit - shown, 1)).forEach(function (f) { box.appendChild(findingRow(f)); });
+      shown += gl.length;
       host.appendChild(box);
     });
   } else list.slice(0, state.limit).forEach(function (f) { host.appendChild(findingRow(f)); });
-  if (list.length > state.limit) more.appendChild(el('button', { type: 'button', cls: 'btn', text: t('findings.more', { n: num(Math.min(50, list.length - state.limit)) }), on: { click: function () { state.limit += 50; renderFindingsList(); } } }));
+  if (list.length > state.limit) moreHost.appendChild(el('button', { type: 'button', cls: 'btn', text: t('findings.more', { n: num(Math.min(50, list.length - state.limit)) }), on: { click: function () { state.limit += 50; renderFindingsList(); } } }));
 }
 function findingsSection() {
-  var q = el('input', { type: 'search', id: 'fq', placeholder: t('findings.search'), 'aria-label': t('findings.search'), value: state.q });
+  var q = el('input', { type: 'search', id: 'fq', placeholder: t('findings.search'), 'aria-label': t('findings.search') });
   q.value = state.q;
   q.addEventListener('input', function () { state.q = q.value; state.limit = 50; renderFindingsList(); });
   var chips = el('div', { cls: 'chips', role: 'group', 'aria-label': t('chart.severity') });
   SEV.forEach(function (x) {
     var n = D.findings.filter(function (f) { return f.severity === x && (state.status === 'all' || f.status === state.status); }).length;
-    chips.appendChild(el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(!!state.sev[x]), on: { click: function () { state.sev[x] = !state.sev[x]; state.limit = 50; this.setAttribute('aria-pressed', String(!!state.sev[x])); renderFindingsList(); } } }, [el('span', { cls: 'dot', style: { background: cssVar(x) } }), t('sev.' + x) + ' ' + n]));
+    chips.appendChild(el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(!!state.sev[x]), on: { click: function () { state.sev[x] = !state.sev[x]; state.limit = 50; this.setAttribute('aria-pressed', String(!!state.sev[x])); renderFindingsList(); } } }, [dot(x), t('sev.' + x) + ' ' + num(n)]));
   });
-  var cat = el('select', { 'aria-label': t('chart.category') }, [el('option', { value: '', text: t('findings.allCats') })].concat(CATS.filter(function (c) { return D.findings.some(function (f) { return f.category === c; }); }).map(function (c) { return el('option', { value: c, text: t('cat.' + c) }); })));
+  var cat = el('select', { 'aria-label': t('findings.category') }, [el('option', { value: '', text: t('findings.allCats') })].concat(CATS.filter(function (c) { return D.findings.some(function (f) { return f.category === c; }); }).map(function (c) { return el('option', { value: c, text: t('cat.' + c) }); })));
   cat.value = state.cat;
   cat.addEventListener('change', function () { state.cat = cat.value; state.limit = 50; renderFindingsList(); });
-  var st = el('select', { 'aria-label': t('findings.status.all') }, ['open', 'all', 'suppressed', 'baseline'].map(function (v) { return el('option', { value: v, text: t('findings.status.' + v) }); }));
+  var st = el('select', { 'aria-label': t('findings.status') }, ['open', 'all', 'suppressed', 'baseline'].map(function (v) { return el('option', { value: v, text: t('findings.status.' + v) }); }));
   st.value = state.status;
   st.addEventListener('change', function () { state.status = st.value; state.limit = 50; renderFindingsSection(); });
   var fx = el('input', { type: 'checkbox' });
@@ -583,14 +553,25 @@ function findingsSection() {
   so.value = state.sort;
   so.addEventListener('change', function () { state.sort = so.value; renderFindingsList(); });
   var pool = D.findings.filter(function (f) { return state.status === 'all' || f.status === state.status; });
-  function toggleChips(label, keys, cur, count, badge, set) {
+  function toggleChips(label, keys, cur, count, text, set) {
     return el('div', { cls: 'chips', role: 'group', 'aria-label': label }, keys.map(function (k) {
       var n = pool.filter(function (f) { return count(f) === k; }).length;
-      return el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(cur === k), disabled: n || cur === k ? null : true, on: { click: function () { set(cur === k ? '' : k); state.limit = 50; renderFindingsSection(); } } }, [badge(k), ' ' + num(n)]);
+      return el('button', { type: 'button', cls: 'chip', 'aria-pressed': String(cur === k), disabled: n || cur === k ? null : true, on: { click: function () { set(cur === k ? '' : k); state.limit = 50; renderFindingsSection(); } } }, [text(k) + ' ' + num(n)]);
     }));
   }
-  var remChips = toggleChips(t('finding.remediation'), REM_KINDS, state.rem, function (f) { return remOf(f).kind; }, remBadge, function (v) { state.rem = v; });
-  var vsChips = toggleChips(t('vs.label'), VSTATES, state.vs, vstate, vsBadge, function (v) { state.vs = v; });
+  var remChips = toggleChips(t('finding.remediation'), REM_KINDS, state.rem, function (f) { return remOf(f).kind; }, function (k) { return t('rem.' + k); }, function (v) { state.rem = v; });
+  var vsChips = toggleChips(t('vs.label'), VSTATES, state.vs, vstate, function (k) { return t('vs.' + k); }, function (v) { state.vs = v; });
+  var active = (state.cat ? 1 : 0) + (state.status !== 'open' ? 1 : 0) + (state.fixable ? 1 : 0) + (state.rem ? 1 : 0) + (state.vs ? 1 : 0);
+  var filters = el('details', { cls: 'more' }, [
+    el('summary', { text: t('more.filters') + (active ? ' · ' + active : '') }),
+    el('div', { cls: 'fpanel' }, [
+      el('div', { cls: 'fline' }, [cat, st, so, el('label', { cls: 'chk' }, [fx, t('findings.fixable')])]),
+      el('div', { cls: 'fline' }, [el('span', { cls: 'flabel', text: t('finding.remediation') }), remChips]),
+      el('div', { cls: 'fline' }, [el('span', { cls: 'flabel', text: t('vs.label') }), vsChips])
+    ])
+  ]);
+  if (state.fOpen) filters.open = true;
+  filters.addEventListener('toggle', function () { state.fOpen = filters.open; });
   var bySev = el('select', { 'aria-label': t('sel.severity') }, [el('option', { value: '', text: t('sel.severity') })].concat(SEV.map(function (x) { return el('option', { value: x, text: t('sev.' + x) }); })));
   bySev.addEventListener('change', function () {
     var v = bySev.value; if (!v) return;
@@ -600,30 +581,29 @@ function findingsSection() {
   var grp = el('input', { type: 'checkbox' });
   grp.checked = state.group;
   grp.addEventListener('change', function () { state.group = grp.checked; renderFindingsList(); });
-  var selBar = el('div', { cls: 'selbar', role: 'group', 'aria-label': t('sel.label') }, [
-    el('button', { type: 'button', cls: 'btn', text: t('sel.visible'), on: { click: function () { setSel(state.visible || [], true); renderFindingsList(); } } }),
+  var selRow = el('div', { cls: 'selrow', role: 'group', 'aria-label': t('sel.label') }, [
+    el('button', { type: 'button', cls: 'link', text: t('sel.visible'), on: { click: function () { setSel(state.visible || [], true); renderFindingsList(); } } }),
     bySev,
-    el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+    el('button', { type: 'button', cls: 'link', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
     el('label', { cls: 'chk' }, [grp, t('group.toggle')])
   ]);
-  return card(t('findings.title'), t('findings.hint'), [
-    el('div', { cls: 'filters' }, [el('label', { cls: 'search' }, [searchIcon(), q]), cat, st, so, el('label', { cls: 'chk' }, [fx, t('findings.fixable')])]),
-    el('div', { cls: 'filters' }, [chips]),
-    el('div', { cls: 'filters' }, [el('span', { cls: 'flabel', text: t('finding.remediation') }), remChips, el('span', { cls: 'flabel', text: t('vs.label') }), vsChips]),
-    selBar,
+  return band('findings', t('findings.title'), t('findings.sub'), [
+    el('div', { cls: 'ftools' }, [el('label', { cls: 'search' }, [searchIcon(), q]), chips]),
+    filters,
+    selRow,
     el('div', { id: 'fcount', cls: 'count', 'aria-live': 'polite' }),
     el('div', { id: 'flist', cls: 'flist' }),
-    el('div', { id: 'fmore', cls: 'more' })
+    el('div', { id: 'fmore', cls: 'more-row' })
   ]);
 }
 function renderFindingsSection() {
   var host = document.getElementById('findings');
-  host.textContent = '';
-  host.appendChild(findingsSection());
+  if (!host) return;
+  host.parentNode.replaceChild(findingsSection(), host);
   renderFindingsList();
 }
 
-/* ---------- action bar + prompt ---------- */
+/* ---------- selection bar + prompt sheet ---------- */
 function renderActionBar() {
   var bar = document.getElementById('actionbar');
   var list = selectedList();
@@ -635,15 +615,13 @@ function renderActionBar() {
   var c = { deterministic: 0, agent: 0, manual: 0, none: 0 };
   list.forEach(function (f) { c[remOf(f).kind]++; });
   var hidden = list.filter(function (f) { return (state.visible || []).indexOf(f) < 0; }).length;
-  bar.appendChild(el('div', { cls: 'wrap ab-in' }, [
-    el('div', { cls: 'ab-txt' }, [
-      el('b', { text: t('sel.count', { n: num(list.length) }) }),
-      el('span', { cls: 'ab-mix' }, REM_KINDS.concat(['none']).filter(function (k) { return c[k]; }).map(function (k) { return el('span', null, [remBadge(k), ' ' + num(c[k])]); })),
-      hidden ? el('span', { cls: 'faint', text: t('sel.hidden', { n: num(hidden) }) }) : null
-    ]),
+  var mix = REM_KINDS.concat(['none']).filter(function (k) { return c[k]; }).map(function (k) { return t('rem.' + k) + ' ' + num(c[k]); });
+  if (hidden) mix.push(t('sel.hidden', { n: num(hidden) }));
+  bar.appendChild(el('div', { cls: 'ab-in' }, [
+    el('div', { cls: 'ab-txt' }, [el('b', { text: t('sel.count', { n: num(list.length) }) }), el('span', { cls: 'x', text: mix.join(' · ') })]),
     el('div', { cls: 'ab-btns' }, [
-      el('button', { type: 'button', cls: 'btn', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
-      el('button', { type: 'button', cls: 'btn primary', text: t('ab.generate'), on: { click: openPrompt } })
+      el('button', { type: 'button', cls: 'ghost', text: t('sel.clear'), on: { click: function () { state.sel = {}; renderActionBar(); renderFindingsList(); } } }),
+      el('button', { type: 'button', cls: 'btn pri', text: t('ab.generate'), on: { click: openPrompt } })
     ])
   ]));
 }
@@ -654,6 +632,7 @@ function nonce() {
 }
 function openPrompt() {
   var list = sorted(selectedList());
+  if (!list.length) return;
   var text = RelivaroPrompt.build({
     project: D.profile.name, runId: D.runId, command: D.command, startedAt: D.startedAt, version: D.tool.version, root: D.root,
     lang: lang, nonce: nonce(), remText: REMTXT,
@@ -664,16 +643,30 @@ function openPrompt() {
   var status = el('p', { cls: 'pr-status', role: 'status', 'aria-live': 'polite' });
   var area = el('textarea', { id: 'prompt-text', spellcheck: 'false', 'aria-label': t('pr.label') });
   area.value = text;
+  var textBox = more(t('pr.showText'), [el('label', { 'for': 'prompt-text', cls: 'sr', text: t('pr.label') }), area]);
   var file = 'relivaro-fix-' + String(D.runId).replace(/[^\w.-]/g, '') + '.md';
   function close() { if (dlg.close) dlg.close(); else dlg.removeAttribute('open'); }
+  var rows = list.slice(0, 6).map(function (f) {
+    var loc = where(f);
+    return el('div', null, [dot(f.severity), el('span', { cls: 't' }, [el('span', { cls: 'sr', text: t('sev.' + f.severity) + ': ' }), md(f.title)]), el('span', { cls: 'p', title: loc }, [el('bdi', { text: loc })])]);
+  });
+  if (list.length > 6) rows.push(el('div', { cls: 'muted' }, [el('span'), el('span', { text: t('pr.more', { n: num(list.length - 6) }) }), el('span')]));
+  var copyBtn = el('button', { type: 'button', cls: 'btn pri', text: t('pr.copy'), on: { click: function () {
+    copyText(area.value, textBox.open ? area : null, function (ok) {
+      status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked');
+      if (!ok) { textBox.open = true; area.focus(); area.select(); }
+    });
+  } } });
   dlg.appendChild(el('div', { cls: 'pr' }, [
-    el('div', { cls: 'pr-h' }, [el('h2', { id: 'prompt-title', text: t('pr.title') + ' · ' + t('sel.count', { n: num(list.length) }) }), el('button', { type: 'button', cls: 'icon-btn', 'aria-label': t('pr.close'), text: '×', on: { click: close } })]),
-    el('p', { cls: 'hint' }, [md(t('pr.where'))]),
-    el('p', { cls: 'hint' }, [md(t('pr.static'))]),
-    el('label', { 'for': 'prompt-text', cls: 'sr', text: t('pr.label') }),
-    area,
+    el('div', { cls: 'pr-h' }, [
+      el('div', null, [el('h2', { id: 'prompt-title', text: t('pr.title') }), el('p', { text: t('sel.count', { n: num(list.length) }) + ' · ' + t('pr.paste') })]),
+      el('button', { type: 'button', cls: 'icon-btn', 'aria-label': t('pr.close'), text: '×', on: { click: close } })
+    ]),
+    el('div', { cls: 'pr-list' }, rows),
+    el('p', { cls: 'pr-steps' }, [el('b', { text: t('pr.steps') }), ' ' + t('pr.stepsList')]),
+    el('div', { cls: 'pr-more' }, [textBox, more(t('pr.limits'), [el('div', { cls: 'prose' }, [el('p', null, [md(t('pr.where'))]), el('p', null, [md(t('pr.static'))])])])]),
     el('div', { cls: 'pr-btns' }, [
-      el('button', { type: 'button', cls: 'btn primary', text: t('pr.copy'), on: { click: function () { copyText(area.value, area, function (ok) { status.textContent = ok ? t('pr.copied') : t('pr.copyBlocked'); if (!ok) { area.focus(); area.select(); } }); } } }),
+      status,
       el('button', { type: 'button', cls: 'btn', text: t('pr.download'), on: { click: function () {
         var url = URL.createObjectURL(new Blob([area.value], { type: 'text/markdown;charset=utf-8' }));
         var a = el('a', { href: url, download: file });
@@ -681,21 +674,19 @@ function openPrompt() {
         setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
         status.textContent = t('pr.downloaded', { f: file });
       } } }),
-      el('button', { type: 'button', cls: 'btn', text: t('pr.close'), on: { click: close } })
-    ]),
-    status
+      copyBtn
+    ])
   ]));
   dlg.setAttribute('aria-labelledby', 'prompt-title');
   if (dlg.showModal) dlg.showModal(); else dlg.setAttribute('open', '');
-  area.focus();
-  area.setSelectionRange(0, 0);
-  area.scrollTop = 0;
+  copyBtn.focus();
 }
 
-/* ---------- verification ---------- */
+/* ---------- checks ---------- */
 function checks() {
   var kids = [];
-  if (!D.checks.length || D.checks.every(function (c) { return c.status === 'skipped'; })) kids.push(el('div', { cls: 'empty', text: t('checks.none') }));
+  var none = !D.checks.length || D.checks.every(function (c) { return c.status === 'skipped'; });
+  if (!D.checks.length) kids.push(el('div', { cls: 'empty' }, [md(t('checks.none'))]));
   if (D.checks.length) {
     var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('checks.kind') }), el('th', { text: t('checks.result') }), el('th', { text: t('checks.tests') }), el('th', { cls: 'num', text: t('checks.duration') }), el('th', { text: t('checks.command') })])])]);
     var body = el('tbody');
@@ -705,59 +696,92 @@ function checks() {
       if (c.tests && c.tests.total) {
         var T = c.tests, tot = Math.max(T.total, T.passed + T.failed + T.skipped, 1);
         tests = el('div', null, [
-          el('div', { cls: 'track', style: { width: '140px' } }, [el('span', { style: { width: (T.passed / tot * 100) + '%', background: cssVar('pass') } }), el('span', { style: { width: (T.failed / tot * 100) + '%', background: cssVar('block') } }), el('span', { style: { width: (T.skipped / tot * 100) + '%', background: cssVar('na') } })]),
-          el('div', { cls: 'faint', style: { 'font-size': '11.5px' }, text: t('checks.testsLine', { p: num(T.passed), f: num(T.failed), s: num(T.skipped) }) })
+          el('div', { cls: 'track', style: { width: '140px' } }, [el('span', { cls: 'line-pass', style: { width: (T.passed / tot * 100) + '%' } }), el('span', { cls: 'line-block', style: { width: (T.failed / tot * 100) + '%' } }), el('span', { cls: 'line-na', style: { width: (T.skipped / tot * 100) + '%' } })]),
+          el('div', { cls: 'faint', style: { 'font-size': '12px', 'margin-top': '4px' }, text: t('checks.testsLine', { p: num(T.passed), f: num(T.failed), s: num(T.skipped) }) })
         ]);
       }
       body.appendChild(el('tr', null, [
-        el('td', null, [el('b', { text: t('check.' + c.kind) }), el('div', { cls: 'faint mono', style: { 'font-size': '11.5px' }, text: c.unit })]),
-        el('td', null, [el('span', { cls: 'pill st-' + tone }, [glyph(tone, 12), t('checks.' + c.status)]), c.reason ? el('div', { cls: 'faint', style: { 'font-size': '11.5px', 'margin-top': '4px' }, text: c.reason }) : null]),
+        el('td', null, [el('b', { text: t('check.' + c.kind) }), c.unit && c.unit !== '.' ? el('div', { cls: 'faint mono', style: { 'font-size': '12px' }, text: c.unit }) : null]),
+        el('td', null, [el('span', { cls: 'sev' }, [stGlyph(tone, 14), t('checks.' + c.status)]), c.reason ? el('div', { cls: 'faint', style: { 'font-size': '12px', 'margin-top': '4px' }, text: c.reason }) : null]),
         el('td', null, [tests || el('span', { cls: 'faint', text: c.diagnostics ? String(c.diagnostics) : '—' })]),
         el('td', { cls: 'num', text: c.status === 'skipped' ? '—' : dur(c.durationMs) }),
         el('td', null, [el('code', { text: c.command })])
       ]));
     });
     tb.appendChild(body);
-    kids.push(el('div', { cls: 'tbl' }, [tb]));
+    kids.push(el('div', { cls: 'panel', style: { padding: '6px 8px' } }, [el('div', { cls: 'tbl' }, [tb])]));
   }
   (D.coverage || []).forEach(function (c) {
-    kids.push(el('div', { style: { 'margin-top': '14px' } }, [
-      el('div', { cls: 'count' }, [el('b', { text: t('coverage.title') + ': ' + c.pct + '%' }), el('code', { text: c.file }), c.stale ? el('span', { cls: 'pill st-warn', text: t('coverage.stale') }) : null]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: c.pct + '%', background: cssVar('pass') } })])
+    kids.push(el('div', { cls: 'panel', style: { 'margin-top': '14px' } }, [
+      el('div', { cls: 'count', style: { margin: '0 0 10px' } }, [el('b', { style: { color: 'var(--text)' }, text: t('coverage.title') + ': ' + c.pct + '%' }), el('code', { text: c.file }), c.stale ? el('span', { cls: 'tag dash', text: t('coverage.stale') }) : null]),
+      el('div', { cls: 'track' }, [el('span', { cls: 'line-pass', style: { width: c.pct + '%' } })])
     ]));
   });
-  return card(t('checks.title'), t('checks.hint'), kids);
+  return band('verification', t('checks.title'), none ? t('checks.none') : t('checks.sub'), kids);
+}
+
+/* ---------- since last run, performance, test gaps ---------- */
+function compare() {
+  var C = X.comparison;
+  if (!C) return panel(t('compare.title'), [el('div', { cls: 'empty', text: t('compare.none') })]);
+  var kids = [el('p', { cls: 'faint', style: { margin: '-8px 0 14px', 'font-size': '12.5px' }, text: t('compare.base', { id: C.base.runId }) + ' · ' + when(C.base.startedAt) }), el('div', { cls: 'deltas' }, [
+    el('div', { cls: 'delta' }, [el('b', { text: '+' + num(C.introduced) }), el('div', { cls: 'muted', text: t('compare.introduced') })]),
+    el('div', { cls: 'delta' }, [el('b', { text: '−' + num(C.resolved) }), el('div', { cls: 'muted', text: t('compare.resolved') })]),
+    el('div', { cls: 'delta' }, [el('b', { text: num(C.persisting) }), el('div', { cls: 'muted', text: t('compare.persisting') })])
+  ])];
+  if (C.releaseChange) kids.push(el('p', { cls: 'muted', style: { 'font-size': '13.5px', margin: '14px 0 0' } }, [t('compare.release') + ': ' + t('hero.' + C.releaseChange.from) + ' (' + C.releaseChange.scoreFrom + ') → ' + t('hero.' + C.releaseChange.to) + ' (' + C.releaseChange.scoreTo + ')']));
+  var list = el('ul', { cls: 'mini' });
+  [['+', C.introducedTop || []], ['−', C.resolvedTop || []]].forEach(function (x) {
+    x[1].forEach(function (f) { list.appendChild(el('li', null, [el('b', { text: x[0] }), dot(f.severity), el('span', { text: f.title }), f.file ? el('code', { text: f.file }) : null])); });
+  });
+  if (list.childNodes.length) kids.push(list);
+  return panel(t('compare.title'), kids);
+}
+function perf() {
+  var B = X.bench || [];
+  if (!B.length) return panel(t('perf.title'), [el('div', { cls: 'empty' }, [md(t('perf.none'))])]);
+  var tb = el('table', null, [el('thead', null, [el('tr', null, [el('th', { text: t('perf.name') }), el('th', { cls: 'num', text: t('perf.mean') }), el('th', { cls: 'num', text: t('perf.p95') }), el('th', { cls: 'num', text: t('perf.errors') }), el('th', { text: t('perf.measured') })])])]);
+  var body = el('tbody');
+  B.forEach(function (b) {
+    body.appendChild(el('tr', null, [el('td', null, [el('code', { text: b.name }), ' ', el('span', { cls: 'tag', text: b.kind })]), el('td', { cls: 'num', text: b.stats.meanMs.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.stats.p95Ms.toFixed(1) + ' ms' }), el('td', { cls: 'num', text: b.kind === 'http' ? ((b.stats.errorRate || 0) * 100).toFixed(2) + '%' : '—' }), el('td', { cls: 'muted', text: when(b.measuredAt) })]));
+  });
+  tb.appendChild(body);
+  return panel(t('perf.title'), [el('div', { cls: 'tbl' }, [tb])]);
 }
 function gaps() {
   if (!D.testGaps || !D.testGaps.length) return null;
-  var top = D.testGaps.slice(0, 10), max = Math.max.apply(null, top.map(function (g) { return g.risk; }).concat([1]));
-  return card(t('gaps.title'), t('gaps.hint'), [el('div', { cls: 'bars hot' }, top.map(function (g) {
-    return el('div', { cls: 'barrow', title: g.reasons.join(', ') }, [
+  var top = D.testGaps.slice(0, 8), max = Math.max.apply(null, top.map(function (g) { return g.risk; }).concat([1]));
+  return band('gaps', t('gaps.title'), t('gaps.sub'), [el('div', { cls: 'panel' }, [el('div', { cls: 'bars hot' }, top.map(function (g) {
+    return el('div', { cls: 'barrow', style: { cursor: 'default' }, title: g.reasons.join(', ') }, [
       el('span', { cls: 'lbl' }, [el('bdi', { text: g.file })]),
-      el('div', { cls: 'track' }, [el('span', { style: { width: (g.risk / max * 100).toFixed(1) + '%', background: cssVar('warn') } })]),
+      el('span', { cls: 'track' }, [el('span', { style: { width: (g.risk / max * 100).toFixed(1) + '%' } })]),
       el('span', { cls: 'num', text: String(g.risk) })
     ]);
-  }))]);
+  }))])]);
 }
 
 /* ---------- project ---------- */
 function project() {
   var Pf = D.profile, dl = el('dl', { cls: 'pj' });
-  function row(k, v) { if (!v) return; dl.appendChild(el('dt', { text: t(k) })); dl.appendChild(el('dd', { text: v })); }
+  function row(k, v) { if (!v) return; dl.appendChild(el('dt', { text: k })); dl.appendChild(el('dd', { text: v })); }
   function tech(kinds) { return uniq(Pf.technologies.filter(function (x) { return kinds.indexOf(x.kind) >= 0; }).map(function (x) { return x.name; })).join(', '); }
-  row('project.languages', Pf.languages.slice(0, 8).map(function (l) { return l.name + ' (' + l.files + ')'; }).join(', '));
-  row('project.units', Pf.units.slice(0, 12).map(function (u) { return u.path + ' — ' + (u.frameworks.join(', ') || u.kind); }).join(' · '));
-  row('project.data', tech(['database', 'orm', 'cache', 'queue']));
-  row('project.tests', t('project.testsV', { t: num(Pf.tests.testFiles), s: num(Pf.tests.sourceFiles) }) + (Pf.tests.frameworks.length ? ' (' + Pf.tests.frameworks.join(', ') + ')' : ''));
-  row('project.ci', uniq(Pf.ci.map(function (c) { return c.system; })).join(', ') || t('project.none'));
-  row('project.deploy', uniq(Pf.deploy.map(function (d) { return d.kind; })).join(', '));
-  if (Pf.api && Pf.api.routes) row('project.api', t('project.apiV', { n: num(Pf.api.routes) }));
-  if (Pf.envVars.length) row('project.env', t('project.envV', { n: Pf.envVars.length, u: Pf.envVars.filter(function (v) { return v.required && !v.documented; }).length }));
+  row(t('project.languages'), Pf.languages.slice(0, 8).map(function (l) { return l.name + ' (' + l.files + ')'; }).join(', '));
+  row(t('project.units'), Pf.units.slice(0, 12).map(function (u) { return u.path + ' — ' + (u.frameworks.join(', ') || u.kind); }).join(' · '));
+  row(t('project.data'), tech(['database', 'orm', 'cache', 'queue']));
+  row(t('project.tests'), t('project.testsV', { t: num(Pf.tests.testFiles), s: num(Pf.tests.sourceFiles) }) + (Pf.tests.frameworks.length ? ' (' + Pf.tests.frameworks.join(', ') + ')' : ''));
+  row(t('project.ci'), uniq(Pf.ci.map(function (c) { return c.system; })).join(', ') || t('project.none'));
+  row(t('project.deploy'), uniq(Pf.deploy.map(function (d) { return d.kind; })).join(', '));
+  if (Pf.api && Pf.api.routes) row(t('project.api'), t('project.apiV', { n: num(Pf.api.routes) }));
+  if (Pf.envVars.length) row(t('project.env'), t('project.envV', { n: Pf.envVars.length, u: Pf.envVars.filter(function (v) { return v.required && !v.documented; }).length }));
   var all = D.limitations.length ? D.limitations : [t('limits.none')];
   function limits(items) { return el('ul', { cls: 'limits' }, items.map(function (l) { return el('li', null, [md(l)]); })); }
   var lim = [limits(all.slice(0, 3))];
-  if (all.length > 3) lim.push(el('details', { cls: 'more-lim' }, [el('summary', { text: t('limits.more', { n: num(all.length - 3) }) }), limits(all.slice(3))]));
-  return el('div', { cls: 'grid g-2' }, [card(t('project.title'), null, [dl]), card(t('limits.title'), t('disclaimer'), lim)]);
+  if (all.length > 3) lim.push(el('div', { style: { 'margin-top': '10px' } }, [more(t('limits.more', { n: num(all.length - 3) }), [limits(all.slice(3))], 'limits')]));
+  lim.push(el('p', { cls: 'faint', style: { 'font-size': '12.5px', margin: '16px 0 0' }, text: t('disclaimer') }));
+  return el('section', { id: 'project', cls: 'band' }, [el('div', { cls: 'grid g-2' }, [
+    el('div', null, [el('h2', { cls: 'band-title', style: { 'margin-bottom': '18px' }, text: t('project.title') }), el('div', { cls: 'panel' }, [dl])]),
+    el('div', null, [el('h2', { cls: 'band-title', style: { 'margin-bottom': '18px' }, text: t('limits.title') }), el('div', { cls: 'panel' }, lim)])
+  ])]);
 }
 
 /* ---------- page ---------- */
@@ -765,28 +789,18 @@ function render() {
   renderChrome();
   var app = document.getElementById('app');
   app.textContent = '';
-  var P2 = D.profile;
-  app.appendChild(el('div', { cls: 'head', id: 'overview' }, [
-    el('div', null, [el('div', { cls: 'eyebrow', lang: 'en', text: 'relivaro ' + D.command }), el('h1', { text: P2.name })]),
-    el('div', { cls: 'meta' }, [
-      el('span', null, [t('meta.run') + ' ', el('b', { cls: 'mono', text: D.runId })]),
-      el('span', null, [t('meta.started') + ' ', el('b', { text: when(D.startedAt) })]),
-      el('span', null, [t('meta.duration') + ' ', el('b', { text: dur(D.durationMs) })]),
-      el('span', null, [t('meta.version') + ' ', el('b', { text: D.tool.version })])
-    ])
-  ]));
-  app.appendChild(section('summary', [el('div', { cls: 'grid g-hero' }, [hero(), kpis()])]));
-  app.appendChild(section('actions', [actionCenter()]));
-  app.appendChild(section('flow', [flow()]));
-  app.appendChild(section('charts', [charts()]));
-  if (R) app.appendChild(section('gates', []));
-  app.appendChild(section('findings', []));
-  app.appendChild(section('verification', [checks()]));
+  app.appendChild(hero());
+  app.appendChild(stats());
+  app.appendChild(fixFirst());
+  app.appendChild(flow());
+  app.appendChild(charts());
+  if (R) app.appendChild(gates());
+  app.appendChild(el('section', { id: 'findings' }));
+  app.appendChild(checks());
+  app.appendChild(el('section', { id: 'trends', cls: 'band' }, [el('div', { cls: 'grid g-2' }, [compare(), perf()])]));
   var g = gaps();
-  app.appendChild(section('trends', [el('div', { cls: 'grid g-2' }, [compare(), perf()])]));
-  if (g) app.appendChild(section('gaps', [g]));
-  app.appendChild(section('project', [project()]));
-  renderGates();
+  if (g) app.appendChild(g);
+  app.appendChild(project());
   renderFindingsSection();
   renderActionBar();
 }

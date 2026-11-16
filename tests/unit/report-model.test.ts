@@ -172,3 +172,25 @@ describe('report stylesheet colour rule', () => {
       );
   });
 });
+
+describe('report client', () => {
+  it('uses only i18n keys that exist, and every key is used', async () => {
+    const { REPORT_JS } = await import('../../src/report/html-client.js');
+    const { I18N } = await import('../../src/report/html-i18n.js');
+    const keys = new Set(Object.keys(I18N.en));
+    const used = new Set([...REPORT_JS.matchAll(/\bt[n]?\('([\w.\-/]+)'\s*[,)]/g)].map((m) => m[1]!));
+    for (const k of used) expect(keys.has(k), k).toBe(true);
+    // Keys built at runtime from a prefix (t('sev.' + x)) count as used when their prefix is.
+    const prefixes = [...REPORT_JS.matchAll(/\bt[n]?\('([\w.\-/]+\.)' \+/g)].map((m) => m[1]!);
+    const unused = [...keys].filter(
+      (k) => !used.has(k) && !k.endsWith('.one') && !prefixes.some((p) => k.startsWith(p)),
+    );
+    expect(unused).toEqual([]);
+  });
+
+  it('takes the headline decision from the shared model', async () => {
+    const { REPORT_JS } = await import('../../src/report/html-client.js');
+    expect(REPORT_JS).toContain('RelivaroModel.hero(D, REV)');
+    expect(REPORT_JS).not.toContain('sevStyle');
+  });
+});
