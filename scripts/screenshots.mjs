@@ -51,7 +51,7 @@ async function shot(
 /** Findings explorer: the first finding expanded, three selected (the selection bar appears at the bottom). */
 const select = async (page) => {
   const boxes = page.locator('#flist .fsel');
-  for (const i of [0, 1, 3]) await boxes.nth(i).check();
+  for (const i of [0, 2, 3]) await boxes.nth(i).check();
   const first = page.locator('#flist details.f').first();
   await first.evaluate((d) => {
     d.open = true;
@@ -59,8 +59,9 @@ const select = async (page) => {
   await page.locator('#fcount').evaluate((d) => d.scrollIntoView({ block: 'start' }));
   await page.evaluate(() => window.scrollBy(0, -(document.querySelector('.top').offsetHeight + 12)));
 };
+/** Fix-prompt sheet opened from the fix-first band (summary view; the editable text stays collapsed). */
 const prompt = async (page) => {
-  await page.locator('.ff-box .btn.primary').click();
+  await page.locator('#actions .band-foot .btn.pri').click();
   await page.locator('#prompt[open]').waitFor();
 };
 const scrollTo = (id) => async (page) => {

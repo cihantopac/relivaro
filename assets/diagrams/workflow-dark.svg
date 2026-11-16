@@ -1,33 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="150" viewBox="0 0 960 150" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="112" viewBox="0 0 960 112" role="img" aria-labelledby="t d">
 <title id="t">Relivaro workflow</title><desc id="d">Audit, Evidence, Fix, Verify, Release</desc>
-<style>text{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}</style>
-<rect x="1.0" y="1" width="170.8" height="148" rx="14" fill="#141922" stroke="#2f3644" stroke-width="1.5"/>
-<text x="22.0" y="36" font-size="12" font-weight="600" fill="#958f87" letter-spacing="1">01</text>
-<text x="22.0" y="70" font-size="22" font-weight="700" fill="#ecebe7">Audit</text>
-<text x="22.0" y="98" font-size="12.5" fill="#aca69e">83 rules · AST + taint</text>
-<text x="22.0" y="118" font-size="12.5" fill="#aca69e">deterministic, offline</text>
-<path d="M175.8 68.0 l16 7 l-16 7" fill="none" stroke="#3fb6c9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="197.8" y="1" width="170.8" height="148" rx="14" fill="#141922" stroke="#2f3644" stroke-width="1.5"/>
-<text x="218.8" y="36" font-size="12" font-weight="600" fill="#958f87" letter-spacing="1">02</text>
-<text x="218.8" y="70" font-size="22" font-weight="700" fill="#ecebe7">Evidence</text>
-<text x="218.8" y="98" font-size="12.5" fill="#aca69e">file:line + snippet</text>
-<text x="218.8" y="118" font-size="12.5" fill="#aca69e">CWE and OWASP mapped</text>
-<path d="M372.6 68.0 l16 7 l-16 7" fill="none" stroke="#3fb6c9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="394.6" y="1" width="170.8" height="148" rx="14" fill="#141922" stroke="#2f3644" stroke-width="1.5"/>
-<text x="415.6" y="36" font-size="12" font-weight="600" fill="#958f87" letter-spacing="1">03</text>
-<text x="415.6" y="70" font-size="22" font-weight="700" fill="#ecebe7">Fix</text>
-<text x="415.6" y="98" font-size="12.5" fill="#aca69e">15 syntax-tree fixers</text>
-<text x="415.6" y="118" font-size="12.5" fill="#aca69e">diff preview, backups</text>
-<path d="M569.4 68.0 l16 7 l-16 7" fill="none" stroke="#3fb6c9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="591.4" y="1" width="170.8" height="148" rx="14" fill="#141922" stroke="#2f3644" stroke-width="1.5"/>
-<text x="612.4" y="36" font-size="12" font-weight="600" fill="#958f87" letter-spacing="1">04</text>
-<text x="612.4" y="70" font-size="22" font-weight="700" fill="#ecebe7">Verify</text>
-<text x="612.4" y="98" font-size="12.5" fill="#aca69e">re-analysis + your tests</text>
-<text x="612.4" y="118" font-size="12.5" fill="#aca69e">isolated copy, rollback</text>
-<path d="M766.2 68.0 l16 7 l-16 7" fill="none" stroke="#3fb6c9" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
-<rect x="788.2" y="1" width="170.8" height="148" rx="14" fill="#0b7285" stroke="#0b7285" stroke-width="1.5"/>
-<text x="809.2" y="36" font-size="12" font-weight="600" fill="#bfe6ec" letter-spacing="1">05</text>
-<text x="809.2" y="70" font-size="22" font-weight="700" fill="#ffffff">Release</text>
-<text x="809.2" y="98" font-size="12.5" fill="#bfe6ec">up to 18 gates</text>
-<text x="809.2" y="118" font-size="12.5" fill="#bfe6ec">with an unverified state</text>
+<style>text{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Helvetica,Arial,sans-serif}</style>
+<path d="M10 20 H950" stroke="#363d41" stroke-width="2"/>
+<circle cx="18.0" cy="20" r="8" fill="#3fb6c9" stroke="#0e1113" stroke-width="4"/>
+<text x="10.0" y="58" font-size="12" font-weight="600" fill="#a69c92" letter-spacing=".5">01</text>
+<text x="10.0" y="82" font-size="20" font-weight="700" fill="#f2f0ec" letter-spacing="-.3">Audit</text>
+<text x="10.0" y="104" font-size="13.5" fill="#a69c92">93 rules, offline</text>
+<circle cx="206.0" cy="20" r="8" fill="#3fb6c9" stroke="#0e1113" stroke-width="4"/>
+<text x="198.0" y="58" font-size="12" font-weight="600" fill="#a69c92" letter-spacing=".5">02</text>
+<text x="198.0" y="82" font-size="20" font-weight="700" fill="#f2f0ec" letter-spacing="-.3">Evidence</text>
+<text x="198.0" y="104" font-size="13.5" fill="#a69c92">file:line, code, CWE</text>
+<circle cx="394.0" cy="20" r="8" fill="#3fb6c9" stroke="#0e1113" stroke-width="4"/>
+<text x="386.0" y="58" font-size="12" font-weight="600" fill="#a69c92" letter-spacing=".5">03</text>
+<text x="386.0" y="82" font-size="20" font-weight="700" fill="#f2f0ec" letter-spacing="-.3">Fix</text>
+<text x="386.0" y="104" font-size="13.5" fill="#a69c92">15 fixers + agent prompts</text>
+<circle cx="582.0" cy="20" r="8" fill="#3fb6c9" stroke="#0e1113" stroke-width="4"/>
+<text x="574.0" y="58" font-size="12" font-weight="600" fill="#a69c92" letter-spacing=".5">04</text>
+<text x="574.0" y="82" font-size="20" font-weight="700" fill="#f2f0ec" letter-spacing="-.3">Verify</text>
+<text x="574.0" y="104" font-size="13.5" fill="#a69c92">tests green or rollback</text>
+<circle cx="770.0" cy="20" r="8" fill="#3fb6c9" stroke="#0e1113" stroke-width="4"/>
+<text x="762.0" y="58" font-size="12" font-weight="600" fill="#a69c92" letter-spacing=".5">05</text>
+<text x="762.0" y="82" font-size="20" font-weight="700" fill="#f2f0ec" letter-spacing="-.3">Release</text>
+<text x="762.0" y="104" font-size="13.5" fill="#a69c92">18 gates, nothing hidden</text>
 </svg>
