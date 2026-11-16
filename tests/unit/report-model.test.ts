@@ -30,7 +30,7 @@ const f = (id: string, severity: string, ruleId = 'sec/x', extra: Record<string,
 
 const release = (status: string, gates: { status: string; findings?: string[] }[]) => {
   const tally: Record<string, number> = { pass: 0, warn: 0, block: 0, unverified: 0, 'n/a': 0 };
-  for (const g of gates) tally[g.status]++;
+  for (const g of gates) tally[g.status] = (tally[g.status] ?? 0) + 1;
   return { status, score: 50, tally, gates: gates.map((g, i) => ({ id: `g${i}`, title: `g${i}`, ...g })) };
 };
 
