@@ -150,3 +150,25 @@ describe('report decision model', () => {
     expect(m.vstate(f('A', 'low'), {})).toBe('detected');
   });
 });
+
+describe('report stylesheet colour rule', () => {
+  it('teal comes only from the accent tokens, in the light, dark and forced-dark blocks', async () => {
+    const { REPORT_CSS } = await import('../../src/report/html-style.js');
+    expect(REPORT_CSS.match(/--accent:/g)?.length).toBe(3);
+    expect(REPORT_CSS.match(/#BRAND_LIGHT\b/g)?.length).toBe(1);
+    expect(REPORT_CSS.match(/#BRAND_DARK\b/g)?.length).toBe(2);
+    expect(REPORT_CSS).not.toMatch(/#0b7285|#3fb6c9/i);
+  });
+
+  it('severity and status colours fill nothing larger than a dot or a thin line', async () => {
+    const { REPORT_CSS } = await import('../../src/report/html-style.js');
+    const rules = REPORT_CSS.replace(/\/\*[\s\S]*?\*\//g, '').match(/[^{}]+\{[^{}]*\}/g) ?? [];
+    const filled = rules.filter((r) =>
+      /background(?:-color)?:\s*var\(--(?:crit|high|med|low|info|ok|warn|block|unv)\)/.test(r),
+    );
+    for (const r of filled)
+      expect(r.split('{')[0]!.trim(), r).toMatch(
+        /^(?:\.dot|\.d-[\w-]+|\.line-[\w-]+)(?:,\s*\.(?:dot|d-[\w-]+|line-[\w-]+))*$/,
+      );
+  });
+});
