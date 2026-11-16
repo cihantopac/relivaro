@@ -13,20 +13,22 @@ records from every fixture against the schema, so the two cannot drift apart.
 
 ## What it shows
 
+The page reads top to bottom like a product page: one verdict, the next action, then the detail. Long explanations
+sit behind disclosures (*More numbers*, *How fixes work*, *Filters*, *Details*), so the default view stays short.
+
 | Section | Content | Source |
 | --- | --- | --- |
-| Release readiness | Score ring, status (ready · ready with warnings · needs verification · not ready), gate tally | `release` only |
-| KPIs | Open findings, critical + high, auto-fixable, files and lines analysed, checks passed, findings reviewed in code | run record, review |
-| Action center | Open findings per remediation path (deterministic fix · agent-assisted · manual review), **Fix first** — the three most severe root causes with a one-click fix prompt — and the steps from selection to a fix prompt | run record, review |
-| Audit → Release flow | What happened at each stage of this run; stages that did not run are hatched | run record, fix history |
-| Charts | Severity distribution, findings by category (stacked by severity), files with the most findings | open findings |
-| Release gates | One tile per gate with its status and **basis** (executed, measured, advisory database, static analysis, not run). Select a tile to filter the findings behind it | `release` only |
-| Findings | Search, severity chips, category, status, remediation and verification filters, auto-fixable filter, sorting and grouping by root cause (rule); selection checkboxes; each finding expands to its review verdict, evidence (with the reported line highlighted), facts, impact, remediation path, verification steps, standards and the `fix plan` command | run record, review |
-| Verification | Executed build/test/type-check/lint commands with test result bars, durations and skip reasons; coverage | `--allow-exec` |
-| Compared with the previous run | Introduced, resolved and persisting findings, release status change | previous run in the same workspace |
-| Performance measurements | Latest `bench` / `load` results with mean, p95 and error rate | `.relivaro/bench/` |
-| Untested high-risk code | Heuristic ranking of source files without matching tests | run record |
-| What this run did not verify | Every limitation of the run, stated plainly; the first three are shown, the rest expand | run record |
+| Headline | The verdict in one sentence (*Not ready to ship.*, *Ready, with warnings.*, *Not verified yet.*, *Ready to ship.*; for audits, the open finding count) and one action that matches what it counts: **Fix these first** selects the findings behind the blocking gates and opens the fix prompt; when no such finding is left it points to the gates | run record, release, review |
+| Key numbers | Four numbers (release: score, open findings, critical, gates passed; audit: open, critical + high, files, checks). *More numbers*: auto-fixable, reviewed in code, the rest | run record, review |
+| Fix first | The three most severe root causes with location and remediation path, **Create fix prompt** for all of them, counts per remediation path (each a filter) and *How fixes work* | run record, review |
+| This run | Audit → Evidence → Fix → Verify → Release on one line; steps that did not run are dashed | run record, fix history |
+| Breakdown | Severity, category and the files with the most findings; each entry filters the findings | open findings |
+| Release gates | Grouped as blocking, warnings, not verified, passed and not applicable, each with its **basis** (executed, measured, advisory database, static analysis, not run). Passed and not-applicable groups are collapsed. Select a gate to filter the findings behind it | `release` only |
+| Findings | Search and severity chips; *Filters* holds category, status, sort, auto-fixable, remediation and verification; selection tools and grouping by root cause. Each finding opens to its verification state, message, evidence (with the reported line highlighted), impact, fix, how to verify and the `fix plan` command; standards, rule, confidence and review details sit under *Details* | run record, review |
+| Checks | Executed build/test/type-check/lint commands with test result bars, durations and skip reasons; coverage | `--allow-exec` |
+| Since last run · Performance | Introduced, resolved and persisting findings and the release status change; latest `bench` / `load` results | previous run, `.relivaro/bench/` |
+| Untested risk | Heuristic ranking of source files without matching tests | run record |
+| Project · Not verified | Stack summary, and every limitation of the run stated plainly (the first three shown, the rest expand) | run record |
 
 Charts and numbers are only drawn from what the run actually measured. A gate that was not executed is shown as
 **unverified** with a dashed outline, never as passed, and the status is never `ready` while a gate is unverified.
@@ -54,8 +56,9 @@ exists, and fixers that would break what tests do on purpose (object round-trips
 offered in test files.
 
 **Select and generate a prompt.** Tick findings (one by one, *Select visible*, *Select by severity*, or a whole
-root-cause group). A bar at the bottom shows the selection by remediation path; **Generate fix prompt** opens an
-editable Markdown brief with *Copy prompt* and *Download .md*. Paste it into Claude Code, Codex or another coding agent
+root-cause group). A floating bar shows the selection by remediation path; **Create fix prompt** opens a sheet that
+lists the selected findings and what the agent will do, with *Copy* and *Download .md*. The full Markdown brief is
+under *Show and edit text* and can be edited before copying. Paste it into Claude Code, Codex or another coding agent
 opened in the repository. The prompt names the project, run id, finding ids, locations, severity, verification state,
 evidence and expected outcome, and tells the agent to:
 
@@ -73,7 +76,7 @@ pages), the text is selected so you can press Ctrl+C / ⌘C, and *Download .md* 
 ([schema](../schemas/review.schema.json)) and re-renders the report. The raw detection stays visible next to the
 verdict, with reviewer, time, justification and evidence locations. A verdict applies only to a finding with the same
 id and fingerprint; later runs show verdicts recorded for the same code in an earlier run, labelled with that run.
-False positives and accepted risks leave the action-center counts and *Fix first*, but stay in the explorer under
+False positives and accepted risks leave *Fix first* and the headline action, but stay in the explorer under
 their verification filter. Release gates are computed from detection and ignore verdicts, so an accepted risk still
 counts in `relivaro release`; use a baseline (`relivaro baseline`) when an accepted finding should stop gating.
 
@@ -94,8 +97,9 @@ rule messages and generated details — is shown exactly as produced. No transla
 
 The theme switch offers **Light**, **Dark** and **System** (the default, which follows the operating system); the
 choice is remembered in local storage when available. Colours come from the Relivaro identity
-([`assets/brand/tokens.css`](../assets/brand/tokens.css)); severity and gate colours keep their meaning in both
-themes, and status never relies on colour alone.
+([`assets/brand/tokens.css`](../assets/brand/tokens.css)) in a 60-30-10 balance: paper or ink surfaces, stone neutrals
+for text and lines, and teal only for actions, focus and selection. Severity and status appear as small dots and drawn
+glyphs that keep their meaning in both themes; status never relies on colour alone.
 
 ## Security
 

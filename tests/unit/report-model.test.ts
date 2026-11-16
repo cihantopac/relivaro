@@ -91,6 +91,14 @@ describe('report decision model', () => {
     });
   });
 
+  it('hero: ready-with-warnings also counts gates that did not run', () => {
+    const run = {
+      findings: [],
+      release: release('ready-with-warnings', [{ status: 'unverified' }, { status: 'pass' }]),
+    };
+    expect(plain(load().hero(run, {}))).toEqual({ kind: 'ready-with-warnings', count: 1, action: 'gates', ids: [] });
+  });
+
   it('hero: needs-verification counts gates that did not run', () => {
     const run = {
       findings: [],

@@ -58,7 +58,7 @@ HTML report as a link plus the platform's open command, and one next step. Full 
 evidence and limitations live in the report. Agents record what they verified with `relivaro review add`, so the
 report distinguishes raw detections from reviewed verdicts; unreviewed findings are always called candidates.
 
-From the report's action center the user can select findings and generate a fix prompt; the agent re-checks the ids
+From the report's Fix first section or findings list the user can select findings and generate a fix prompt; the agent re-checks the ids
 with `relivaro recheck` before changing anything.
 
 ## Permissions

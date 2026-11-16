@@ -54,7 +54,7 @@ function hero(run, review) {
       .map(function (x) { return x.f.id; });
     return { kind: 'not-ready', count: tally.block || 0, action: ids.length ? 'prompt' : 'gates', ids: ids };
   }
-  if (R.status === 'ready-with-warnings') return { kind: R.status, count: tally.warn || 0, action: 'gates', ids: [] };
+  if (R.status === 'ready-with-warnings') return { kind: R.status, count: (tally.warn || 0) + (tally.unverified || 0), action: 'gates', ids: [] };
   if (R.status === 'needs-verification') return { kind: R.status, count: tally.unverified || 0, action: 'gates', ids: [] };
   return { kind: 'ready', count: 0, action: 'findings', ids: [] };
 }
