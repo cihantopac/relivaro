@@ -3,7 +3,7 @@
 All notable changes to Relivaro are documented here. The format follows [Keep a Changelog](https://keepachangelog.com)
 and the project uses [Semantic Versioning](https://semver.org).
 
-## [Unreleased]
+## [1.6.1] — 2026-11-16
 
 ### Changed
 

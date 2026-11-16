@@ -1,17 +1,17 @@
-# Release readiness — Relivaro 1.4.0
+# Release readiness — Relivaro 1.6.1
 
-Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261111-171411-642cde`, 2026-11-11, darwin/arm64, Node v22.23.2).
+Produced by running Relivaro on itself: `relivaro release . --allow-exec --online` (run `20261116-160501-dc3314`, 2026-11-16, darwin/arm64, Node v22.23.2).
 
-## Result: **READY** — score 89/100
+## Result: **READY** — score 87/100
 
 13 passed · 0 warnings · 0 unverified · 0 blockers (3 not applicable). The basis column says what each result rests on:
 `executed` (the command ran), `advisory-db` (OSV.dev was queried), `measured` (a benchmark), `static` (rules only).
 
 | Gate | Status | Basis | Evidence |
 | --- | --- | --- | --- |
-| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.3s |
-| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 12.6s (251 passed) |
-| Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.2s |
+| Build succeeds | ✅ passed | executed | `npm run build --silent` passed in 0.4s |
+| Automated tests pass | ✅ passed | executed | `npm test --silent` passed in 26.9s (354 passed) |
+| Type checking passes | ✅ passed | executed | `npm run typecheck --silent` passed in 0.3s |
 | Lint passes | ✅ passed | executed | `npm run lint --silent` passed in 0.2s |
 | No exposed secrets | ✅ passed | static | No secrets detected in analysed files. |
 | No unresolved high-risk security findings | ✅ passed | static | No security findings at medium or above with medium/high confidence. |
@@ -30,9 +30,9 @@ Produced by running Relivaro on itself: `relivaro release . --allow-exec --onlin
 
 ## Open findings
 
-40 open findings: 0 critical, 0 high, 4 medium, 36 low, 0 info. All are `qual/high-complexity` (maintainability observations on long, linear functions such as `discover`, `assessRelease`, `validateConfig` and the `fix` command) — tracked in the backlog, not changed to raise a score. The performance budget `self-audit-node-api` was measured with `relivaro bench` (mean 180 ms against a 1500 ms budget) before the run.
+46 open findings: 0 critical, 0 high, 5 medium, 41 low, 0 info. All are `qual/high-complexity` (maintainability observations on long, linear functions such as `discover`, `assessRelease`, `validateConfig` and the `fix` command) — tracked in the backlog, not changed to raise a score. The performance budget `self-audit-node-api` was measured with `relivaro bench` before the run.
 
-## Field check (read-only)
+## Field check (read-only, 1.4.0)
 
 Frameva targets audited with `--workspace <scratch>`, offline, 1.3.0 build vs 1.4.0 build on the same trees:
 
@@ -49,14 +49,14 @@ The remaining worker `sec/sql-injection` findings interpolate function parameter
 
 | Criterion | Evidence |
 | --- | --- |
-| Advertised features work | 251 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
-| Detection accuracy | Fixture corpus: 10 projects, 172 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
+| Advertised features work | 354 automated tests (unit, integration, security, e2e) passing; e2e tests cover every CLI command |
+| Detection accuracy | Fixture corpus: 11 projects, 185 expected findings, precision 100%, recall 100% ([BENCHMARKS.md](BENCHMARKS.md)) |
 | Real-world validation | 5 local repositories, all significant findings verified, 19 false-positive patterns fixed and captured as regressions ([VALIDATION.md](VALIDATION.md)) |
 | Safe fix / verify / rollback | Integration tests: static verification, isolated command verification rejecting a regression without touching the tree, stale-plan and rollback-conflict refusal, exact restore, transactional multi-file apply (failed write restored), interrupted-apply rollback, forced rollback preserving later edits, corrupt-backup refusal, symlinks in the verification copy, unverifiable findings never counted as resolved |
 | Security boundaries | Security tests: secret redaction in all formats, untracked `.env` never read, symlink escape, git `core.fsmonitor` execution attempt, no-shell argv, env scrubbing, output caps, offline guarantee, load-target policy (incl. IPv4-mapped/NAT64/CGNAT and connection-time DNS re-validation), HTML injection and offline self-containment, EN/TR string parity |
-| Report actions | Fix-prompt builder tested against hostile titles, messages, paths, snippets, forged markers and secrets; selection, prompt, copy and download checked in Chromium, WebKit and Firefox (EN/TR, light/dark, 375 px, keyboard, `file://`, no network) |
+| Report actions | Fix-prompt builder tested against hostile titles, messages, paths, snippets, forged markers and secrets; selection, prompt, copy and download checked in Chromium, WebKit and Firefox (EN/TR, light/dark, 375 px, keyboard, `file://`, no network); since 1.6.1 `scripts/report-states.mjs` checks every report state at 1280 and 360 px in both themes and languages (page errors, overflow, untranslated keys, kept selection, clipboard fallback) |
 | Clean installation | `scripts/smoke-install.mjs`: npm pack → install into an empty directory → `doctor` + audit of a fixture |
-| Performance | 3060 files in 1.43 s (2134 files/s), 241k-line monorepo in 2.9–3.2 s, peak RSS 208 MB; self-audit budget met |
+| Performance | 3060 files in 1.59 s (1928 files/s), peak RSS 146 MB; 241k-line monorepo in about 3 s; self-audit budget met |
 | Claude Code plugin | `claude plugin validate --strict` passes for marketplace and plugin; headless `/relivaro:audit` runs on clones of repo-1 answered in 150–183 words with the report path and recorded verdicts; a report-generated fix prompt led Claude Code to re-check, reject false positives and ask before changing code ([VALIDATION.md](VALIDATION.md)) |
 | Exit codes, errors | e2e tests for 0/1/2, JSON errors on stderr |
 | CI and quality gates | Green on GitHub Actions — `.github/workflows/ci.yml`: Linux/macOS/Windows × Node 22/24, lint, typecheck, dist check, tests, clean install, benchmark gate, plugin validation, self-audit with SARIF |

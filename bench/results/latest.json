@@ -1,6 +1,6 @@
 {
-  "relivaro": "1.6.0",
-  "measuredAt": "2026-11-12T07:51:00.911Z",
+  "relivaro": "1.6.1",
+  "measuredAt": "2026-11-16T16:04:20.928Z",
   "environment": {
     "node": "v22.23.2",
     "platform": "darwin",
@@ -17,7 +17,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 138
+        "ms": 137
       },
       "laravel-app": {
         "tp": 40,
@@ -25,7 +25,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 111
+        "ms": 108
       },
       "misc-rules": {
         "tp": 14,
@@ -33,7 +33,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 101
+        "ms": 102
       },
       "monorepo-docker": {
         "tp": 1,
@@ -41,7 +41,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 97
+        "ms": 89
       },
       "monorepo-lib": {
         "tp": 1,
@@ -49,7 +49,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 102
+        "ms": 95
       },
       "next-app": {
         "tp": 12,
@@ -57,7 +57,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 130
+        "ms": 124
       },
       "node-api": {
         "tp": 72,
@@ -65,7 +65,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 159
+        "ms": 149
       },
       "python-app": {
         "tp": 33,
@@ -73,7 +73,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 113
+        "ms": 106
       },
       "regressions": {
         "tp": 5,
@@ -81,7 +81,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 132
+        "ms": 121
       },
       "sql-migrations": {
         "tp": 4,
@@ -89,7 +89,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 82
+        "ms": 74
       },
       "static-site": {
         "tp": 3,
@@ -97,7 +97,7 @@
         "fn": 0,
         "precision": 1,
         "recall": 1,
-        "ms": 73
+        "ms": 70
       }
     },
     "byRule": {
@@ -542,12 +542,12 @@
       "linesOfCode": 48600,
       "parsedFiles": 3000,
       "rulesRun": 87,
-      "medianMs": 1607,
-      "minMs": 1533,
-      "maxMs": 1625,
-      "filesPerSecond": 1905,
-      "linesPerSecond": 30250,
-      "peakRssMb": 148,
+      "medianMs": 1588,
+      "minMs": 1553,
+      "maxMs": 1608,
+      "filesPerSecond": 1928,
+      "linesPerSecond": 30614,
+      "peakRssMb": 146,
       "openFindings": 60
     },
     "repositories": []
