@@ -96,7 +96,12 @@ describe('report decision model', () => {
       findings: [],
       release: release('ready-with-warnings', [{ status: 'unverified' }, { status: 'pass' }]),
     };
-    expect(plain(load().hero(run, {}))).toEqual({ kind: 'ready-with-warnings', count: 1, action: 'gates', ids: [] });
+    expect(plain(load().hero(run, {}))).toEqual({
+      kind: 'ready-with-warnings',
+      count: 1,
+      action: 'gates',
+      ids: [],
+    });
   });
 
   it('hero: needs-verification counts gates that did not run', () => {
