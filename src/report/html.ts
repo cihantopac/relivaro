@@ -5,6 +5,7 @@ import { BRAND, FAVICON_SVG, LOGO } from './brand.js';
 import type { RunComparison } from './compare.js';
 import { REPORT_JS } from './html-client.js';
 import { I18N } from './html-i18n.js';
+import { MODEL_JS } from './html-model.js';
 import { PROMPT_JS } from './html-prompt.js';
 import { REPORT_CSS } from './html-style.js';
 import { REMEDIATION_TEXT, remediationOf } from './remediation.js';
@@ -105,7 +106,8 @@ export function toHtml(run: RunRecord, extras: HtmlExtras = {}): string {
 <div id="actionbar" class="actionbar" role="region" aria-label="Selection" hidden></div>
 <dialog id="prompt" class="pdlg"></dialog>
 <script type="application/json" id="data">${payload}</script>
-<script>${PROMPT_JS}</script>
+<script>${PROMPT_JS}
+${MODEL_JS}</script>
 <script>${REPORT_JS}</script>
 </body>
 </html>

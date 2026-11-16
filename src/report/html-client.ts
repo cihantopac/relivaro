@@ -105,13 +105,7 @@ var open = D.findings.filter(function (f) { return f.status === 'open'; });
 var R = D.release;
 var state = { q: '', sev: {}, cat: '', status: 'open', fixable: false, sort: 'severity', gate: null, limit: 50, opened: {}, sel: {}, rem: '', vs: '', group: false };
 
-/* Verification state: reviewed verdicts, findings observed by running a tool, or a scanner candidate. */
-function vstate(f) {
-  var r = REV[f.id];
-  if (r) return r.verdict;
-  if (f.accepted) return 'accepted';
-  return f.provenance === 'executed' || f.provenance === 'measured' ? 'confirmed' : 'detected';
-}
+function vstate(f) { return RelivaroModel.vstate(f, REV); }
 function remOf(f) { return REM[f.id] || { kind: 'agent', reason: 'code' }; }
 function remBadge(k) { return el('span', { cls: 'rb rb-' + k, text: t('rem.' + k) }); }
 function vsBadge(v) { return el('span', { cls: 'vs vs-' + v, text: t('vs.' + v) }); }
@@ -281,19 +275,7 @@ function actionCenter() {
   return card(t('ac.title'), t('ac.hint'), [tiles, el('div', { cls: 'ac-foot' }, [fixFirst(), steps])]);
 }
 
-/* The three most severe root causes (rules) among open findings not reviewed as false positives or accepted risks. */
-function priorities() {
-  var groups = {}, order = [];
-  open.forEach(function (f) {
-    if (vstate(f) === 'false-positive' || vstate(f) === 'accepted') return;
-    if (!groups[f.ruleId]) { groups[f.ruleId] = []; order.push(f.ruleId); }
-    groups[f.ruleId].push(f);
-  });
-  return order.map(function (r) {
-    var g = groups[r].slice().sort(function (a, b) { return SEV.indexOf(a.severity) - SEV.indexOf(b.severity); });
-    return { rule: r, list: g, worst: SEV.indexOf(g[0].severity) };
-  }).sort(function (a, b) { return a.worst - b.worst || b.list.length - a.list.length || a.rule.localeCompare(b.rule); }).slice(0, 3);
-}
+function priorities() { return RelivaroModel.priorities(open, REV); }
 function showRule(rule) {
   state.q = rule; state.status = 'open'; state.sev = {}; state.cat = ''; state.rem = ''; state.vs = ''; state.gate = null; state.limit = 50;
   renderGates(); renderFindingsSection(); focusFindings();
