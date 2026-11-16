@@ -282,9 +282,9 @@ function fixFirst() {
   ])], 'how');
   kids.push(el('div', { cls: 'band-foot' }, [
     all.length ? el('button', { type: 'button', cls: 'btn pri', text: t('ff.prompt', { n: num(all.length) }), on: { click: function () { selectIds(all.map(function (f) { return f.id; })); openPrompt(); } } }) : null,
-    sum
+    open.length ? sum : null
   ]));
-  kids.push(el('div', { style: { 'margin-top': '16px' } }, [how]));
+  if (open.length) kids.push(el('div', { style: { 'margin-top': '16px' } }, [how]));
   return band('actions', t('ff.title'), top.length ? t('ff.sub') : null, kids);
 }
 

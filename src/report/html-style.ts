@@ -30,6 +30,7 @@ export const REPORT_CSS = String.raw`
   --ok:#5cc893;--warn:#e9bd52;--block:#ff5f78;--unv:#a9aaf0;--na:#857c73;
   --hl:#2f2a17;--shadow:none;--pill:#f2f0ec;--on-pill:#0e1113;color-scheme:dark}
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{scroll-behavior:smooth;scroll-padding-top:72px}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 var(--font);-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility}
 a{color:var(--accent-ink);text-decoration:none}a:hover{text-decoration:underline;text-underline-offset:3px}
